@@ -8,7 +8,7 @@ import { ArrowLeft, CreditCard } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
-const stripePromise = loadStripe("pk_test_51QI7T2C8f5zNz8wdWnI7IU9xjB0EiM8w5r6Xbj7xOZPFdKjB3mO8w7l9n6Y4t5E8p6R3N1z");
+const stripePromise = loadStripe("pk_test_TYooMQauvdEDq54NiTphI7jx");
 
 interface CheckoutFormProps {
   clientSecret: string;
@@ -87,6 +87,7 @@ const CheckoutForm = ({ clientSecret, productTitle, price }: CheckoutFormProps) 
 };
 
 const Checkout = () => {
+  console.log("Checkout component rendered");
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [clientSecret, setClientSecret] = useState<string>("");
@@ -95,6 +96,8 @@ const Checkout = () => {
   const productTitle = searchParams.get("title") || "";
   const price = searchParams.get("price") || "";
   const productId = searchParams.get("id") || "";
+  
+  console.log("Checkout params:", { productTitle, price, productId });
 
   useEffect(() => {
     if (!productTitle || !price) {

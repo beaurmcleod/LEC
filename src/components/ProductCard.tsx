@@ -29,8 +29,11 @@ export const ProductCard = ({
   const navigate = useNavigate();
 
   const handlePurchase = () => {
+    console.log("Purchase button clicked for:", title);
     const productId = title.toLowerCase().replace(/\s+/g, '-');
-    navigate(`/checkout?title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&id=${encodeURIComponent(productId)}`);
+    const checkoutUrl = `/checkout?title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&id=${encodeURIComponent(productId)}`;
+    console.log("Navigating to:", checkoutUrl);
+    navigate(checkoutUrl);
   };
   return (
     <Card className="group overflow-hidden bg-card border-border hover:border-primary/50 transition-all duration-300 hover:shadow-glow-primary">
