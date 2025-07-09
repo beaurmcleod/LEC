@@ -164,7 +164,7 @@ const Checkout = () => {
 
         if (error) {
           console.error('Supabase function error:', error);
-          throw error;
+          throw new Error(`Function error: ${error.message || JSON.stringify(error)}`);
         }
 
         if (!data?.client_secret) {
@@ -178,7 +178,7 @@ const Checkout = () => {
         console.error('Error creating payment intent:', error);
         toast({
           title: "Error",
-          description: "Failed to initialize checkout. Please try again.",
+          description: `Failed to initialize checkout: ${error.message}`,
           variant: "destructive",
         });
         navigate("/");
