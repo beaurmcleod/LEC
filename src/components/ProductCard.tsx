@@ -29,11 +29,21 @@ export const ProductCard = ({
   const navigate = useNavigate();
 
   const handlePurchase = () => {
+    console.log("=== PURCHASE BUTTON CLICKED ===");
     console.log("Purchase button clicked for:", title);
+    console.log("Current location:", window.location.href);
+    
     const productId = title.toLowerCase().replace(/\s+/g, '-');
     const checkoutUrl = `/checkout?title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&id=${encodeURIComponent(productId)}`;
     console.log("Navigating to:", checkoutUrl);
-    navigate(checkoutUrl);
+    console.log("Full URL would be:", window.location.origin + checkoutUrl);
+    
+    try {
+      navigate(checkoutUrl);
+      console.log("Navigation called successfully");
+    } catch (error) {
+      console.error("Navigation error:", error);
+    }
   };
   return (
     <Card className="group overflow-hidden bg-card border-border hover:border-primary/50 transition-all duration-300 hover:shadow-glow-primary">
