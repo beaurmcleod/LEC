@@ -1,6 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Play, Download, ShoppingCart } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
 
 interface ProductCardProps {
   title: string;
@@ -23,6 +25,36 @@ export const ProductCard = ({
   key, 
   isOnSale 
 }: ProductCardProps) => {
+  const handlePurchase = async () => {
+    try {
+      toast({
+        title: "Processing...",
+        description: "Redirecting to checkout",
+      });
+
+      const { data, error } = await supabase.functions.invoke('create-payment', {
+        body: {
+          productTitle: title,
+          price: price,
+          productId: title.toLowerCase().replace(/\s+/g, '-'),
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.url) {
+        // Open Stripe checkout in a new tab
+        window.open(data.url, '_blank');
+      }
+    } catch (error) {
+      console.error('Payment error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create checkout session. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
   return (
     <Card className="group overflow-hidden bg-card border-border hover:border-primary/50 transition-all duration-300 hover:shadow-glow-primary">
       <div className="relative">
@@ -87,7 +119,7 @@ export const ProductCard = ({
             <Button variant="outline" size="sm">
               <Download className="h-4 w-4" />
             </Button>
-            <Button variant="default" size="sm">
+            <Button variant="default" size="sm" onClick={handlePurchase}>
               <ShoppingCart className="h-4 w-4" />
             </Button>
           </div>
