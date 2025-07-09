@@ -28,16 +28,21 @@ export const ProductCard = ({
 }: ProductCardProps) => {
   const navigate = useNavigate();
 
-  const handlePurchase = () => {
-    // Simple alert to test if JavaScript is working
-    alert("Purchase button clicked for: " + title);
+  const handlePurchase = (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    
     console.log("=== PURCHASE BUTTON CLICKED ===");
     console.log("Purchase button clicked for:", title);
+    console.log("Event:", e);
     console.log("Current location:", window.location.href);
+    
+    // Simple alert to test if JavaScript is working
+    alert(`Purchase button clicked for: ${title}`);
     
     // Add a toast to help debug
     toast({
-      title: "Purchase Started",
+      title: "Purchase Started", 
       description: `Starting checkout for ${title}`,
     });
     
@@ -47,14 +52,15 @@ export const ProductCard = ({
     console.log("Full URL would be:", window.location.origin + checkoutUrl);
     
     try {
+      console.log("About to navigate...");
       navigate(checkoutUrl);
       console.log("Navigation called successfully");
     } catch (error) {
       console.error("Navigation error:", error);
-      alert("Navigation failed: " + error.message);
+      alert("Navigation failed: " + (error as Error).message);
       toast({
         title: "Navigation Error",
-        description: `Failed to navigate: ${error.message}`,
+        description: `Failed to navigate: ${(error as Error).message}`,
         variant: "destructive",
       });
     }
