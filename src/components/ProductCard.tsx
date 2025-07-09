@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Play, Download, ShoppingCart } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
 
 interface ProductCardProps {
   title: string;
@@ -25,35 +26,11 @@ export const ProductCard = ({
   key, 
   isOnSale 
 }: ProductCardProps) => {
-  const handlePurchase = async () => {
-    try {
-      toast({
-        title: "Processing...",
-        description: "Redirecting to checkout",
-      });
+  const navigate = useNavigate();
 
-      const { data, error } = await supabase.functions.invoke('create-payment', {
-        body: {
-          productTitle: title,
-          price: price,
-          productId: title.toLowerCase().replace(/\s+/g, '-'),
-        },
-      });
-
-      if (error) throw error;
-
-      if (data?.url) {
-        // Open Stripe checkout in a new tab
-        window.open(data.url, '_blank');
-      }
-    } catch (error) {
-      console.error('Payment error:', error);
-      toast({
-        title: "Error",
-        description: "Failed to create checkout session. Please try again.",
-        variant: "destructive",
-      });
-    }
+  const handlePurchase = () => {
+    const productId = title.toLowerCase().replace(/\s+/g, '-');
+    navigate(`/checkout?title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&id=${encodeURIComponent(productId)}`);
   };
   return (
     <Card className="group overflow-hidden bg-card border-border hover:border-primary/50 transition-all duration-300 hover:shadow-glow-primary">
