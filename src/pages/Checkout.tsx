@@ -107,6 +107,8 @@ const Checkout = () => {
 
     const createPaymentIntent = async () => {
       try {
+        console.log('Creating payment intent with data:', { productTitle, price, productId });
+        
         const { data, error } = await supabase.functions.invoke('create-payment-intent', {
           body: {
             productTitle,
@@ -115,8 +117,19 @@ const Checkout = () => {
           },
         });
 
-        if (error) throw error;
+        console.log('Payment intent response:', { data, error });
 
+        if (error) {
+          console.error('Supabase function error:', error);
+          throw error;
+        }
+
+        if (!data?.client_secret) {
+          console.error('No client secret received:', data);
+          throw new Error('No client secret received from payment intent');
+        }
+
+        console.log('Setting client secret:', data.client_secret);
         setClientSecret(data.client_secret);
       } catch (error) {
         console.error('Error creating payment intent:', error);
