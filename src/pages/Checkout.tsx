@@ -145,6 +145,14 @@ const Checkout = () => {
   const productId = searchParams.get("id") || "";
   
   console.log("Checkout params:", { productTitle, price, productId });
+  
+  // Add toast notification to help with debugging
+  if (productTitle && price) {
+    toast({
+      title: "Checkout Page Loaded",
+      description: `Loading payment for ${productTitle} - ${price}`,
+    });
+  }
 
   useEffect(() => {
     if (!productTitle || !price) {

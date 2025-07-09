@@ -33,6 +33,12 @@ export const ProductCard = ({
     console.log("Purchase button clicked for:", title);
     console.log("Current location:", window.location.href);
     
+    // Add a toast to help debug
+    toast({
+      title: "Purchase Started",
+      description: `Starting checkout for ${title}`,
+    });
+    
     const productId = title.toLowerCase().replace(/\s+/g, '-');
     const checkoutUrl = `/checkout?title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&id=${encodeURIComponent(productId)}`;
     console.log("Navigating to:", checkoutUrl);
@@ -43,6 +49,11 @@ export const ProductCard = ({
       console.log("Navigation called successfully");
     } catch (error) {
       console.error("Navigation error:", error);
+      toast({
+        title: "Navigation Error",
+        description: `Failed to navigate: ${error.message}`,
+        variant: "destructive",
+      });
     }
   };
   return (
