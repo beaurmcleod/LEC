@@ -3,6 +3,12 @@ import { ProductCard } from "./ProductCard";
 export const ProductGrid = () => {
   const products = [
     {
+      title: "Serum 2 Randomizer Rack",
+      price: "$5.00",
+      image: "/lovable-uploads/17f0f6b4-bbf0-451e-a479-5be9e3b0b5bf.png",
+      category: "Live Racks",
+    },
+    {
       title: "Future Bass Essentials",
       price: "$24.99",
       originalPrice: "$49.99",
