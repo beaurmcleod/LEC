@@ -215,8 +215,7 @@ const Checkout = () => {
         colorText: 'hsl(var(--foreground))',
         borderRadius: '8px',
       }
-    },
-    payment_method_types: ['card'], // Only allow card payments to avoid Google Pay issues
+    }
   };
 
   return (
