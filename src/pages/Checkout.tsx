@@ -100,6 +100,10 @@ const CheckoutForm = ({ clientSecret, productTitle, price }: CheckoutFormProps) 
             layout: "tabs",
             fields: {
               billingDetails: "auto"
+            },
+            wallets: {
+              googlePay: "never",
+              applePay: "never"
             }
           }}
           onReady={() => {
@@ -211,7 +215,8 @@ const Checkout = () => {
         colorText: 'hsl(var(--foreground))',
         borderRadius: '8px',
       }
-    }
+    },
+    payment_method_types: ['card'], // Only allow card payments to avoid Google Pay issues
   };
 
   return (
