@@ -29,6 +29,8 @@ export const ProductCard = ({
   const navigate = useNavigate();
 
   const handlePurchase = () => {
+    // Simple alert to test if JavaScript is working
+    alert("Purchase button clicked for: " + title);
     console.log("=== PURCHASE BUTTON CLICKED ===");
     console.log("Purchase button clicked for:", title);
     console.log("Current location:", window.location.href);
@@ -49,6 +51,7 @@ export const ProductCard = ({
       console.log("Navigation called successfully");
     } catch (error) {
       console.error("Navigation error:", error);
+      alert("Navigation failed: " + error.message);
       toast({
         title: "Navigation Error",
         description: `Failed to navigate: ${error.message}`,
