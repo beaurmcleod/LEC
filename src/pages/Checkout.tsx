@@ -21,6 +21,7 @@ const CheckoutForm = ({ clientSecret, productTitle, price }: CheckoutFormProps) 
   const elements = useElements();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
+  const [isElementsReady, setIsElementsReady] = useState(false);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -28,6 +29,21 @@ const CheckoutForm = ({ clientSecret, productTitle, price }: CheckoutFormProps) 
 
     if (!stripe || !elements) {
       console.log("Stripe or elements not loaded");
+      toast({
+        title: "Payment system not ready",
+        description: "Please wait a moment and try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!isElementsReady) {
+      console.log("Payment element not ready");
+      toast({
+        title: "Payment form not ready",
+        description: "Please wait for the payment form to load completely.",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -86,12 +102,24 @@ const CheckoutForm = ({ clientSecret, productTitle, price }: CheckoutFormProps) 
               billingDetails: "auto"
             }
           }}
+          onReady={() => {
+            console.log("PaymentElement is ready");
+            setIsElementsReady(true);
+          }}
+          onLoadError={(error) => {
+            console.error("PaymentElement load error:", error);
+            toast({
+              title: "Payment form error",
+              description: "Failed to load payment form. Please refresh the page.",
+              variant: "destructive",
+            });
+          }}
         />
       </div>
 
       <Button 
         type="submit" 
-        disabled={!stripe || isLoading} 
+        disabled={!stripe || !isElementsReady || isLoading} 
         className="w-full"
         size="lg"
       >
