@@ -19,8 +19,8 @@ const buttonVariants = cva(
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
         gradient: "bg-gradient-primary text-primary-foreground hover:opacity-90 shadow-glow-primary",
-        beats: "bg-beats text-white hover:bg-beats/80 shadow-glow-accent",
-        samples: "bg-samples text-black hover:bg-samples/80",
+        beats: "bg-primary text-white hover:bg-primary/80 shadow-glow-accent",
+        samples: "bg-secondary text-white hover:bg-secondary/80",
         producer: "bg-gradient-accent text-white hover:opacity-90 shadow-glow-accent",
       },
       size: {
