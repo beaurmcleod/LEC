@@ -8,7 +8,7 @@ import { ArrowLeft, CreditCard } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
-const stripePromise = loadStripe("pk_test_TYooMQauvdEDq54NiTphI7jx");
+const stripePromise = loadStripe("pk_test_51QcOV0RuVtGQqwXyGwJZhRyVWLkFLPcxVbKfVQjGO5k0LFJWPbDgKP3ZjVfGGEuJN9vxCjvZwKQlVdDjWwYjFJm00WaQpOjPN");
 
 interface CheckoutFormProps {
   clientSecret: string;
@@ -24,24 +24,39 @@ const CheckoutForm = ({ clientSecret, productTitle, price }: CheckoutFormProps) 
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    console.log("Form submit started");
 
     if (!stripe || !elements) {
+      console.log("Stripe or elements not loaded");
       return;
     }
 
     setIsLoading(true);
+    console.log("Starting payment confirmation");
 
-    const { error } = await stripe.confirmPayment({
-      elements,
-      confirmParams: {
-        return_url: `${window.location.origin}/payment-success`,
-      },
-    });
+    try {
+      const { error } = await stripe.confirmPayment({
+        elements,
+        confirmParams: {
+          return_url: `${window.location.origin}/payment-success`,
+        },
+      });
 
-    if (error) {
+      if (error) {
+        console.error("Payment confirmation error:", error);
+        toast({
+          title: "Payment failed",
+          description: error.message,
+          variant: "destructive",
+        });
+      } else {
+        console.log("Payment confirmed successfully");
+      }
+    } catch (err) {
+      console.error("Unexpected error during payment:", err);
       toast({
         title: "Payment failed",
-        description: error.message,
+        description: "An unexpected error occurred",
         variant: "destructive",
       });
     }
