@@ -13,7 +13,10 @@ serve(async (req) => {
   }
 
   try {
-    const { productTitle, price, productId } = await req.json();
+    console.log('Payment intent request received');
+    const body = await req.json();
+    console.log('Request body:', body);
+    const { productTitle, price, productId } = body;
     
     if (!productTitle || !price) {
       throw new Error("Product title and price are required");
@@ -27,6 +30,8 @@ serve(async (req) => {
     // Convert price string to cents (e.g., "$24.99" to 2499)
     const priceInCents = Math.round(parseFloat(price.replace('$', '')) * 100);
 
+    console.log('Creating payment intent for amount:', priceInCents);
+    
     // Create a payment intent for embedded checkout
     const paymentIntent = await stripe.paymentIntents.create({
       amount: priceInCents,
@@ -37,6 +42,8 @@ serve(async (req) => {
         product_title: productTitle,
       },
     });
+
+    console.log('Payment intent created:', paymentIntent.id);
 
     return new Response(JSON.stringify({ 
       client_secret: paymentIntent.client_secret,

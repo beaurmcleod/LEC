@@ -44,7 +44,10 @@ export const ProductCard = ({
           </span>
         )}
         
-        <div className="aspect-square bg-gradient-accent p-8 flex items-center justify-center relative overflow-hidden">
+        <div 
+          className="aspect-square bg-gradient-accent p-8 flex items-center justify-center relative overflow-hidden cursor-pointer"
+          onClick={handlePurchase}
+        >
           <img 
             src={image} 
             alt={title}
