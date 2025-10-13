@@ -26,6 +26,12 @@ export const ProductGrid = () => {
       image: "/lovable-uploads/17f0f6b4-bbf0-451e-a479-5be9e3b0b5bf.png",
       category: "Live Racks",
     },
+    {
+      title: "Hip Hop Sample Pack",
+      price: "Free",
+      image: "/lovable-uploads/hip-hop-sample-pack.png",
+      category: "Sample Pack",
+    },
   ];
 
   return (
