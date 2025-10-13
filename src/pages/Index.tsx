@@ -3,7 +3,6 @@ import { Hero } from "@/components/Hero";
 import { Categories } from "@/components/Categories";
 import { ProductGrid } from "@/components/ProductGrid";
 import { Footer } from "@/components/Footer";
-import { BackgroundRemovalTool } from "@/components/BackgroundRemovalTool";
 
 const Index = () => {
   return (
@@ -13,7 +12,6 @@ const Index = () => {
       <Categories />
       <ProductGrid />
       <Footer />
-      <BackgroundRemovalTool />
     </div>
   );
 };
