@@ -75,7 +75,7 @@ export const ProductCard = ({
         )}
         
         <div 
-          className="aspect-square bg-gradient-accent p-8 flex items-center justify-center relative overflow-hidden cursor-pointer"
+          className="aspect-square p-8 flex items-center justify-center relative overflow-hidden cursor-pointer"
           onClick={handlePurchase}
         >
           <img 
