@@ -32,6 +32,12 @@ export const ProductGrid = () => {
       image: "/lovable-uploads/hip-hop-trap-starter-pack.png",
       category: "Sample Pack",
     },
+    {
+      title: "Deep House Ableton Project File with Deep House Samples - The full deep house project file from my Youtube video",
+      price: "Free",
+      image: "/lovable-uploads/deep-house-ableton-project.png",
+      category: "Sample Pack",
+    },
   ];
 
   return (
