@@ -38,6 +38,12 @@ export const ProductGrid = () => {
       image: "/lovable-uploads/deep-house-ableton-project.png",
       category: "Sample Pack",
     },
+    {
+      title: "1 Knob Build",
+      price: "Free",
+      image: "/lovable-uploads/1-knob-build.png",
+      category: "Live Racks",
+    },
   ];
 
   return (
