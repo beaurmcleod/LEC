@@ -29,7 +29,7 @@ export const ProductGrid = () => {
     {
       title: "Hip Hop Sample Pack",
       price: "Free",
-      image: "/lovable-uploads/hip-hop-sample-pack.png",
+      image: "/lovable-uploads/hip-hop-trap-starter-pack.png",
       category: "Sample Pack",
     },
   ];
