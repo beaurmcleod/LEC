@@ -85,7 +85,7 @@ export const ProductCard = ({
           />
           
           {/* Overlay */}
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all duration-300 flex items-center justify-center">
+          <div className="absolute inset-0 transition-all duration-300 flex items-center justify-center">
             <Button 
               variant="gradient" 
               size="icon" 
