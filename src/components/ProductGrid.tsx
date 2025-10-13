@@ -1,6 +1,18 @@
 import { ProductCard } from "./ProductCard";
 
 export const ProductGrid = () => {
+  // Product format reference:
+  // {
+  //   title: "Product Name",
+  //   price: "$19.99" or "Free",
+  //   originalPrice: "$39.99", (optional - for sales)
+  //   image: "/lovable-uploads/image.png",
+  //   category: "Sample Pack" | "Loop Pack" | "Presets" | "MIDI" | "Drums" | "Live Racks",
+  //   bpm: "140", (optional)
+  //   key: "G Minor", (optional)
+  //   isOnSale: true, (optional)
+  // }
+
   const products = [
     {
       title: "27 OTT Rack",
@@ -13,71 +25,6 @@ export const ProductGrid = () => {
       price: "$5.00",
       image: "/lovable-uploads/17f0f6b4-bbf0-451e-a479-5be9e3b0b5bf.png",
       category: "Live Racks",
-    },
-    {
-      title: "Future Bass Essentials",
-      price: "$24.99",
-      originalPrice: "$49.99",
-      image: "/placeholder.svg",
-      category: "Sample Pack",
-      bpm: "140",
-      key: "G Minor",
-      isOnSale: true,
-    },
-    {
-      title: "Lo-Fi Hip Hop Vibes",
-      price: "$19.99",
-      image: "/placeholder.svg",
-      category: "Loop Pack",
-      bpm: "85",
-      key: "C Major",
-    },
-    {
-      title: "Serum Bass Presets",
-      price: "$15.99",
-      originalPrice: "$29.99",
-      image: "/placeholder.svg",
-      category: "Presets",
-      isOnSale: true,
-    },
-    {
-      title: "Trap Melody MIDI Pack",
-      price: "$12.99",
-      image: "/placeholder.svg",
-      category: "MIDI",
-      bpm: "130",
-      key: "F# Minor",
-    },
-    {
-      title: "Ambient Soundscapes",
-      price: "$22.99",
-      image: "/placeholder.svg",
-      category: "Sample Pack",
-      bpm: "120",
-      key: "A Minor",
-    },
-    {
-      title: "House Drum Loops",
-      price: "$18.99",
-      originalPrice: "$35.99",
-      image: "/placeholder.svg",
-      category: "Drums",
-      bpm: "128",
-      isOnSale: true,
-    },
-    {
-      title: "Ableton Live Racks",
-      price: "$16.99",
-      image: "/placeholder.svg",
-      category: "Live Racks",
-      bpm: "Various",
-    },
-    {
-      title: "Vintage Analog Leads",
-      price: "$21.99",
-      image: "/placeholder.svg",
-      category: "Presets",
-      key: "E Minor",
     },
   ];
 
