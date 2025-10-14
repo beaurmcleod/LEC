@@ -99,7 +99,9 @@ const CheckoutForm = ({ clientSecret, productTitle, price }: CheckoutFormProps) 
           options={{
             layout: "tabs",
             fields: {
-              billingDetails: "auto"
+              billingDetails: {
+                email: "auto"
+              }
             },
             wallets: {
               googlePay: "never",
