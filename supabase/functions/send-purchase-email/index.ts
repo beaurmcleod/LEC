@@ -107,7 +107,7 @@ serve(async (req) => {
     `;
 
     const emailResponse = await resend.emails.send({
-      from: "Sound Store <onboarding@resend.dev>",
+      from: "Low End Candy <beau@lowendcandy.com>",
       to: [to],
       subject: `Your Purchase Confirmation - ${productTitle}`,
       html: emailHtml,
