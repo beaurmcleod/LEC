@@ -27,22 +27,22 @@ export default function ProductDetail() {
       },
       "Serum 2 Randomizer Rack": {
         short: "Randomize and discover unique sounds with Serum 2",
-        full: "Take your sound design to the next level with this innovative randomizer rack. Generate unique patches, discover happy accidents, and speed up your workflow dramatically.",
+        full: "This powerful Ableton rack allows you to randomize parameters in Serum 2 for instant inspiration and unique sound design possibilities. Perfect for discovering new sonic territories!",
         features: ["Intelligent parameter randomization", "Save your favorite random patches", "Works with Serum 2", "Ableton Live rack format", "Video tutorial included"]
       },
       "Hip Hop Sample Pack": {
         short: "Essential hip hop samples for modern trap and hip hop production",
-        full: "A curated collection of hard-hitting drums, melodic loops, and atmospheric textures perfect for trap, hip hop, and urban productions.",
+        full: "This comprehensive sample pack includes hard-hitting drums, melodic loops, and atmospheric textures perfect for trap, hip hop, and urban music production. All samples are royalty-free!",
         features: ["100+ samples", "Drums, loops, and one-shots", "Key and BPM labeled", "Royalty-free", "WAV format"]
       },
       "Deep House Ableton Project File with Deep House Samples - The full deep house project file from my Youtube video": {
         short: "Complete deep house project from our popular YouTube tutorial",
-        full: "Learn the art of deep house production with this fully completed Ableton project file. Includes all MIDI, audio, and effects chains from our detailed YouTube breakdown.",
+        full: "This is the full Ableton project file from our deep house tutorial on YouTube. Includes all MIDI, audio samples, and effect chains so you can learn our complete production process!",
         features: ["Full Ableton project file", "All samples included", "MIDI files included", "Mix-ready arrangement", "YouTube tutorial link"]
       },
       "1 Knob Build": {
         short: "Simplify complex effects chains with one-knob control",
-        full: "This innovative Ableton rack lets you control complex effect chains with a single knob. Perfect for live performances and quick creative adjustments.",
+        full: "This innovative Ableton rack lets you control complex effect chains with a single knob. Perfect for live performances and quick creative adjustments. Simplify your workflow!",
         features: ["One-knob control system", "Multiple effect chains", "Performance-ready", "Easy to customize", "Tutorial included"]
       }
     };
