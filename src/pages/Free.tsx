@@ -64,6 +64,12 @@ const Free = () => {
       image: "/lovable-uploads/vocal-clean-rack.png",
       category: "Live Racks",
     },
+    {
+      title: "Vocal Sauce",
+      price: "Free",
+      image: "/lovable-uploads/vocal-sauce-rack.png",
+      category: "Live Racks",
+    },
   ];
 
   return (
