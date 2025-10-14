@@ -56,6 +56,12 @@ export const ProductGrid = () => {
       image: "/lovable-uploads/bohemyth-serum-rack.png",
       category: "Live Racks",
     },
+    {
+      title: "Ableton Quick Commands Cheat Sheet",
+      price: "Free",
+      image: "/lovable-uploads/ableton-quick-commands.png",
+      category: "Sample Pack",
+    },
   ];
 
   return (
