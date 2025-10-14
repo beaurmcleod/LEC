@@ -44,6 +44,11 @@ export default function ProductDetail() {
         short: "Simplify complex effects chains with one-knob control",
         full: "This innovative Ableton rack lets you control complex effect chains with a single knob. Perfect for live performances and quick creative adjustments. Simplify your workflow!",
         features: ["One-knob control system", "Multiple effect chains", "Performance-ready", "Easy to customize", "Tutorial included"]
+      },
+      "Bohemyth's 1st Sample Pack": {
+        short: "Welcome! Please Enjoy my new sample pack.",
+        full: "Bohemyth's 1st Sample Pack - Welcome! Please Enjoy my new sample pack. This collection contains some of my favorite samples throughout the last few years and from some of my favorite projects. Enjoy!",
+        features: ["Curated favorite samples", "Years of production gems", "100% Royalty-free", "WAV format", "Instant download"]
       }
     };
     return descriptions[productTitle] || {
