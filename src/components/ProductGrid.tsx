@@ -44,6 +44,18 @@ export const ProductGrid = () => {
       image: "/lovable-uploads/1-knob-build.png",
       category: "Live Racks",
     },
+    {
+      title: "Bohemyth's 1st Sample Pack",
+      price: "Free",
+      image: "/lovable-uploads/bohemyth-1st-sample-pack.png",
+      category: "Sample Pack",
+    },
+    {
+      title: "Bohemyth's Serum (1) Rack",
+      price: "Free",
+      image: "/lovable-uploads/bohemyth-serum-rack.png",
+      category: "Live Racks",
+    },
   ];
 
   return (
