@@ -95,8 +95,14 @@ export default function ProductDetail() {
                 {description.short}
               </p>
               
-              <div className="flex items-baseline gap-4 mb-8">
+              <div className="flex items-baseline gap-4 mb-4">
                 <span className="text-4xl font-bold text-primary">{price}</span>
+              </div>
+              
+              <div className="mb-8">
+                <p className="text-muted-foreground leading-relaxed">
+                  {description.full}
+                </p>
               </div>
             </div>
             
@@ -115,13 +121,6 @@ export default function ProductDetail() {
           </div>
         </div>
         
-        {/* Full Description */}
-        <div className="max-w-3xl">
-          <h2 className="text-2xl font-bold mb-4">About This Product</h2>
-          <p className="text-muted-foreground leading-relaxed">
-            {description.full}
-          </p>
-        </div>
       </main>
       
       <Footer />
