@@ -49,6 +49,11 @@ export default function ProductDetail() {
         short: "Welcome! Please Enjoy my new sample pack.",
         full: "Bohemyth's 1st Sample Pack - Welcome! Please Enjoy my new sample pack. This collection contains some of my favorite samples throughout the last few years and from some of my favorite projects. Enjoy!",
         features: ["Curated favorite samples", "Years of production gems", "100% Royalty-free", "WAV format", "Instant download"]
+      },
+      "Bohemyth's Serum (1) Rack": {
+        short: "Advanced Serum wavetable control rack for Ableton Live",
+        full: "This powerful Ableton rack gives you intuitive control over Serum's wavetable parameters including timbre, speed, hyper, warp, and wavetable position controls. Perfect for creating evolving textures and dynamic sound design!",
+        features: ["6 macro controls", "Timbre & Speed control", "Warp parameters", "Wavetable position control", "Ableton Live rack format"]
       }
     };
     return descriptions[productTitle] || {
