@@ -1,8 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Play, Download, ShoppingCart } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 
 interface ProductCardProps {
@@ -28,45 +26,21 @@ export const ProductCard = ({
 }: ProductCardProps) => {
   const navigate = useNavigate();
 
-  const handlePurchase = (e?: React.MouseEvent) => {
-    e?.preventDefault();
-    e?.stopPropagation();
-    
-    console.log("=== PURCHASE BUTTON CLICKED ===");
-    console.log("Purchase button clicked for:", title);
-    console.log("Event:", e);
-    console.log("Current location:", window.location.href);
-    
-    // Simple alert to test if JavaScript is working
-    alert(`Purchase button clicked for: ${title}`);
-    
-    // Add a toast to help debug
-    toast({
-      title: "Purchase Started", 
-      description: `Starting checkout for ${title}`,
-    });
+  const handleCardClick = () => {
+    const productUrl = `/product?title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&image=${encodeURIComponent(image)}&category=${encodeURIComponent(category)}${bpm ? `&bpm=${encodeURIComponent(bpm)}` : ''}${key ? `&key=${encodeURIComponent(key)}` : ''}`;
+    navigate(productUrl);
+  };
+
+  const handlePurchase = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     
     const productId = title.toLowerCase().replace(/\s+/g, '-');
     const checkoutUrl = `/checkout?title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&id=${encodeURIComponent(productId)}`;
-    console.log("Navigating to:", checkoutUrl);
-    console.log("Full URL would be:", window.location.origin + checkoutUrl);
-    
-    try {
-      console.log("About to navigate...");
-      navigate(checkoutUrl);
-      console.log("Navigation called successfully");
-    } catch (error) {
-      console.error("Navigation error:", error);
-      alert("Navigation failed: " + (error as Error).message);
-      toast({
-        title: "Navigation Error",
-        description: `Failed to navigate: ${(error as Error).message}`,
-        variant: "destructive",
-      });
-    }
+    navigate(checkoutUrl);
   };
   return (
-    <Card className="group overflow-hidden bg-card border-border hover:border-primary/50 transition-all duration-300 hover:shadow-glow-primary">
+    <Card className="group overflow-hidden bg-card border-border hover:border-primary/50 transition-all duration-300 hover:shadow-glow-primary cursor-pointer" onClick={handleCardClick}>
       <div className="relative">
         {isOnSale && (
           <span className="absolute top-3 left-3 z-10 bg-destructive text-destructive-foreground px-2 py-1 rounded-md text-xs font-semibold">
@@ -75,8 +49,7 @@ export const ProductCard = ({
         )}
         
         <div 
-          className="aspect-square flex items-center justify-center relative overflow-hidden cursor-pointer"
-          onClick={handlePurchase}
+          className="aspect-square flex items-center justify-center relative overflow-hidden"
         >
           <img 
             src={image} 
