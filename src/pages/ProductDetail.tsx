@@ -35,7 +35,7 @@ export default function ProductDetail() {
         full: "Over 100 samples ideal for producing hip hop, boom bap, trap or any other sub-genre of rap. This sample pack includes: Kicks, Snares, Percussive elements, Hi-Hats, FX, Synths, Plucks, 808's & More!",
         features: ["100+ samples", "Kicks, Snares & Hi-Hats", "808s & Synths", "FX & Plucks", "Royalty-free WAV format"]
       },
-      "Deep House Ableton Project File with Deep House Samples - The full deep house project file from my Youtube video": {
+      "Deep House Ableton Project File": {
         short: "Complete deep house project from our popular YouTube tutorial",
         full: "This is the full Ableton project file from our deep house tutorial on YouTube. Includes all MIDI, audio samples, and effect chains so you can learn our complete production process!",
         features: ["Full Ableton project file", "All samples included", "MIDI files included", "Mix-ready arrangement", "YouTube tutorial link"]

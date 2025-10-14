@@ -33,7 +33,7 @@ export const ProductGrid = () => {
       category: "Sample Pack",
     },
     {
-      title: "Deep House Ableton Project File with Deep House Samples - The full deep house project file from my Youtube video",
+      title: "Deep House Ableton Project File",
       price: "Free",
       image: "/lovable-uploads/deep-house-ableton-project-new.png",
       category: "Sample Pack",
