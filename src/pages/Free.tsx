@@ -58,6 +58,12 @@ const Free = () => {
       image: "/lovable-uploads/haas-effect-rack.png",
       category: "Live Racks",
     },
+    {
+      title: "Vocal Clean Up Rack",
+      price: "Free",
+      image: "/lovable-uploads/vocal-clean-rack.png",
+      category: "Live Racks",
+    },
   ];
 
   return (
