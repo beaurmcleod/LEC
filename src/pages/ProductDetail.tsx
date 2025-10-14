@@ -32,8 +32,8 @@ export default function ProductDetail() {
       },
       "Hip Hop Sample Pack": {
         short: "Essential hip hop samples for modern trap and hip hop production",
-        full: "This comprehensive sample pack includes hard-hitting drums, melodic loops, and atmospheric textures perfect for trap, hip hop, and urban music production. All samples are royalty-free!",
-        features: ["100+ samples", "Drums, loops, and one-shots", "Key and BPM labeled", "Royalty-free", "WAV format"]
+        full: "Over 100 samples ideal for producing hip hop, boom bap, trap or any other sub-genre of rap. This sample pack includes: Kicks, Snares, Percussive elements, Hi-Hats, FX, Synths, Plucks, 808's & More!",
+        features: ["100+ samples", "Kicks, Snares & Hi-Hats", "808s & Synths", "FX & Plucks", "Royalty-free WAV format"]
       },
       "Deep House Ableton Project File with Deep House Samples - The full deep house project file from my Youtube video": {
         short: "Complete deep house project from our popular YouTube tutorial",
