@@ -62,6 +62,12 @@ export const ProductGrid = () => {
       image: "/lovable-uploads/ableton-quick-commands.png",
       category: "Sample Pack",
     },
+    {
+      title: "Hat Sauce",
+      price: "Free",
+      image: "/lovable-uploads/hat-sauce-rack.png",
+      category: "Live Racks",
+    },
   ];
 
   return (
