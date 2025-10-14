@@ -19,14 +19,14 @@ export default function ProductDetail() {
   const getProductDescription = (productTitle: string) => {
     const descriptions: Record<string, { short: string; full: string; features: string[] }> = {
       "27 OTT Rack": {
-        short: "Professional OTT multiband compression rack for Ableton Live",
-        full: "This comprehensive OTT rack includes 27 carefully crafted presets designed to add punch, clarity, and character to your productions. Perfect for all genres, from EDM to Hip Hop.",
+        short: "27 OTTs for crazy glitch and bass sound design",
+        full: "This Ableton specific rack is a series of 27 OTTs for crazy glitch and bass sound design. Perfect for experimental producers looking to push sonic boundaries and create unique textures.",
         features: [
-          "27 professionally designed presets",
-          "Easy-to-use interface",
-          "Compatible with Ableton Live 10+",
-          "Instant download",
-          "Lifetime updates"
+          "27 unique OTT configurations",
+          "Optimized for glitch effects",
+          "Perfect for bass sound design",
+          "Ableton Live rack format",
+          "Instant download"
         ]
       },
       "Serum 2 Randomizer Rack": {
