@@ -68,6 +68,12 @@ export const ProductGrid = () => {
       image: "/lovable-uploads/hat-sauce-rack.png",
       category: "Live Racks",
     },
+    {
+      title: "HAAS Effect",
+      price: "Free",
+      image: "/lovable-uploads/haas-effect-rack.png",
+      category: "Live Racks",
+    },
   ];
 
   return (
