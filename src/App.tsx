@@ -8,6 +8,7 @@ import NotFound from "./pages/NotFound";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import PaymentCanceled from "./pages/PaymentCanceled";
 import Checkout from "./pages/Checkout";
+import EnterEmail from "./pages/EnterEmail";
 import ProductDetail from "./pages/ProductDetail";
 import Free from "./pages/Free";
 import Auth from "./pages/Auth";
@@ -25,6 +26,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/free" element={<Free />} />
           <Route path="/product" element={<ProductDetail />} />
+          <Route path="/enter-email" element={<EnterEmail />} />
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/payment-success" element={<PaymentSuccess />} />
           <Route path="/payment-canceled" element={<PaymentCanceled />} />

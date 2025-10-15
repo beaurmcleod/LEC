@@ -22,16 +22,32 @@ const PaymentSuccess = () => {
 
     setLoading(true);
     try {
-      // Get customer email from the payment session
-      const urlEmail = customerEmail || searchParams.get("receipt_email");
+      // Get payment intent from URL (Stripe adds this after redirect)
+      const paymentIntent = searchParams.get("payment_intent");
       
-      if (!urlEmail) {
+      if (!paymentIntent) {
+        toast.error("Unable to verify purchase. Please check your email for download links.");
+        return;
+      }
+
+      // Look up purchase by payment intent ID
+      const { data: purchaseData, error: purchaseError } = await supabase
+        .from('purchases')
+        .select('customer_email, product_id')
+        .eq('stripe_payment_id', paymentIntent)
+        .maybeSingle();
+
+      if (purchaseError || !purchaseData) {
+        console.error('Purchase lookup error:', purchaseError);
         toast.error("Unable to verify purchase. Please check your email for download links.");
         return;
       }
 
       const { data, error } = await supabase.functions.invoke('get-secure-download', {
-        body: { productId, customerEmail: urlEmail }
+        body: { 
+          productId: purchaseData.product_id, 
+          customerEmail: purchaseData.customer_email 
+        }
       });
 
       if (error) throw error;

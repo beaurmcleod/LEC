@@ -15,9 +15,10 @@ interface CheckoutFormProps {
   productTitle: string;
   price: string;
   productId: string;
+  customerEmail: string;
 }
 
-const CheckoutForm = ({ clientSecret, productTitle, price, productId }: CheckoutFormProps) => {
+const CheckoutForm = ({ clientSecret, productTitle, price, productId, customerEmail }: CheckoutFormProps) => {
   const stripe = useStripe();
   const elements = useElements();
   const navigate = useNavigate();
@@ -107,12 +108,13 @@ const CheckoutForm = ({ clientSecret, productTitle, price, productId }: Checkout
             layout: "tabs",
             fields: {
               billingDetails: {
-                email: "auto"
+                email: "never"
               }
             },
-            wallets: {
-              googlePay: "never",
-              applePay: "never"
+            defaultValues: {
+              billingDetails: {
+                email: customerEmail || ''
+              }
             }
           }}
           onReady={() => {
@@ -154,6 +156,7 @@ const Checkout = () => {
   const productTitle = searchParams.get("title") || "";
   const price = searchParams.get("price") || "";
   const productId = searchParams.get("id") || "";
+  const customerEmail = searchParams.get("email") || "";
   
   console.log("Checkout params:", { productTitle, price, productId });
   
@@ -173,7 +176,7 @@ const Checkout = () => {
 
     const initializeCheckout = async () => {
       try {
-        console.log('Initializing checkout for:', { productTitle, price, productId });
+        console.log('Initializing checkout for:', { productTitle, price, productId, customerEmail });
         
         // Always trust DB price to decide free vs paid
         const { data: product, error: productError } = await supabase
@@ -219,7 +222,7 @@ const Checkout = () => {
         const { data, error } = await supabase.functions.invoke('create-payment-intent', {
           body: {
             productId: productId,
-            customerEmail: searchParams.get('email') || undefined,
+            customerEmail: customerEmail,
           },
         });
 
@@ -252,7 +255,7 @@ const Checkout = () => {
     };
 
     initializeCheckout();
-  }, [productTitle, price, productId, navigate, searchParams]);
+  }, [productTitle, price, productId, customerEmail, navigate]);
 
   if (loading) {
     return (
@@ -320,6 +323,7 @@ const Checkout = () => {
                 productTitle={productTitle}
                 price={price}
                 productId={productId}
+                customerEmail={customerEmail}
               />
             </Elements>
           ) : (

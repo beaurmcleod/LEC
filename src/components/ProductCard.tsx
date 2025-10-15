@@ -37,8 +37,8 @@ export const ProductCard = ({
     e.preventDefault();
     e.stopPropagation();
     
-    const checkoutUrl = `/checkout?title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&id=${encodeURIComponent(id)}`;
-    navigate(checkoutUrl);
+    const emailUrl = `/enter-email?title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&id=${encodeURIComponent(id)}`;
+    navigate(emailUrl);
   };
   return (
     <Card className="group overflow-hidden bg-card border-border hover:border-primary/50 transition-all duration-300 hover:shadow-glow-primary cursor-pointer" onClick={handleCardClick}>
