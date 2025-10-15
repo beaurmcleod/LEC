@@ -10,6 +10,8 @@ import PaymentCanceled from "./pages/PaymentCanceled";
 import Checkout from "./pages/Checkout";
 import ProductDetail from "./pages/ProductDetail";
 import Free from "./pages/Free";
+import Auth from "./pages/Auth";
+import MyPurchases from "./pages/MyPurchases";
 
 const queryClient = new QueryClient();
 
@@ -26,6 +28,8 @@ const App = () => (
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/payment-success" element={<PaymentSuccess />} />
           <Route path="/payment-canceled" element={<PaymentCanceled />} />
+          <Route path="/auth" element={<Auth />} />
+          <Route path="/my-purchases" element={<MyPurchases />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

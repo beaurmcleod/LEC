@@ -68,6 +68,30 @@ export type Database = {
         }
         Relationships: []
       }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string
+          full_name: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          full_name?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       purchases: {
         Row: {
           amount_paid: number
@@ -77,6 +101,7 @@ export type Database = {
           product_id: string
           purchased_at: string | null
           stripe_payment_id: string
+          user_id: string | null
         }
         Insert: {
           amount_paid: number
@@ -86,6 +111,7 @@ export type Database = {
           product_id: string
           purchased_at?: string | null
           stripe_payment_id: string
+          user_id?: string | null
         }
         Update: {
           amount_paid?: number
@@ -95,6 +121,7 @@ export type Database = {
           product_id?: string
           purchased_at?: string | null
           stripe_payment_id?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -102,6 +129,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchases_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]

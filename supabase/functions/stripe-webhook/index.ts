@@ -46,6 +46,13 @@ serve(async (req) => {
 
       // SECURITY: Record purchase in database for verification
       if (productId && email) {
+        // Check if user exists with this email
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('email', email)
+          .maybeSingle();
+
         const { error: purchaseError } = await supabase
           .from('purchases')
           .insert({
@@ -53,13 +60,14 @@ serve(async (req) => {
             stripe_payment_id: paymentIntent.id,
             amount_paid: paymentIntent.amount,
             customer_email: email,
+            user_id: profile?.id || null, // Link to user if they have an account
           });
 
         if (purchaseError) {
           console.error("Error recording purchase:", purchaseError);
           // Continue anyway to send email
         } else {
-          console.log("Purchase recorded successfully");
+          console.log("Purchase recorded successfully", profile?.id ? 'with user_id' : 'without user_id');
         }
 
         // Fetch product download URL for email
