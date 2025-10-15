@@ -132,6 +132,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "purchases_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "purchases_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
@@ -140,15 +147,92 @@ export type Database = {
           },
         ]
       }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
-      [_ in never]: never
+      products_public: {
+        Row: {
+          bpm: string | null
+          category: string | null
+          created_at: string | null
+          features: string[] | null
+          full_description: string | null
+          id: string | null
+          image: string | null
+          is_on_sale: boolean | null
+          key: string | null
+          original_price: string | null
+          price: string | null
+          short_description: string | null
+          title: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          bpm?: string | null
+          category?: string | null
+          created_at?: string | null
+          features?: string[] | null
+          full_description?: string | null
+          id?: string | null
+          image?: string | null
+          is_on_sale?: boolean | null
+          key?: string | null
+          original_price?: string | null
+          price?: string | null
+          short_description?: string | null
+          title?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          bpm?: string | null
+          category?: string | null
+          created_at?: string | null
+          features?: string[] | null
+          full_description?: string | null
+          id?: string | null
+          image?: string | null
+          is_on_sale?: boolean | null
+          key?: string | null
+          original_price?: string | null
+          price?: string | null
+          short_description?: string | null
+          title?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -275,6 +359,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "user"],
+    },
   },
 } as const
