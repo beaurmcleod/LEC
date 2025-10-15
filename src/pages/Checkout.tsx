@@ -8,7 +8,9 @@ import { ArrowLeft, CreditCard } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
-const stripePromise = loadStripe("pk_live_60cfyYjWzSbr5kSpKUeZHTH9");
+// Get Stripe publishable key from environment or use test key
+const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "pk_test_51QNuW8AO1ctrFWu1ZVdHv7xZPWb0p2qx0hqxI9nHzQOGxvOoVSvJVwHXrPLqMfKz8dOuFNmwGxIJQ8fC6Ue6rjnN00fEJLJqQi";
+const stripePromise = loadStripe(stripePublishableKey);
 
 interface CheckoutFormProps {
   clientSecret: string;
@@ -149,6 +151,7 @@ const Checkout = () => {
   const [clientSecret, setClientSecret] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [freeData, setFreeData] = useState<{ downloadUrl: string; productTitle: string } | null>(null);
+  const [error, setError] = useState<string>("");
   
   const productTitle = searchParams.get("title") || "";
   const price = searchParams.get("price") || "";
@@ -172,6 +175,8 @@ const Checkout = () => {
 
     const initializeCheckout = async () => {
       try {
+        console.log('Initializing checkout for:', { productTitle, price, productId });
+        
         // Always trust DB price to decide free vs paid
         const { data: product, error: productError } = await supabase
           .from('products')
@@ -184,8 +189,12 @@ const Checkout = () => {
           throw new Error('Product not found');
         }
 
+        console.log('Product fetched from DB:', product);
+
         const rawPrice = (product.price || '').toString().trim();
         const isFree = rawPrice.toLowerCase() === 'free' || parseFloat(rawPrice.replace(/[^0-9.]/g, '')) === 0;
+
+        console.log('Price check:', { rawPrice, isFree });
 
         if (isFree) {
           console.log('Product is free, bypassing Stripe');
@@ -203,13 +212,15 @@ const Checkout = () => {
           }
 
           setFreeData({ downloadUrl: freeResp.downloadUrl, productTitle: freeResp.productTitle || productTitle });
+          setLoading(false);
           return;
         }
 
-        console.log('Creating payment intent with data:', { productTitle, price, productId });
+        // Paid product - create payment intent
+        console.log('Creating payment intent for paid product');
         const { data, error } = await supabase.functions.invoke('create-payment-intent', {
           body: {
-            productId: productId || productTitle,
+            productId: productId,
             customerEmail: searchParams.get('email') || undefined,
           },
         });
@@ -218,31 +229,32 @@ const Checkout = () => {
 
         if (error) {
           console.error('Supabase function error:', error);
-          throw new Error(`Function error: ${error.message || JSON.stringify(error)}`);
+          throw new Error(`Payment setup failed: ${error.message || 'Please try again'}`);
         }
 
         if (!data?.client_secret) {
           console.error('No client secret received:', data);
-          throw new Error('No client secret received from payment intent');
+          throw new Error('Payment setup incomplete. Please try again.');
         }
 
-        console.log('Setting client secret:', data.client_secret);
+        console.log('Payment intent created successfully, client secret received');
         setClientSecret(data.client_secret);
+        setLoading(false);
       } catch (error: any) {
         console.error('Error initializing checkout:', error);
+        const errorMsg = error.message || 'Failed to initialize checkout';
+        setError(errorMsg);
+        setLoading(false);
         toast({
-          title: 'Error',
-          description: error.message || 'Failed to initialize checkout',
+          title: 'Checkout Error',
+          description: errorMsg,
           variant: 'destructive'
         });
-        navigate('/');
-      } finally {
-        setLoading(false);
       }
     };
 
     initializeCheckout();
-  }, [productTitle, price, productId, navigate]);
+  }, [productTitle, price, productId, navigate, searchParams]);
 
   if (loading) {
     return (
@@ -288,7 +300,14 @@ const Checkout = () => {
         </div>
 
         <Card className="p-6">
-          {freeData ? (
+          {error ? (
+            <div className="space-y-4 text-center">
+              <p className="text-destructive">{error}</p>
+              <Button variant="outline" onClick={() => navigate("/")}>
+                Return to Store
+              </Button>
+            </div>
+          ) : freeData ? (
             <div className="space-y-4">
               <h3 className="font-semibold">{freeData.productTitle}</h3>
               <p className="text-muted-foreground">This item is free. Click below to download instantly.</p>
@@ -305,7 +324,11 @@ const Checkout = () => {
                 productId={productId}
               />
             </Elements>
-          ) : null}
+          ) : (
+            <div className="text-center text-muted-foreground">
+              <p>Setting up payment form...</p>
+            </div>
+          )}
         </Card>
 
         <div className="mt-6 text-center text-sm text-muted-foreground">
