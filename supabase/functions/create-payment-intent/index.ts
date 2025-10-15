@@ -25,7 +25,7 @@ serve(async (req) => {
     
     // Input validation with zod
     const paymentSchema = z.object({
-      productId: z.string().uuid({ message: "Invalid product ID format" }),
+      productId: z.string().min(1, { message: "Product ID is required" }),
       customerEmail: z.string().email().max(255).optional()
     });
 
@@ -44,11 +44,24 @@ serve(async (req) => {
     const { productId, customerEmail } = validation.data;
 
     // SECURITY: Fetch actual price from database instead of trusting client
-    const { data: product, error: productError } = await supabase
-      .from('products')
-      .select('price, title')
-      .eq('id', productId)
-      .single();
+    // Support both UUID and title/slug lookup
+    let query = supabase.from('products').select('id, price, title');
+    
+    // Check if productId is a UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(productId)) {
+      console.log('Looking up product by UUID:', productId);
+      query = query.eq('id', productId);
+    } else {
+      // Convert slug to title (e.g., "27-ott-rack" -> "27 OTT Rack")
+      const titleFromSlug = productId.split('-').map(word => 
+        word.charAt(0).toUpperCase() + word.slice(1)
+      ).join(' ');
+      console.log('Looking up product by title:', titleFromSlug);
+      query = query.eq('title', titleFromSlug);
+    }
+    
+    const { data: product, error: productError } = await query.single();
 
     if (productError || !product) {
       console.error('Product not found:', productError);
@@ -72,7 +85,7 @@ serve(async (req) => {
       description: `${product.title} - Digital music production content`,
       receipt_email: customerEmail || undefined,
       metadata: {
-        product_id: productId,
+        product_id: product.id, // Always use the actual UUID from database
         product_title: product.title,
       },
     });
