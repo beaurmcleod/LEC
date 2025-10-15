@@ -10,7 +10,7 @@ interface ProductCardProps {
   image: string;
   category: string;
   bpm?: string;
-  key?: string;
+  musicalKey?: string;
   isOnSale?: boolean;
 }
 
@@ -21,13 +21,13 @@ export const ProductCard = ({
   image, 
   category, 
   bpm, 
-  key, 
+  musicalKey, 
   isOnSale 
 }: ProductCardProps) => {
   const navigate = useNavigate();
 
   const handleCardClick = () => {
-    const productUrl = `/product?title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&image=${encodeURIComponent(image)}&category=${encodeURIComponent(category)}${bpm ? `&bpm=${encodeURIComponent(bpm)}` : ''}${key ? `&key=${encodeURIComponent(key)}` : ''}`;
+    const productUrl = `/product?title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&image=${encodeURIComponent(image)}&category=${encodeURIComponent(category)}${bpm ? `&bpm=${encodeURIComponent(bpm)}` : ''}${musicalKey ? `&key=${encodeURIComponent(musicalKey)}` : ''}`;
     navigate(productUrl);
   };
 
@@ -80,9 +80,9 @@ export const ProductCard = ({
               {bpm} BPM
             </span>
           )}
-          {key && (
+          {musicalKey && (
             <span className="text-xs bg-accent/20 text-accent px-2 py-1 rounded-full">
-              {key}
+              {musicalKey}
             </span>
           )}
         </div>

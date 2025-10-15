@@ -9,7 +9,7 @@ export const ProductGrid = () => {
   //   image: "/lovable-uploads/image.png",
   //   category: "Sample Pack" | "Loop Pack" | "Presets" | "MIDI" | "Drums" | "Live Racks",
   //   bpm: "140", (optional)
-  //   key: "G Minor", (optional)
+  //   musicalKey: "G Minor", (optional)
   //   isOnSale: true, (optional)
   // }
 
