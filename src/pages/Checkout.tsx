@@ -8,9 +8,7 @@ import { ArrowLeft, CreditCard } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
-// Get Stripe publishable key from environment or use test key
-const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "pk_test_51QNuW8AO1ctrFWu1ZVdHv7xZPWb0p2qx0hqxI9nHzQOGxvOoVSvJVwHXrPLqMfKz8dOuFNmwGxIJQ8fC6Ue6rjnN00fEJLJqQi";
-const stripePromise = loadStripe(stripePublishableKey);
+const stripePromise = loadStripe("pk_live_6ocfyYjWzSbr5kSpKUeZHTH9");
 
 interface CheckoutFormProps {
   clientSecret: string;
