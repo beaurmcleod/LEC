@@ -148,6 +148,7 @@ const Checkout = () => {
   const navigate = useNavigate();
   const [clientSecret, setClientSecret] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const [freeData, setFreeData] = useState<{ downloadUrl: string; productTitle: string } | null>(null);
   
   const productTitle = searchParams.get("title") || "";
   const price = searchParams.get("price") || "";
@@ -169,11 +170,43 @@ const Checkout = () => {
       return;
     }
 
-    const createPaymentIntent = async () => {
+    const initializeCheckout = async () => {
       try {
+        // Always trust DB price to decide free vs paid
+        const { data: product, error: productError } = await supabase
+          .from('products')
+          .select('price, title')
+          .eq('id', productId)
+          .maybeSingle();
+
+        if (productError || !product) {
+          console.error('Product fetch error or not found:', productError);
+          throw new Error('Product not found');
+        }
+
+        const rawPrice = (product.price || '').toString().trim();
+        const isFree = rawPrice.toLowerCase() === 'free' || parseFloat(rawPrice.replace(/[^0-9.]/g, '')) === 0;
+
+        if (isFree) {
+          console.log('Product is free, bypassing Stripe');
+          const { data: freeResp, error: freeErr } = await supabase.functions.invoke('get-free-download', {
+            body: { productId },
+          });
+
+          if (freeErr) {
+            console.error('Free download function error:', freeErr);
+            throw new Error(freeErr.message || 'Unable to get free download');
+          }
+
+          if (!freeResp?.downloadUrl) {
+            throw new Error('No download URL received for free product');
+          }
+
+          setFreeData({ downloadUrl: freeResp.downloadUrl, productTitle: freeResp.productTitle || productTitle });
+          return;
+        }
+
         console.log('Creating payment intent with data:', { productTitle, price, productId });
-        
-        // SECURITY: Only send productId - server will fetch price from database
         const { data, error } = await supabase.functions.invoke('create-payment-intent', {
           body: {
             productId: productId || productTitle,
@@ -195,20 +228,20 @@ const Checkout = () => {
 
         console.log('Setting client secret:', data.client_secret);
         setClientSecret(data.client_secret);
-      } catch (error) {
-        console.error('Error creating payment intent:', error);
+      } catch (error: any) {
+        console.error('Error initializing checkout:', error);
         toast({
-          title: "Error",
-          description: `Failed to initialize checkout: ${error.message}`,
-          variant: "destructive",
+          title: 'Error',
+          description: error.message || 'Failed to initialize checkout',
+          variant: 'destructive'
         });
-        navigate("/");
+        navigate('/');
       } finally {
         setLoading(false);
       }
     };
 
-    createPaymentIntent();
+    initializeCheckout();
   }, [productTitle, price, productId, navigate]);
 
   if (loading) {
@@ -255,7 +288,15 @@ const Checkout = () => {
         </div>
 
         <Card className="p-6">
-          {clientSecret && (
+          {freeData ? (
+            <div className="space-y-4">
+              <h3 className="font-semibold">{freeData.productTitle}</h3>
+              <p className="text-muted-foreground">This item is free. Click below to download instantly.</p>
+              <Button size="lg" className="w-full" onClick={() => (window.location.href = freeData.downloadUrl)}>
+                Download Now
+              </Button>
+            </div>
+          ) : clientSecret ? (
             <Elements options={options} stripe={stripePromise}>
               <CheckoutForm 
                 clientSecret={clientSecret}
@@ -264,7 +305,7 @@ const Checkout = () => {
                 productId={productId}
               />
             </Elements>
-          )}
+          ) : null}
         </Card>
 
         <div className="mt-6 text-center text-sm text-muted-foreground">
