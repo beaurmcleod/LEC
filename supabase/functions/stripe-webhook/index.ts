@@ -22,10 +22,20 @@ serve(async (req) => {
     const body = await req.text();
     const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
     
+    // SECURITY: Webhook signature verification is mandatory
+    if (!webhookSecret) {
+      console.error("STRIPE_WEBHOOK_SECRET is not configured");
+      return new Response(
+        JSON.stringify({ error: 'Webhook configuration error' }), 
+        {
+          headers: { "Content-Type": "application/json" },
+          status: 500,
+        }
+      );
+    }
+    
     // Verify the webhook signature
-    const event = webhookSecret
-      ? stripe.webhooks.constructEvent(body, signature, webhookSecret)
-      : JSON.parse(body);
+    const event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
 
     console.log("Webhook event received:", event.type);
 
