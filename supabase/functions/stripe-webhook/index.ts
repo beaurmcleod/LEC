@@ -61,24 +61,39 @@ serve(async (req) => {
         } else {
           console.log("Purchase recorded successfully");
         }
-      }
 
-      console.log("Sending email to:", email);
+        // Fetch product download URL for email
+        const { data: product, error: productError } = await supabase
+          .from('products')
+          .select('download_url')
+          .eq('id', productId)
+          .single();
 
-      // Call the send-purchase-email function
-      const { error: emailError } = await supabase.functions.invoke("send-purchase-email", {
-        body: {
-          to: email,
-          productTitle: productTitle,
-          amount: amount,
-          paymentIntentId: paymentIntent.id,
-        },
-      });
+        if (productError) {
+          console.error("Error fetching product:", productError);
+        }
 
-      if (emailError) {
-        console.error("Error sending email:", emailError);
-      } else {
-        console.log("Purchase email sent successfully");
+        const downloadUrl = product?.download_url || '';
+
+        console.log("Sending email to:", email);
+
+        // Call the send-purchase-email function with download link
+        const { error: emailError } = await supabase.functions.invoke("send-purchase-email", {
+          body: {
+            to: email,
+            productTitle: productTitle,
+            amount: amount,
+            paymentIntentId: paymentIntent.id,
+            productId: productId,
+            downloadUrl: downloadUrl,
+          },
+        });
+
+        if (emailError) {
+          console.error("Error sending email:", emailError);
+        } else {
+          console.log("Purchase email sent successfully");
+        }
       }
     }
 

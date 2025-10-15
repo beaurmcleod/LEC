@@ -14,9 +14,10 @@ interface CheckoutFormProps {
   clientSecret: string;
   productTitle: string;
   price: string;
+  productId: string;
 }
 
-const CheckoutForm = ({ clientSecret, productTitle, price }: CheckoutFormProps) => {
+const CheckoutForm = ({ clientSecret, productTitle, price, productId }: CheckoutFormProps) => {
   const stripe = useStripe();
   const elements = useElements();
   const navigate = useNavigate();
@@ -51,10 +52,16 @@ const CheckoutForm = ({ clientSecret, productTitle, price }: CheckoutFormProps) 
     console.log("Starting payment confirmation");
 
     try {
+      // Submit the form to collect billing details
+      const { error: submitError } = await elements.submit();
+      if (submitError) {
+        throw submitError;
+      }
+
       const { error } = await stripe.confirmPayment({
         elements,
         confirmParams: {
-          return_url: `${window.location.origin}/payment-success`,
+          return_url: `${window.location.origin}/payment-success?product_id=${productId}`,
         },
       });
 
@@ -254,6 +261,7 @@ const Checkout = () => {
                 clientSecret={clientSecret}
                 productTitle={productTitle}
                 price={price}
+                productId={productId}
               />
             </Elements>
           )}

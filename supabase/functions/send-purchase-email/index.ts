@@ -13,6 +13,8 @@ interface PurchaseEmailRequest {
   productTitle: string;
   amount: number;
   paymentIntentId: string;
+  productId: string;
+  downloadUrl: string;
 }
 
 serve(async (req) => {
@@ -22,7 +24,7 @@ serve(async (req) => {
   }
 
   try {
-    const { to, productTitle, amount, paymentIntentId }: PurchaseEmailRequest = await req.json();
+    const { to, productTitle, amount, paymentIntentId, productId, downloadUrl }: PurchaseEmailRequest = await req.json();
 
     console.log("Sending purchase email to:", to);
 
@@ -91,8 +93,17 @@ serve(async (req) => {
               <p><strong>Order ID:</strong> ${paymentIntentId}</p>
             </div>
 
-            <p><strong>Your download links will be available shortly.</strong></p>
-            <p>We're preparing your files and they'll be ready to download within the next few minutes.</p>
+            <p><strong>Your download is ready!</strong></p>
+            <p>Click the button below to download your purchase:</p>
+            
+            <div style="text-align: center;">
+              <a href="${downloadUrl}" class="download-button">Download ${productTitle}</a>
+            </div>
+
+            <p style="margin-top: 30px; font-size: 14px; color: #666;">
+              <strong>Note:</strong> This download link is unique to your purchase. 
+              Please save this email for future reference.
+            </p>
 
             <p>If you have any questions or need support, please don't hesitate to reach out.</p>
 
