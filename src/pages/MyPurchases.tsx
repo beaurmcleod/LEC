@@ -33,6 +33,9 @@ const MyPurchases = () => {
   const checkAuth = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     
+    // Client-side auth check for UX only - actual security is enforced by RLS policies
+    // on the purchases table. This prevents unnecessary API calls and provides immediate
+    // user feedback, but does not provide security protection on its own.
     if (!user) {
       toast.error("Please sign in to view your purchases");
       navigate("/auth");
