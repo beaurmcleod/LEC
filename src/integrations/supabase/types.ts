@@ -68,6 +68,44 @@ export type Database = {
         }
         Relationships: []
       }
+      purchases: {
+        Row: {
+          amount_paid: number
+          created_at: string | null
+          customer_email: string
+          id: string
+          product_id: string
+          purchased_at: string | null
+          stripe_payment_id: string
+        }
+        Insert: {
+          amount_paid: number
+          created_at?: string | null
+          customer_email: string
+          id?: string
+          product_id: string
+          purchased_at?: string | null
+          stripe_payment_id: string
+        }
+        Update: {
+          amount_paid?: number
+          created_at?: string | null
+          customer_email?: string
+          id?: string
+          product_id?: string
+          purchased_at?: string | null
+          stripe_payment_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchases_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

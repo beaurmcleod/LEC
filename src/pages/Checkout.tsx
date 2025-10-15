@@ -166,11 +166,11 @@ const Checkout = () => {
       try {
         console.log('Creating payment intent with data:', { productTitle, price, productId });
         
+        // SECURITY: Only send productId - server will fetch price from database
         const { data, error } = await supabase.functions.invoke('create-payment-intent', {
           body: {
-            productTitle,
-            price,
-            productId,
+            productId: productId || productTitle,
+            customerEmail: searchParams.get('email') || undefined,
           },
         });
 

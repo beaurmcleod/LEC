@@ -39,7 +39,29 @@ serve(async (req) => {
                     (paymentIntent.charges?.data[0]?.billing_details?.email);
       
       const productTitle = paymentIntent.metadata?.product_title || "Digital Product";
+      const productId = paymentIntent.metadata?.product_id;
       const amount = paymentIntent.amount / 100;
+
+      console.log("Recording purchase for:", email);
+
+      // SECURITY: Record purchase in database for verification
+      if (productId && email) {
+        const { error: purchaseError } = await supabase
+          .from('purchases')
+          .insert({
+            product_id: productId,
+            stripe_payment_id: paymentIntent.id,
+            amount_paid: paymentIntent.amount,
+            customer_email: email,
+          });
+
+        if (purchaseError) {
+          console.error("Error recording purchase:", purchaseError);
+          // Continue anyway to send email
+        } else {
+          console.log("Purchase recorded successfully");
+        }
+      }
 
       console.log("Sending email to:", email);
 
