@@ -4,6 +4,7 @@ import { Play, Download, ShoppingCart } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 interface ProductCardProps {
+  id: string;
   title: string;
   price: string;
   originalPrice?: string;
@@ -15,6 +16,7 @@ interface ProductCardProps {
 }
 
 export const ProductCard = ({ 
+  id,
   title, 
   price, 
   originalPrice, 
@@ -27,7 +29,7 @@ export const ProductCard = ({
   const navigate = useNavigate();
 
   const handleCardClick = () => {
-    const productUrl = `/product?title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&image=${encodeURIComponent(image)}&category=${encodeURIComponent(category)}${bpm ? `&bpm=${encodeURIComponent(bpm)}` : ''}${musicalKey ? `&key=${encodeURIComponent(musicalKey)}` : ''}`;
+    const productUrl = `/product?id=${encodeURIComponent(id)}&title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&image=${encodeURIComponent(image)}&category=${encodeURIComponent(category)}${bpm ? `&bpm=${encodeURIComponent(bpm)}` : ''}${musicalKey ? `&key=${encodeURIComponent(musicalKey)}` : ''}`;
     navigate(productUrl);
   };
 
@@ -35,8 +37,7 @@ export const ProductCard = ({
     e.preventDefault();
     e.stopPropagation();
     
-    const productId = title.toLowerCase().replace(/\s+/g, '-');
-    const checkoutUrl = `/checkout?title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&id=${encodeURIComponent(productId)}`;
+    const checkoutUrl = `/checkout?title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&id=${encodeURIComponent(id)}`;
     navigate(checkoutUrl);
   };
   return (

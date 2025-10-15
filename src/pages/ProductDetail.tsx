@@ -6,6 +6,7 @@ import { Footer } from "@/components/Footer";
 export default function ProductDetail() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const id = searchParams.get("id") || "";
   const title = searchParams.get("title") || "";
   const price = searchParams.get("price") || "";
   const image = searchParams.get("image") || "";
@@ -64,8 +65,7 @@ export default function ProductDetail() {
   };
   const description = getProductDescription(title);
   const handlePurchase = () => {
-    const productId = title.toLowerCase().replace(/\s+/g, '-');
-    navigate(`/checkout?title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&id=${encodeURIComponent(productId)}`);
+    navigate(`/checkout?title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&id=${encodeURIComponent(id)}`);
   };
   return <div className="min-h-screen bg-background flex flex-col">
       <Header />

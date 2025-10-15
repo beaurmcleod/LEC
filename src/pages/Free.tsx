@@ -1,76 +1,43 @@
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { ProductCard } from "@/components/ProductCard";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+
+interface Product {
+  id: string;
+  title: string;
+  price: string;
+  original_price?: string;
+  image: string;
+  category: string;
+  bpm?: string;
+  key?: string;
+  is_on_sale?: boolean;
+}
 
 const Free = () => {
-  const freeProducts = [
-    {
-      title: "27 OTT Rack",
-      price: "Free",
-      image: "/lovable-uploads/27-ott-rack.png",
-      category: "Live Racks",
-    },
-    {
-      title: "Hip Hop Sample Pack",
-      price: "Free",
-      image: "/lovable-uploads/hip-hop-trap-starter-pack.png",
-      category: "Sample Pack",
-    },
-    {
-      title: "Deep House Ableton Project File",
-      price: "Free",
-      image: "/lovable-uploads/deep-house-ableton-project-new.png",
-      category: "Sample Pack",
-    },
-    {
-      title: "1 Knob Build",
-      price: "Free",
-      image: "/lovable-uploads/1-knob-build.png",
-      category: "Live Racks",
-    },
-    {
-      title: "Bohemyth's 1st Sample Pack",
-      price: "Free",
-      image: "/lovable-uploads/bohemyth-1st-sample-pack.png",
-      category: "Sample Pack",
-    },
-    {
-      title: "Bohemyth's Serum (1) Rack",
-      price: "Free",
-      image: "/lovable-uploads/bohemyth-serum-rack.png",
-      category: "Live Racks",
-    },
-    {
-      title: "Ableton Quick Commands Cheat Sheet",
-      price: "Free",
-      image: "/lovable-uploads/ableton-quick-commands.png",
-      category: "Sample Pack",
-    },
-    {
-      title: "Hat Sauce",
-      price: "Free",
-      image: "/lovable-uploads/hat-sauce-rack.png",
-      category: "Live Racks",
-    },
-    {
-      title: "HAAS Effect",
-      price: "Free",
-      image: "/lovable-uploads/haas-effect-rack.png",
-      category: "Live Racks",
-    },
-    {
-      title: "Vocal Clean Up Rack",
-      price: "Free",
-      image: "/lovable-uploads/vocal-clean-rack.png",
-      category: "Live Racks",
-    },
-    {
-      title: "Vocal Sauce",
-      price: "Free",
-      image: "/lovable-uploads/vocal-sauce-rack.png",
-      category: "Live Racks",
-    },
-  ];
+  const [freeProducts, setFreeProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchFreeProducts = async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, title, price, original_price, image, category, bpm, key, is_on_sale')
+        .eq('price', 'Free')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching free products:', error);
+      } else if (data) {
+        setFreeProducts(data);
+      }
+      setLoading(false);
+    };
+
+    fetchFreeProducts();
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -90,11 +57,28 @@ const Free = () => {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {freeProducts.map((product, index) => (
-                <ProductCard key={index.toString()} {...product} />
-              ))}
-            </div>
+            {loading ? (
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {freeProducts.map((product) => (
+                  <ProductCard 
+                    key={product.id} 
+                    id={product.id}
+                    title={product.title}
+                    price={product.price}
+                    originalPrice={product.original_price}
+                    image={product.image}
+                    category={product.category}
+                    bpm={product.bpm}
+                    musicalKey={product.key}
+                    isOnSale={product.is_on_sale}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </section>
       </main>

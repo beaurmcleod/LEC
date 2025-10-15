@@ -1,92 +1,62 @@
 import { ProductCard } from "./ProductCard";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+
+interface Product {
+  id: string;
+  title: string;
+  price: string;
+  original_price?: string;
+  image: string;
+  category: string;
+  bpm?: string;
+  key?: string;
+  is_on_sale?: boolean;
+}
 
 export const ProductGrid = () => {
-  // Product format reference:
-  // {
-  //   title: "Product Name",
-  //   price: "$19.99" or "Free",
-  //   originalPrice: "$39.99", (optional - for sales)
-  //   image: "/lovable-uploads/image.png",
-  //   category: "Sample Pack" | "Loop Pack" | "Presets" | "MIDI" | "Drums" | "Live Racks",
-  //   bpm: "140", (optional)
-  //   musicalKey: "G Minor", (optional)
-  //   isOnSale: true, (optional)
-  // }
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const products = [
-    {
-      title: "27 OTT Rack",
-      price: "Free",
-      image: "/lovable-uploads/27-ott-rack.png",
-      category: "Live Racks",
-    },
-    {
-      title: "Serum 2 Randomizer Rack",
-      price: "$5.00",
-      image: "/lovable-uploads/randomizer-rack.png",
-      category: "Live Racks",
-    },
-    {
-      title: "Hip Hop Sample Pack",
-      price: "Free",
-      image: "/lovable-uploads/hip-hop-trap-starter-pack.png",
-      category: "Sample Pack",
-    },
-    {
-      title: "Deep House Ableton Project File",
-      price: "Free",
-      image: "/lovable-uploads/deep-house-ableton-project-new.png",
-      category: "Sample Pack",
-    },
-    {
-      title: "1 Knob Build",
-      price: "Free",
-      image: "/lovable-uploads/1-knob-build.png",
-      category: "Live Racks",
-    },
-    {
-      title: "Bohemyth's 1st Sample Pack",
-      price: "Free",
-      image: "/lovable-uploads/bohemyth-1st-sample-pack.png",
-      category: "Sample Pack",
-    },
-    {
-      title: "Bohemyth's Serum (1) Rack",
-      price: "Free",
-      image: "/lovable-uploads/bohemyth-serum-rack.png",
-      category: "Live Racks",
-    },
-    {
-      title: "Ableton Quick Commands Cheat Sheet",
-      price: "Free",
-      image: "/lovable-uploads/ableton-quick-commands.png",
-      category: "Sample Pack",
-    },
-    {
-      title: "Hat Sauce",
-      price: "Free",
-      image: "/lovable-uploads/hat-sauce-rack.png",
-      category: "Live Racks",
-    },
-    {
-      title: "HAAS Effect",
-      price: "Free",
-      image: "/lovable-uploads/haas-effect-rack.png",
-      category: "Live Racks",
-    },
-    {
-      title: "Vocal Clean Up Rack",
-      price: "Free",
-      image: "/lovable-uploads/vocal-clean-rack.png",
-      category: "Live Racks",
-    },
-    {
-      title: "Vocal Sauce",
-      price: "Free",
-      image: "/lovable-uploads/vocal-sauce-rack.png",
-      category: "Live Racks",
-    },
-  ];
+  useEffect(() => {
+    const fetchProducts = async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, title, price, original_price, image, category, bpm, key, is_on_sale')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching products:', error);
+      } else if (data) {
+        setProducts(data);
+      }
+      setLoading(false);
+    };
+
+    fetchProducts();
+  }, []);
+
+  if (loading) {
+    return (
+      <section className="py-16 px-4">
+        <div className="container mx-auto text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+        </div>
+      </section>
+    );
+  }
+
+  const displayProducts = products.map((p) => ({
+    id: p.id,
+    title: p.title,
+    price: p.price,
+    originalPrice: p.original_price,
+    image: p.image,
+    category: p.category,
+    bpm: p.bpm,
+    musicalKey: p.key,
+    isOnSale: p.is_on_sale,
+  }));
 
   return (
     <section className="py-16 px-4">
@@ -103,8 +73,8 @@ export const ProductGrid = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {products.map((product, index) => (
-            <ProductCard key={index.toString()} {...product} />
+          {displayProducts.map((product) => (
+            <ProductCard key={product.id} {...product} />
           ))}
         </div>
 
