@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,11 +15,28 @@ serve(async (req) => {
   }
 
   try {
-    const { productTitle, price, productId } = await req.json();
+    const body = await req.json();
     
-    if (!productTitle || !price) {
-      throw new Error("Product title and price are required");
+    // Input validation with zod
+    const paymentSchema = z.object({
+      productTitle: z.string().min(1).max(500),
+      price: z.string().regex(/^\$?\d+(\.\d{2})?$/, "Invalid price format"),
+      productId: z.string().uuid().optional()
+    });
+
+    const validation = paymentSchema.safeParse(body);
+    if (!validation.success) {
+      console.error('Validation error:', validation.error);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid input',
+          details: validation.error.errors.map(e => e.message)
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
+
+    const { productTitle, price, productId } = validation.data;
 
     // Initialize Stripe
     const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
@@ -58,9 +76,12 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error('Payment creation error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 500,
-    });
+    return new Response(
+      JSON.stringify({ error: 'Unable to create checkout session. Please try again or contact support.' }), 
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+      }
+    );
   }
 });

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,26 +23,25 @@ serve(async (req) => {
     console.log('Payment intent request received');
     const body = await req.json();
     
-    // Input validation
-    const { productId, customerEmail } = body;
-    
-    if (!productId) {
-      throw new Error("Product ID is required");
+    // Input validation with zod
+    const paymentSchema = z.object({
+      productId: z.string().uuid({ message: "Invalid product ID format" }),
+      customerEmail: z.string().email().max(255).optional()
+    });
+
+    const validation = paymentSchema.safeParse(body);
+    if (!validation.success) {
+      console.error('Validation error:', validation.error);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid input',
+          details: validation.error.errors.map(e => e.message)
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    // Validate productId format (must be UUID)
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(productId)) {
-      throw new Error("Invalid product ID format");
-    }
-
-    // Validate email if provided
-    if (customerEmail) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(customerEmail) || customerEmail.length > 255) {
-        throw new Error("Invalid email address");
-      }
-    }
+    const { productId, customerEmail } = validation.data;
 
     // SECURITY: Fetch actual price from database instead of trusting client
     const { data: product, error: productError } = await supabase
@@ -89,9 +89,12 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error('Payment intent creation error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 500,
-    });
+    return new Response(
+      JSON.stringify({ error: 'Unable to create payment. Please try again or contact support.' }), 
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+      }
+    );
   }
 });

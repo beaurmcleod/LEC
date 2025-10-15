@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { Resend } from "npm:resend@2.0.0";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
@@ -24,7 +25,31 @@ serve(async (req) => {
   }
 
   try {
-    const { to, productTitle, amount, paymentIntentId, productId, downloadUrl }: PurchaseEmailRequest = await req.json();
+    const body = await req.json();
+    
+    // Input validation with zod
+    const emailSchema = z.object({
+      to: z.string().email().max(255),
+      productTitle: z.string().min(1).max(500),
+      amount: z.number().positive(),
+      paymentIntentId: z.string().min(1),
+      productId: z.string().uuid(),
+      downloadUrl: z.string().url().max(2048)
+    });
+
+    const validation = emailSchema.safeParse(body);
+    if (!validation.success) {
+      console.error('Validation error:', validation.error);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid input',
+          details: validation.error.errors.map(e => e.message)
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { to, productTitle, amount, paymentIntentId, productId, downloadUrl } = validation.data;
 
     console.log("Sending purchase email to:", to);
 
@@ -136,7 +161,7 @@ serve(async (req) => {
   } catch (error) {
     console.error("Error sending purchase email:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: 'Unable to send email. Please contact support if you did not receive your download link.' }),
       {
         status: 500,
         headers: { "Content-Type": "application/json", ...corsHeaders },
