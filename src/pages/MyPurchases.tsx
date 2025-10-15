@@ -13,6 +13,7 @@ interface Purchase {
   product_id: string;
   purchased_at: string;
   amount_paid: number;
+  customer_email: string;
   products: {
     title: string;
     image: string;
@@ -55,10 +56,10 @@ const MyPurchases = () => {
           product_id,
           purchased_at,
           amount_paid,
-          products (
+          customer_email,
+          products_public (
             title,
-            image,
-            download_url
+            image
           )
         `)
         .eq('user_id', userId)
@@ -66,7 +67,17 @@ const MyPurchases = () => {
 
       if (error) throw error;
 
-      setPurchases(data || []);
+      // Map the data to match the expected structure
+      const mappedData = data?.map(purchase => ({
+        ...purchase,
+        products: {
+          title: purchase.products_public?.title || 'Unknown Product',
+          image: purchase.products_public?.image || '',
+          download_url: '' // Will be fetched securely when downloading
+        }
+      })) || [];
+
+      setPurchases(mappedData);
     } catch (error) {
       console.error('Error fetching purchases:', error);
       toast.error("Failed to load purchases");
@@ -75,9 +86,26 @@ const MyPurchases = () => {
     }
   };
 
-  const handleDownload = (downloadUrl: string, title: string) => {
-    window.open(downloadUrl, '_blank');
-    toast.success(`Downloading ${title}`);
+  const handleDownload = async (productId: string, customerEmail: string, title: string) => {
+    try {
+      toast.info(`Preparing download for ${title}...`);
+      
+      const { data, error } = await supabase.functions.invoke('get-secure-download', {
+        body: { productId, customerEmail }
+      });
+
+      if (error) throw error;
+      
+      if (data?.downloadUrl) {
+        window.open(data.downloadUrl, '_blank');
+        toast.success(`Downloading ${title}`);
+      } else {
+        throw new Error('Download URL not available');
+      }
+    } catch (error) {
+      console.error('Download error:', error);
+      toast.error('Failed to initiate download. Please try again.');
+    }
   };
 
   if (loading) {
@@ -147,7 +175,8 @@ const MyPurchases = () => {
                   </p>
                   <Button
                     onClick={() => handleDownload(
-                      purchase.products.download_url,
+                      purchase.product_id,
+                      purchase.customer_email,
                       purchase.products.title
                     )}
                     className="w-full"
