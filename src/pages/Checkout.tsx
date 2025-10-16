@@ -76,11 +76,13 @@ const CheckoutForm = ({ clientSecret, productTitle, price, productId, customerEm
       } else {
         console.log("Payment confirmed successfully");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Unexpected error during payment:", err);
+      const errorMessage = err?.message || err?.error?.message || "An unexpected error occurred";
+      console.error("Error details:", JSON.stringify(err, null, 2));
       toast({
         title: "Payment failed",
-        description: "An unexpected error occurred",
+        description: errorMessage,
         variant: "destructive",
       });
     }
