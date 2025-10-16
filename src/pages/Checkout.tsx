@@ -59,11 +59,18 @@ const CheckoutForm = ({ clientSecret, productTitle, price, productId, customerEm
         throw submitError;
       }
 
+      const confirmParams: any = {
+        return_url: `${window.location.origin}/payment-success?product_id=${productId}`,
+      };
+      if (customerEmail) {
+        confirmParams.payment_method_data = {
+          billing_details: { email: customerEmail }
+        };
+      }
+
       const { error } = await stripe.confirmPayment({
         elements,
-        confirmParams: {
-          return_url: `${window.location.origin}/payment-success?product_id=${productId}`,
-        },
+        confirmParams,
       });
 
       if (error) {
