@@ -59,18 +59,11 @@ const CheckoutForm = ({ clientSecret, productTitle, price, productId, customerEm
         throw submitError;
       }
 
-      const confirmParams: any = {
-        return_url: `${window.location.origin}/payment-success?product_id=${productId}`,
-      };
-      if (customerEmail) {
-        confirmParams.payment_method_data = {
-          billing_details: { email: customerEmail }
-        };
-      }
-
       const { error } = await stripe.confirmPayment({
         elements,
-        confirmParams,
+        confirmParams: {
+          return_url: `${window.location.origin}/payment-success?product_id=${productId}`,
+        },
       });
 
       if (error) {
@@ -115,11 +108,6 @@ const CheckoutForm = ({ clientSecret, productTitle, price, productId, customerEm
         <PaymentElement 
           options={{
             layout: "tabs",
-            fields: {
-              billingDetails: {
-                email: "never"
-              }
-            },
             defaultValues: {
               billingDetails: {
                 email: customerEmail || ''
