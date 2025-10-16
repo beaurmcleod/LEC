@@ -158,7 +158,7 @@ const Checkout = () => {
   const productId = searchParams.get("id") || "";
   const customerEmail = searchParams.get("email") || "";
   
-  console.log("Checkout params:", { productTitle, price, productId });
+  console.log("Checkout params:", { productTitle, price, productId, customerEmail });
   
   // Add toast notification to help with debugging
   if (productTitle && price) {
@@ -174,28 +174,13 @@ const Checkout = () => {
       return;
     }
 
-    // Redirect to email entry if no email provided and product is not free
-    if (!customerEmail) {
-      const checkFreeProduct = async () => {
-        const { data: product } = await supabase
-          .from('products')
-          .select('price')
-          .eq('id', productId)
-          .maybeSingle();
-        
-        if (product) {
-          const rawPrice = (product.price || '').toString().trim();
-          const isFree = rawPrice.toLowerCase() === 'free' || parseFloat(rawPrice.replace(/[^0-9.]/g, '')) === 0;
-          
-          if (!isFree) {
-            // Paid product needs email - redirect to enter-email
-            navigate(`/enter-email?title=${encodeURIComponent(productTitle)}&price=${encodeURIComponent(price)}&id=${productId}`);
-            return;
-          }
-        }
-      };
-      
-      checkFreeProduct();
+    // Check if this is a paid product and redirect to email entry if needed
+    const rawPrice = (price || '').toString().trim();
+    const isFree = rawPrice.toLowerCase() === 'free' || parseFloat(rawPrice.replace(/[^0-9.]/g, '')) === 0;
+    
+    if (!isFree && !customerEmail) {
+      console.log('Paid product without email, redirecting to enter-email');
+      navigate(`/enter-email?title=${encodeURIComponent(productTitle)}&price=${encodeURIComponent(price)}&id=${productId}`);
       return;
     }
 
