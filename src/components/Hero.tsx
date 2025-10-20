@@ -23,7 +23,7 @@ export const Hero = () => {
           />
         </div>
 
-        <h1 className="text-6xl md:text-8xl font-extrabold mb-6 tracking-tight">
+        <h1 className="text-6xl md:text-8xl font-bold mb-6">
           <span className="bg-gradient-hero bg-clip-text text-transparent">
             Low End Candy
           </span>
