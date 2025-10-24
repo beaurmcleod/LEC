@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Play, Download, Headphones } from "lucide-react";
+import { Link } from "react-router-dom";
 
 export const Hero = () => {
   return (
@@ -47,9 +48,11 @@ export const Hero = () => {
             <Headphones className="h-5 w-5 mr-2" />
             Listen to Previews
           </Button>
-          <Button variant="outline" size="lg" className="text-lg px-8 py-6">
-            <Play className="h-5 w-5 mr-2" />
-            Free Downloads
+          <Button variant="outline" size="lg" className="text-lg px-8 py-6" asChild>
+            <Link to="/free">
+              <Play className="h-5 w-5 mr-2" />
+              Free Downloads
+            </Link>
           </Button>
         </div>
 
