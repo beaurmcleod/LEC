@@ -25,7 +25,7 @@ const Racks = () => {
       const { data, error } = await supabase
         .from('products')
         .select('id, title, price, original_price, image, category, bpm, key, is_on_sale')
-        .eq('category', 'Ableton Racks')
+        .eq('category', 'Live Racks')
         .order('created_at', { ascending: false });
 
       if (error) {
