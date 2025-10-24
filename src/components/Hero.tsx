@@ -40,10 +40,12 @@ export const Hero = () => {
         </p>
 
         <div className="flex flex-wrap gap-4 justify-center items-center">
-          <Button variant="gradient" size="lg" className="text-lg px-8 py-6">
-            <Download className="h-5 w-5 mr-2" />
-            Browse Sample Packs
-          </Button>
+          <Link to="/racks">
+            <Button variant="gradient" size="lg" className="text-lg px-8 py-6">
+              <Download className="h-5 w-5 mr-2" />
+              Browse Ableton Racks
+            </Button>
+          </Link>
           <Button variant="producer" size="lg" className="text-lg px-8 py-6">
             <Headphones className="h-5 w-5 mr-2" />
             Listen to Previews

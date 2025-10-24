@@ -11,6 +11,7 @@ import Checkout from "./pages/Checkout";
 import EnterEmail from "./pages/EnterEmail";
 import ProductDetail from "./pages/ProductDetail";
 import Free from "./pages/Free";
+import Racks from "./pages/Racks";
 import Auth from "./pages/Auth";
 import MyPurchases from "./pages/MyPurchases";
 
@@ -25,6 +26,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/free" element={<Free />} />
+          <Route path="/racks" element={<Racks />} />
           <Route path="/product" element={<ProductDetail />} />
           <Route path="/enter-email" element={<EnterEmail />} />
           <Route path="/checkout" element={<Checkout />} />
