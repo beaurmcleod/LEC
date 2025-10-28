@@ -42,7 +42,7 @@ serve(async (req) => {
     // Fetch product details
     const { data: product, error: productError } = await supabase
       .from("products")
-      .select("price, download_url, title")
+      .select("price, title")
       .eq("id", productId)
       .maybeSingle();
 
@@ -74,11 +74,52 @@ serve(async (req) => {
       );
     }
 
+    // Fetch product download path from product_downloads table
+    const { data: productDownload, error: downloadError } = await supabase
+      .from('product_downloads')
+      .select('download_path, download_url')
+      .eq('product_id', productId)
+      .maybeSingle();
+
+    if (downloadError) {
+      console.error('Product download lookup error:', downloadError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to retrieve download information' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!productDownload) {
+      console.error('No download found for product:', productId);
+      return new Response(
+        JSON.stringify({ error: 'Download not available for this product' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Generate signed URL if download_path exists (private bucket)
+    let finalDownloadUrl = productDownload.download_url;
+    
+    if (productDownload.download_path) {
+      const { data: signedUrlData, error: signedUrlError } = await supabase
+        .storage
+        .from('product-downloads')
+        .createSignedUrl(productDownload.download_path, 3600); // 1 hour expiry
+
+      if (signedUrlError) {
+        console.error('Error generating signed URL:', signedUrlError);
+        // Fallback to download_url if signed URL generation fails
+      } else if (signedUrlData?.signedUrl) {
+        finalDownloadUrl = signedUrlData.signedUrl;
+        console.log('Generated signed URL for free download with 1-hour expiry');
+      }
+    }
+
     console.log("Granting free download", { title: product.title });
 
     return new Response(
       JSON.stringify({
-        downloadUrl: product.download_url,
+        downloadUrl: finalDownloadUrl,
         productTitle: product.title,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
