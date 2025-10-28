@@ -14,7 +14,7 @@ const Links = () => {
       title: "30 Day EDM Production Course",
       description: "Master electronic music production in 30 days",
       icon: GraduationCap,
-      url: "https://lowendcandy.com/30-day-course",
+      url: "https://www.30dayedmproducer.com/",
       gradient: "from-secondary to-secondary/80",
       external: true,
     },
