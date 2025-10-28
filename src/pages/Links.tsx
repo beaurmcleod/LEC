@@ -121,7 +121,17 @@ const Links = () => {
                 className={className}
                 onClick={(e) => {
                   e.preventDefault();
-                  window.open(link.url, '_blank', 'noopener,noreferrer');
+                  const win = window.open(link.url, '_blank', 'noopener,noreferrer');
+                  if (!win) {
+                    try {
+                      // Try top-level navigation as a fallback
+                      window.top?.location.assign(link.url);
+                    } catch {}
+                    // Final fallback: copy URL so user can paste it
+                    if (navigator.clipboard?.writeText) {
+                      navigator.clipboard.writeText(link.url);
+                    }
+                  }
                 }}
               >
                 {linkContent}
