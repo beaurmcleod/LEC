@@ -1,4 +1,4 @@
-import { ShoppingBag, GraduationCap, Gift, Youtube } from "lucide-react";
+import { ShoppingBag, GraduationCap, Gift, Youtube, Package, Calendar, Instagram } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const Links = () => {
@@ -11,6 +11,22 @@ const Links = () => {
       gradient: "from-primary to-primary/80",
     },
     {
+      title: "Candy Club: Get Free Stuff Monthly 📦",
+      description: "Join our monthly giveaway club",
+      icon: Package,
+      url: "https://bit.ly/4fCQlZU",
+      gradient: "from-pink-500 to-purple-500",
+      external: true,
+    },
+    {
+      title: "Book a Private Lesson With me",
+      description: "One-on-one music production coaching",
+      icon: Calendar,
+      url: "https://calendly.com/bohemyth",
+      gradient: "from-blue-500 to-cyan-500",
+      external: true,
+    },
+    {
       title: "30 Day EDM Production Course",
       description: "Master electronic music production in 30 days",
       icon: GraduationCap,
@@ -19,10 +35,10 @@ const Links = () => {
       external: true,
     },
     {
-      title: "Free Music Production Course",
+      title: "Free Ableton Live Course",
       description: "Start your journey with our free course",
       icon: Gift,
-      url: "https://www.30dayedmproducer.com/free-ableton-course",
+      url: "https://bit.ly/49T1wN2",
       external: true,
       gradient: "from-accent to-accent/80",
     },
@@ -32,6 +48,14 @@ const Links = () => {
       icon: Youtube,
       url: "https://youtube.com/@lowendcandy",
       gradient: "from-destructive to-destructive/80",
+      external: true,
+    },
+    {
+      title: "Follow Bohemyth",
+      description: "Connect on Instagram for daily content",
+      icon: Instagram,
+      url: "https://www.instagram.com/_bohemyth__/",
+      gradient: "from-purple-500 to-pink-500",
       external: true,
     },
   ];
