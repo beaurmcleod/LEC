@@ -119,6 +119,10 @@ const Links = () => {
                 target="_blank"
                 rel="noopener noreferrer"
                 className={className}
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.open(link.url, '_blank', 'noopener,noreferrer');
+                }}
               >
                 {linkContent}
               </a>
