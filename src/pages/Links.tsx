@@ -1,7 +1,8 @@
 import { ShoppingBag, GraduationCap, Gift, Youtube, Package, Calendar, Instagram } from "lucide-react";
 import { Link } from "react-router-dom";
-
+import { useToast } from "@/hooks/use-toast";
 const Links = () => {
+  const { toast } = useToast();
   const links = [
     {
       title: "The Candy Store",
@@ -129,7 +130,22 @@ const Links = () => {
                     } catch {}
                     // Final fallback: copy URL so user can paste it
                     if (navigator.clipboard?.writeText) {
-                      navigator.clipboard.writeText(link.url);
+                      navigator.clipboard.writeText(link.url).then(() => {
+                        toast({
+                          title: "Link blocked by preview",
+                          description: "URL copied to clipboard. Paste it into a new tab to open.",
+                        });
+                      }).catch(() => {
+                        toast({
+                          title: "Link blocked by preview",
+                          description: link.url,
+                        });
+                      });
+                    } else {
+                      toast({
+                        title: "Link blocked by preview",
+                        description: link.url,
+                      });
                     }
                   }
                 }}
