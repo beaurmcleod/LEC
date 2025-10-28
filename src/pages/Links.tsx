@@ -54,7 +54,7 @@ const Links = () => {
       title: "Follow Bohemyth",
       description: "Connect on Instagram for daily content",
       icon: Instagram,
-      url: "https://www.instagram.com/_bohemyth__/",
+      url: "https://www.instagram.com/_bohemyth_/?hl=en",
       gradient: "from-purple-500 to-pink-500",
       external: true,
     },
