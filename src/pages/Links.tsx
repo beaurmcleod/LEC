@@ -45,7 +45,7 @@ const Links = () => {
       title: "Low End Candy YouTube",
       description: "Tutorials, tips & production techniques",
       icon: Youtube,
-      url: "https://youtube.com/@lowendcandy",
+      url: "https://www.youtube.com/@lowendcandy",
       gradient: "from-destructive to-destructive/80",
       external: true,
     },
