@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Package } from "lucide-react";
 import { Link } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 
 const CandyClub = () => {
   const [firstName, setFirstName] = useState("");
@@ -17,22 +18,20 @@ const CandyClub = () => {
     e.preventDefault();
     setIsSubmitting(true);
 
-    const webhookUrl = "https://services.leadconnectorhq.com/hooks/84LVJ79Hb6dDlqcCFKVc/webhook-trigger/0904dc76-e3fe-4d39-8c29-a36fac891ca1";
-
     try {
-      await fetch(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        mode: "no-cors",
-        body: JSON.stringify({
+      const { data, error } = await supabase.functions.invoke('submit-candy-club', {
+        body: {
           firstName,
           lastName,
           email,
-          timestamp: new Date().toISOString(),
-        }),
+        },
       });
+
+      if (error) {
+        throw error;
+      }
+
+      console.log("Submission response:", data);
 
       toast({
         title: "Welcome to Candy Club! 🎉",
@@ -42,11 +41,11 @@ const CandyClub = () => {
       setFirstName("");
       setLastName("");
       setEmail("");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error submitting form:", error);
       toast({
         title: "Something went wrong",
-        description: "Please try again later.",
+        description: error.message || "Please try again later.",
         variant: "destructive",
       });
     } finally {
