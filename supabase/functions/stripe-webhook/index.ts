@@ -80,22 +80,31 @@ serve(async (req) => {
           console.log("Purchase recorded successfully", profile?.id ? 'with user_id' : 'without user_id');
         }
 
-        // Fetch product download URL for email
-        const { data: product, error: productError } = await supabase
-          .from('products')
-          .select('download_url')
-          .eq('id', productId)
-          .single();
+        // Generate secure download token (7-day expiry, 5 downloads max)
+        const downloadToken = crypto.randomUUID() + '-' + Date.now().toString(36);
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7); // 7 days from now
 
-        if (productError) {
-          console.error("Error fetching product:", productError);
+        const { error: tokenError } = await supabase
+          .from('download_tokens')
+          .insert({
+            token: downloadToken,
+            product_id: productId,
+            customer_email: email,
+            expires_at: expiresAt.toISOString(),
+            max_downloads: 5
+          });
+
+        if (tokenError) {
+          console.error("Error creating download token:", tokenError);
+          // Continue anyway to send email with fallback
+        } else {
+          console.log("Download token created successfully, expires:", expiresAt.toISOString());
         }
-
-        const downloadUrl = product?.download_url || '';
 
         console.log("Sending email to:", email);
 
-        // Call the send-purchase-email function with download link
+        // Call the send-purchase-email function with secure download token
         const { error: emailError } = await supabase.functions.invoke("send-purchase-email", {
           body: {
             to: email,
@@ -103,7 +112,7 @@ serve(async (req) => {
             amount: amount,
             paymentIntentId: paymentIntent.id,
             productId: productId,
-            downloadUrl: downloadUrl,
+            downloadToken: downloadToken,
           },
         });
 

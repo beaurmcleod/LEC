@@ -15,7 +15,7 @@ interface PurchaseEmailRequest {
   amount: number;
   paymentIntentId: string;
   productId: string;
-  downloadUrl: string;
+  downloadToken: string;
 }
 
 serve(async (req) => {
@@ -34,7 +34,7 @@ serve(async (req) => {
       amount: z.number().positive(),
       paymentIntentId: z.string().min(1),
       productId: z.string().uuid(),
-      downloadUrl: z.string().url().max(2048)
+      downloadToken: z.string().min(32).max(255)
     });
 
     const validation = emailSchema.safeParse(body);
@@ -49,9 +49,13 @@ serve(async (req) => {
       );
     }
 
-    const { to, productTitle, amount, paymentIntentId, productId, downloadUrl } = validation.data;
+    const { to, productTitle, amount, paymentIntentId, productId, downloadToken } = validation.data;
 
     console.log("Sending purchase email to:", to);
+
+    // Build secure download URL with token
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const downloadUrl = `${supabaseUrl.replace('.supabase.co', '')}.supabase.co/functions/v1/get-secure-download?token=${downloadToken}`;
 
     const emailHtml = `
       <!DOCTYPE html>
@@ -126,7 +130,7 @@ serve(async (req) => {
             </div>
 
             <p style="margin-top: 30px; font-size: 14px; color: #666;">
-              <strong>Note:</strong> This download link is unique to your purchase. 
+              <strong>Important:</strong> This download link expires in 7 days and allows up to 5 downloads. 
               Please save this email for future reference.
             </p>
 

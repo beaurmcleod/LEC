@@ -30,7 +30,7 @@ const PaymentSuccess = () => {
         return;
       }
 
-      // Look up purchase by payment intent ID
+      // Look up purchase by payment intent ID to get the download token
       const { data: purchaseData, error: purchaseError } = await supabase
         .from('purchases')
         .select('customer_email, product_id')
@@ -43,11 +43,24 @@ const PaymentSuccess = () => {
         return;
       }
 
+      // Get download token for this purchase
+      const { data: tokenData, error: tokenError } = await supabase
+        .from('download_tokens')
+        .select('token')
+        .eq('product_id', purchaseData.product_id)
+        .eq('customer_email', purchaseData.customer_email)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (tokenError || !tokenData) {
+        console.error('Token lookup error:', tokenError);
+        toast.error("Unable to get download link. Please check your email.");
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('get-secure-download', {
-        body: { 
-          productId: purchaseData.product_id, 
-          customerEmail: purchaseData.customer_email 
-        }
+        body: { token: tokenData.token }
       });
 
       if (error) throw error;
@@ -55,7 +68,7 @@ const PaymentSuccess = () => {
       if (data?.downloadUrl) {
         setDownloadUrl(data.downloadUrl);
         window.open(data.downloadUrl, '_blank');
-        toast.success("Download started!");
+        toast.success(`Download started! You have ${data.downloadsRemaining || 0} downloads remaining.`);
       }
     } catch (error) {
       console.error('Download error:', error);

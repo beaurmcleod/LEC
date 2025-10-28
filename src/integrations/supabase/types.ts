@@ -14,12 +14,101 @@ export type Database = {
   }
   public: {
     Tables: {
+      download_tokens: {
+        Row: {
+          created_at: string | null
+          customer_email: string
+          download_count: number
+          expires_at: string
+          id: string
+          max_downloads: number
+          product_id: string
+          token: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          customer_email: string
+          download_count?: number
+          expires_at: string
+          id?: string
+          max_downloads?: number
+          product_id: string
+          token: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          customer_email?: string
+          download_count?: number
+          expires_at?: string
+          id?: string
+          max_downloads?: number
+          product_id?: string
+          token?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "download_tokens_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "download_tokens_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_downloads: {
+        Row: {
+          created_at: string | null
+          download_path: string | null
+          download_url: string
+          id: string
+          product_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          download_path?: string | null
+          download_url: string
+          id?: string
+          product_id: string
+        }
+        Update: {
+          created_at?: string | null
+          download_path?: string | null
+          download_url?: string
+          id?: string
+          product_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_downloads_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: true
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_downloads_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: true
+            referencedRelation: "products_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           bpm: string | null
           category: string
           created_at: string | null
-          download_url: string
           features: string[] | null
           full_description: string | null
           id: string
@@ -36,7 +125,6 @@ export type Database = {
           bpm?: string | null
           category: string
           created_at?: string | null
-          download_url: string
           features?: string[] | null
           full_description?: string | null
           id?: string
@@ -53,7 +141,6 @@ export type Database = {
           bpm?: string | null
           category?: string
           created_at?: string | null
-          download_url?: string
           features?: string[] | null
           full_description?: string | null
           id?: string
@@ -147,6 +234,80 @@ export type Database = {
           },
         ]
       }
+      settings: {
+        Row: {
+          created_at: string
+          id: string
+          key: string
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          key: string
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          key?: string
+          updated_at?: string
+          value?: string
+        }
+        Relationships: []
+      }
+      subscriptions: {
+        Row: {
+          cancel_at_period_end: boolean
+          created_at: string
+          current_period_end: string
+          current_period_start: string
+          id: string
+          status: string
+          stripe_customer_id: string
+          stripe_price_id: string
+          stripe_subscription_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end: string
+          current_period_start: string
+          id?: string
+          status: string
+          stripe_customer_id: string
+          stripe_price_id: string
+          stripe_subscription_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string
+          current_period_start?: string
+          id?: string
+          status?: string
+          stripe_customer_id?: string
+          stripe_price_id?: string
+          stripe_subscription_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -223,6 +384,7 @@ export type Database = {
       }
     }
     Functions: {
+      get_download_url: { Args: { product_id: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

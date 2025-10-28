@@ -90,21 +90,38 @@ const MyPurchases = () => {
     try {
       toast.info(`Preparing download for ${title}...`);
       
+      // Get download token for this purchase
+      const { data: tokenData, error: tokenError } = await supabase
+        .from('download_tokens')
+        .select('token')
+        .eq('product_id', productId)
+        .eq('customer_email', customerEmail)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (tokenError || !tokenData) {
+        console.error('Token lookup error:', tokenError);
+        toast.error('Download token not found. Please check your purchase email for the download link.');
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('get-secure-download', {
-        body: { productId, customerEmail }
+        body: { token: tokenData.token }
       });
 
       if (error) throw error;
       
       if (data?.downloadUrl) {
         window.open(data.downloadUrl, '_blank');
-        toast.success(`Downloading ${title}`);
+        const remaining = data.downloadsRemaining !== undefined ? data.downloadsRemaining : 'multiple';
+        toast.success(`Downloading ${title}. ${remaining} downloads remaining.`);
       } else {
         throw new Error('Download URL not available');
       }
     } catch (error) {
       console.error('Download error:', error);
-      toast.error('Failed to initiate download. Please try again.');
+      toast.error('Failed to initiate download. Please try again or check your email for the download link.');
     }
   };
 
