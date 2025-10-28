@@ -7,6 +7,8 @@ import { Package } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const CandyClub = () => {
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
@@ -15,15 +17,41 @@ const CandyClub = () => {
     e.preventDefault();
     setIsSubmitting(true);
 
-    // Simulate submission
-    setTimeout(() => {
+    const webhookUrl = "https://services.leadconnectorhq.com/hooks/84LVJ79Hb6dDlqcCFKVc/webhook-trigger/0904dc76-e3fe-4d39-8c29-a36fac891ca1";
+
+    try {
+      await fetch(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        mode: "no-cors",
+        body: JSON.stringify({
+          firstName,
+          lastName,
+          email,
+          timestamp: new Date().toISOString(),
+        }),
+      });
+
       toast({
         title: "Welcome to Candy Club! 🎉",
         description: "Check your email for your first free gift.",
       });
+      
+      setFirstName("");
+      setLastName("");
       setEmail("");
+    } catch (error) {
+      console.error("Error submitting form:", error);
+      toast({
+        title: "Something went wrong",
+        description: "Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
       setIsSubmitting(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -53,7 +81,34 @@ const CandyClub = () => {
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="firstName">First Name</Label>
+                <Input
+                  id="firstName"
+                  type="text"
+                  placeholder="John"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                  className="bg-background"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lastName">Last Name</Label>
+                <Input
+                  id="lastName"
+                  type="text"
+                  placeholder="Doe"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  required
+                  className="bg-background"
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="email">Email Address</Label>
               <Input
