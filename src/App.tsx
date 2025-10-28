@@ -15,6 +15,7 @@ import Racks from "./pages/Racks";
 import Auth from "./pages/Auth";
 import MyPurchases from "./pages/MyPurchases";
 import Links from "./pages/Links";
+import CandyClub from "./pages/CandyClub";
 
 const queryClient = new QueryClient();
 
@@ -29,6 +30,7 @@ const App = () => (
           <Route path="/free" element={<Free />} />
           <Route path="/racks" element={<Racks />} />
           <Route path="/links" element={<Links />} />
+          <Route path="/candy-club" element={<CandyClub />} />
           <Route path="/product" element={<ProductDetail />} />
           <Route path="/enter-email" element={<EnterEmail />} />
           <Route path="/checkout" element={<Checkout />} />

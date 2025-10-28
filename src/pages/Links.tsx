@@ -14,9 +14,8 @@ const Links = () => {
       title: "Candy Club: Get Free Stuff Monthly 📦",
       description: "Join our monthly giveaway club",
       icon: Package,
-      url: "https://bit.ly/4fCQlZU",
+      url: "/candy-club",
       gradient: "from-pink-500 to-purple-500",
-      external: true,
     },
     {
       title: "Book a Private Lesson With me",
