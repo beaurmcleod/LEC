@@ -37,7 +37,7 @@ const Links = () => {
       title: "Free Ableton Live Course",
       description: "Start your journey with our free course",
       icon: Gift,
-      url: "https://bit.ly/49T1wN2",
+      url: "https://www.30dayedmproducer.com/free-ableton-course",
       external: true,
       gradient: "from-accent to-accent/80",
     },
