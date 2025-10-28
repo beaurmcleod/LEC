@@ -122,32 +122,8 @@ const Links = () => {
                 className={className}
                 onClick={(e) => {
                   e.preventDefault();
-                  const win = window.open(link.url, '_blank', 'noopener,noreferrer');
-                  if (!win) {
-                    try {
-                      // Try top-level navigation as a fallback
-                      window.top?.location.assign(link.url);
-                    } catch {}
-                    // Final fallback: copy URL so user can paste it
-                    if (navigator.clipboard?.writeText) {
-                      navigator.clipboard.writeText(link.url).then(() => {
-                        toast({
-                          title: "Link blocked by preview",
-                          description: "URL copied to clipboard. Paste it into a new tab to open.",
-                        });
-                      }).catch(() => {
-                        toast({
-                          title: "Link blocked by preview",
-                          description: link.url,
-                        });
-                      });
-                    } else {
-                      toast({
-                        title: "Link blocked by preview",
-                        description: link.url,
-                      });
-                    }
-                  }
+                  e.stopPropagation();
+                  window.open(link.url, '_blank', 'noopener,noreferrer');
                 }}
               >
                 {linkContent}
