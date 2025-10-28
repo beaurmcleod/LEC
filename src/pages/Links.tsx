@@ -1,4 +1,4 @@
-import { ShoppingBag, GraduationCap, Gift, Youtube, Package, Calendar, Instagram } from "lucide-react";
+import { ShoppingBag, GraduationCap, Gift, Youtube, Package, Calendar, Instagram, Music } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 const Links = () => {
@@ -49,6 +49,14 @@ const Links = () => {
       icon: Instagram,
       url: "https://www.instagram.com/_bohemyth_/?hl=en",
       gradient: "from-purple-500 to-pink-500",
+      external: true,
+    },
+    {
+      title: "Crux Chords Ableton AI Chord Device",
+      description: "AI-powered chord generation for Ableton",
+      icon: Music,
+      url: "https://www.promptmidi.online",
+      gradient: "from-green-500 to-emerald-500",
       external: true,
     },
   ];
