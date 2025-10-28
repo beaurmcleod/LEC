@@ -117,7 +117,7 @@ const Links = () => {
               <a
                 key={index}
                 href={link.url}
-                target="_blank"
+                target="_top"
                 rel="noopener noreferrer"
                 className={className}
               >
