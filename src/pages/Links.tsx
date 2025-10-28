@@ -22,7 +22,8 @@ const Links = () => {
       title: "Free Music Production Course",
       description: "Start your journey with our free course",
       icon: Gift,
-      url: "/free",
+      url: "https://www.30dayedmproducer.com/free-ableton-course",
+      external: true,
       gradient: "from-accent to-accent/80",
     },
     {
