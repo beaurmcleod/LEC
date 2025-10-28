@@ -5,6 +5,14 @@ const Links = () => {
   const { toast } = useToast();
   const links = [
     {
+      title: "30 Day EDM Production Course",
+      description: "Master electronic music production in 30 days",
+      icon: GraduationCap,
+      url: "https://www.30dayedmproducer.com/",
+      gradient: "from-secondary to-secondary/80",
+      external: true,
+    },
+    {
       title: "The Candy Store",
       description: "Premium samples, presets & Ableton racks",
       icon: ShoppingBag,
@@ -12,26 +20,11 @@ const Links = () => {
       gradient: "from-primary to-primary/80",
     },
     {
-      title: "Candy Club: Get Free Stuff Monthly 📦",
-      description: "Join our monthly giveaway club",
-      icon: Package,
-      url: "/candy-club",
-      gradient: "from-pink-500 to-purple-500",
-    },
-    {
       title: "Book a Private Lesson With me",
       description: "One-on-one music production coaching",
       icon: Calendar,
       url: "https://calendly.com/bohemyth",
       gradient: "from-blue-500 to-cyan-500",
-      external: true,
-    },
-    {
-      title: "30 Day EDM Production Course",
-      description: "Master electronic music production in 30 days",
-      icon: GraduationCap,
-      url: "https://www.30dayedmproducer.com/",
-      gradient: "from-secondary to-secondary/80",
       external: true,
     },
     {
