@@ -50,7 +50,7 @@ const Links = () => {
             Low End Candy
           </h1>
           <p className="text-lg text-muted-foreground">
-            Everything you need to level up your music production
+            Listen ⚡️ Learn ⚡️ Party
           </p>
         </div>
 
