@@ -1,63 +1,60 @@
-import { ShoppingBag, GraduationCap, Gift, Youtube, Package, Calendar, Instagram, Music } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useToast } from "@/hooks/use-toast";
+import previewEdmCourse from "@/assets/preview-edm-course.jpg";
+import previewCandyStore from "@/assets/preview-candy-store.jpg";
+import previewLesson from "@/assets/preview-lesson.jpg";
+import previewFreeCourse from "@/assets/preview-free-course.jpg";
+import previewYoutube from "@/assets/preview-youtube.jpg";
+import previewInstagram from "@/assets/preview-instagram.jpg";
+import previewCruxChords from "@/assets/preview-crux-chords.jpg";
 
 const Index = () => {
-  const { toast } = useToast();
   const links = [
     {
       title: "30 Day EDM Production Course",
       description: "Master electronic music production in 30 days",
-      icon: GraduationCap,
+      preview: previewEdmCourse,
       url: "https://www.30dayedmproducer.com/",
-      gradient: "from-secondary to-secondary/80",
       external: true,
     },
     {
       title: "The Candy Store",
       description: "Premium samples, presets & Ableton racks",
-      icon: ShoppingBag,
+      preview: previewCandyStore,
       url: "/shop",
-      gradient: "from-primary to-primary/80",
     },
     {
       title: "Book a Private Lesson With me",
       description: "One-on-one music production coaching",
-      icon: Calendar,
+      preview: previewLesson,
       url: "https://calendly.com/bohemyth",
-      gradient: "from-blue-500 to-cyan-500",
       external: true,
     },
     {
       title: "Free Ableton Live Course",
       description: "Start your journey with our free course",
-      icon: Gift,
+      preview: previewFreeCourse,
       url: "https://www.30dayedmproducer.com/free-ableton-course",
       external: true,
-      gradient: "from-accent to-accent/80",
     },
     {
       title: "Low End Candy YouTube",
       description: "Tutorials, tips & production techniques",
-      icon: Youtube,
+      preview: previewYoutube,
       url: "https://www.youtube.com/@lowendcandy",
-      gradient: "from-destructive to-destructive/80",
       external: true,
     },
     {
       title: "Follow Bohemyth",
       description: "Connect on Instagram for daily content",
-      icon: Instagram,
+      preview: previewInstagram,
       url: "https://www.instagram.com/_bohemyth_/?hl=en",
-      gradient: "from-purple-500 to-pink-500",
       external: true,
     },
     {
       title: "Crux Chords Ableton AI Chord Device",
       description: "AI-powered chord generation for Ableton",
-      icon: Music,
+      preview: previewCruxChords,
       url: "https://www.promptmidi.online",
-      gradient: "from-green-500 to-emerald-500",
       external: true,
     },
   ];
@@ -83,11 +80,14 @@ const Index = () => {
         {/* Links */}
         <div className="space-y-4">
           {links.map((link, index) => {
-            const Icon = link.icon;
             const linkContent = (
               <div className="flex items-center gap-4">
-                <div className={`p-3 rounded-lg bg-gradient-to-br ${link.gradient} shadow-lg group-hover:scale-110 transition-transform duration-300`}>
-                  <Icon className="w-6 h-6 text-white" />
+                <div className="w-20 h-20 rounded-lg overflow-hidden shadow-lg group-hover:scale-105 transition-transform duration-300 flex-shrink-0">
+                  <img 
+                    src={link.preview} 
+                    alt={link.title}
+                    className="w-full h-full object-cover"
+                  />
                 </div>
                 <div className="flex-1 text-left">
                   <h3 className="text-xl font-semibold text-foreground group-hover:text-primary transition-colors">
