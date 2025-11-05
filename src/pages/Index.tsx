@@ -5,7 +5,7 @@ import previewLesson from "@/assets/preview-lesson.jpg";
 import previewFreeCourse from "@/assets/preview-free-course.jpg";
 import previewYoutube from "@/assets/preview-youtube.jpg";
 import previewInstagram from "@/assets/preview-instagram.jpg";
-import previewCruxChords from "@/assets/preview-crux-chords.jpg";
+import previewCruxChords from "@/assets/preview-crux-chords.png";
 
 const Index = () => {
   const links = [
