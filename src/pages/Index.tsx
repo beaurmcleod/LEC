@@ -10,6 +10,13 @@ import previewCruxChords from "@/assets/preview-crux-chords.jpg";
 const Index = () => {
   const links = [
     {
+      title: "Crux Chords Ableton AI Chord Device",
+      description: "AI-powered chord generation for Ableton",
+      preview: previewCruxChords,
+      url: "https://ableton-ai-ensemble.lovable.app/chords",
+      external: true,
+    },
+    {
       title: "30 Day EDM Production Course",
       description: "Master electronic music production in 30 days",
       preview: previewEdmCourse,
@@ -48,13 +55,6 @@ const Index = () => {
       description: "Connect on Instagram for daily content",
       preview: previewInstagram,
       url: "https://www.instagram.com/_bohemyth_/?hl=en",
-      external: true,
-    },
-    {
-      title: "Crux Chords Ableton AI Chord Device",
-      description: "AI-powered chord generation for Ableton",
-      preview: previewCruxChords,
-      url: "https://www.promptmidi.online",
       external: true,
     },
   ];
