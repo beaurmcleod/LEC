@@ -65,6 +65,33 @@ export type Database = {
           },
         ]
       }
+      link_clicks: {
+        Row: {
+          clicked_at: string
+          created_at: string
+          id: string
+          link_title: string
+          link_url: string
+          user_id: string | null
+        }
+        Insert: {
+          clicked_at?: string
+          created_at?: string
+          id?: string
+          link_title: string
+          link_url: string
+          user_id?: string | null
+        }
+        Update: {
+          clicked_at?: string
+          created_at?: string
+          id?: string
+          link_title?: string
+          link_url?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       product_downloads: {
         Row: {
           created_at: string | null

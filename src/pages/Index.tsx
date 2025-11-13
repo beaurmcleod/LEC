@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 import previewEdmCourse from "@/assets/preview-edm-course.jpg";
 import previewCandyStore from "@/assets/preview-candy-store.jpg";
 import previewLesson from "@/assets/preview-lesson.jpg";
@@ -8,6 +9,19 @@ import previewInstagram from "@/assets/preview-instagram.jpg";
 import previewCruxChords from "@/assets/preview-crux-chords.png";
 
 const Index = () => {
+  const trackClick = async (linkTitle: string, linkUrl: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      await supabase.from('link_clicks').insert({
+        link_title: linkTitle,
+        link_url: linkUrl,
+        user_id: user?.id || null,
+      });
+    } catch (error) {
+      console.error('Error tracking click:', error);
+    }
+  };
+
   const links = [
     {
       title: "Crux Chords Ableton AI Chord Device",
@@ -125,6 +139,7 @@ const Index = () => {
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
+                  trackClick(link.title, link.url);
                   window.open(link.url, '_blank', 'noopener,noreferrer');
                 }}
               >
@@ -135,6 +150,7 @@ const Index = () => {
                 key={index}
                 to={link.url}
                 className={className}
+                onClick={() => trackClick(link.title, link.url)}
               >
                 {linkContent}
               </Link>
