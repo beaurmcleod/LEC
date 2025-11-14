@@ -18,6 +18,7 @@ import MyPurchases from "./pages/MyPurchases";
 import Links from "./pages/Links";
 import CandyClub from "./pages/CandyClub";
 import AdminDashboard from "./pages/AdminDashboard";
+import AdminSetup from "./pages/AdminSetup";
 
 const queryClient = new QueryClient();
 
@@ -41,6 +42,7 @@ const App = () => (
           <Route path="/payment-canceled" element={<PaymentCanceled />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/my-purchases" element={<MyPurchases />} />
+          <Route path="/admin/setup" element={<AdminSetup />} />
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
