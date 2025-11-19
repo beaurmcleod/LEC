@@ -9,6 +9,7 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 interface LinkClickData {
   link_title: string;
@@ -240,6 +241,42 @@ const AdminDashboard = () => {
             ) : (
               <p className="text-muted-foreground text-center py-8">No trend data available yet</p>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Daily Breakdown Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Daily Click Breakdown</CardTitle>
+            <CardDescription>Detailed view of clicks by day</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Clicks</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {clickTrends.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={2} className="text-center text-muted-foreground">
+                        No click data available
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    clickTrends.slice().reverse().map((day, index) => (
+                      <TableRow key={index}>
+                        <TableCell className="font-medium">{day.date}</TableCell>
+                        <TableCell className="text-right">{day.clicks}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       </main>
