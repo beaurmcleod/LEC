@@ -22,13 +22,27 @@ export const ProductGrid = () => {
     const fetchProducts = async () => {
       const { data, error } = await supabase
         .from('products')
-        .select('id, title, price, original_price, image, category, bpm, key, is_on_sale')
-        .order('created_at', { ascending: false });
+        .select('id, title, price, original_price, image, category, bpm, key, is_on_sale, created_at')
+        .order('created_at', { ascending: true });
 
       if (error) {
         console.error('Error fetching products:', error);
       } else if (data) {
-        setProducts(data);
+        // Sort: paid products first (by created_at), then free products
+        const sortedProducts = data.sort((a, b) => {
+          const aPrice = parseFloat(a.price);
+          const bPrice = parseFloat(b.price);
+          const aIsFree = isNaN(aPrice) || aPrice === 0;
+          const bIsFree = isNaN(bPrice) || bPrice === 0;
+          
+          // If one is free and other is paid, paid comes first
+          if (aIsFree && !bIsFree) return 1;
+          if (!aIsFree && bIsFree) return -1;
+          
+          // Both same type (both paid or both free), maintain created_at order
+          return 0;
+        });
+        setProducts(sortedProducts);
       }
       setLoading(false);
     };
