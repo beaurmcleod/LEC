@@ -39,24 +39,6 @@ export const Hero = () => {
           Sweet sounds that make your tracks pop 🍭
         </p>
 
-        <div className="flex flex-wrap gap-4 justify-center items-center">
-          <Link to="/racks">
-            <Button variant="gradient" size="lg" className="text-lg px-8 py-6">
-              <Download className="h-5 w-5 mr-2" />
-              Browse Ableton Racks
-            </Button>
-          </Link>
-          <Button variant="producer" size="lg" className="text-lg px-8 py-6">
-            <Headphones className="h-5 w-5 mr-2" />
-            Listen to Previews
-          </Button>
-          <Link to="/free">
-            <Button variant="outline" size="lg" className="text-lg px-8 py-6">
-              <Play className="h-5 w-5 mr-2" />
-              Free Downloads
-            </Button>
-          </Link>
-        </div>
 
         <div className="mt-12 flex justify-center items-center gap-8 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
