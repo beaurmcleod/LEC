@@ -9,7 +9,6 @@ const Shop = () => {
     <div className="min-h-screen bg-background">
       <Header />
       <Hero />
-      <Categories />
       <ProductGrid />
       <Footer />
     </div>
