@@ -15,13 +15,15 @@ export default function ProductDetail() {
     queryKey: ['product', slug],
     queryFn: async () => {
       if (!slug) return null;
-      const title = slugToTitle(slug);
+      
+      // Convert slug back to approximate title for search
+      const searchPattern = slug.replace(/-/g, '%');
       
       const { data, error } = await supabase
         .from('products')
         .select('*')
-        .ilike('title', title)
-        .single();
+        .ilike('title', `%${searchPattern}%`)
+        .maybeSingle();
       
       if (error) throw error;
       return data;
