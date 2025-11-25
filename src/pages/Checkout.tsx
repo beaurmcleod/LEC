@@ -163,29 +163,39 @@ const Checkout = () => {
     if (couponCode.toLowerCase() === "bohemythtest") {
       setCouponApplied(true);
       setOriginalPrice(price);
-      toast({
-        title: "Coupon Applied!",
-        description: "This product is now free!",
-      });
+      setLoading(true);
       
-      // Get free download
       try {
-        const { data: freeResp, error: freeErr } = await supabase.functions.invoke('get-free-download', {
-          body: { productId },
+        const { data: couponResp, error: couponErr } = await supabase.functions.invoke('redeem-coupon', {
+          body: { 
+            productId,
+            customerEmail,
+            couponCode: couponCode 
+          },
         });
 
-        if (freeErr) {
-          throw new Error(freeErr.message || 'Unable to get free download');
+        if (couponErr) {
+          throw new Error(couponErr.message || 'Unable to redeem coupon');
         }
 
-        if (!freeResp?.downloadUrl) {
+        if (!couponResp?.downloadUrl) {
           throw new Error('No download URL received');
         }
 
-        setFreeData({ downloadUrl: freeResp.downloadUrl, productTitle: freeResp.productTitle || productTitle });
+        toast({
+          title: "Coupon Applied!",
+          description: "This product is now free!",
+        });
+
+        setFreeData({ 
+          downloadUrl: couponResp.downloadUrl, 
+          productTitle: couponResp.productTitle || productTitle 
+        });
         setClientSecret("");
         setLoading(false);
       } catch (err: any) {
+        setLoading(false);
+        setCouponApplied(false);
         toast({
           title: "Error",
           description: err.message || "Failed to apply coupon",
