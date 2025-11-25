@@ -31,7 +31,7 @@ serve(async (req) => {
     const emailSchema = z.object({
       to: z.string().email().max(255),
       productTitle: z.string().min(1).max(500),
-      amount: z.number().positive(),
+      amount: z.number().nonnegative(), // Allow 0 for free/coupon purchases
       paymentIntentId: z.string().min(1),
       productId: z.string().uuid(),
       downloadToken: z.string().min(32).max(255)
