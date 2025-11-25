@@ -29,8 +29,7 @@ export const ProductCard = ({
   const navigate = useNavigate();
 
   const handleCardClick = () => {
-    const productUrl = `/product?id=${encodeURIComponent(id)}&title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&image=${encodeURIComponent(image)}&category=${encodeURIComponent(category)}${bpm ? `&bpm=${encodeURIComponent(bpm)}` : ''}${musicalKey ? `&key=${encodeURIComponent(musicalKey)}` : ''}`;
-    navigate(productUrl);
+    navigate(`/product/${id}`);
   };
 
   const handlePurchase = (e: React.MouseEvent) => {
