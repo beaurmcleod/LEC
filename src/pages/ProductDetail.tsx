@@ -5,24 +5,28 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { slugToTitle } from "@/lib/utils";
 
 export default function ProductDetail() {
-  const { id } = useParams();
+  const { id: slug } = useParams();
   const navigate = useNavigate();
 
   const { data: product, isLoading } = useQuery({
-    queryKey: ['product', id],
+    queryKey: ['product', slug],
     queryFn: async () => {
+      if (!slug) return null;
+      const title = slugToTitle(slug);
+      
       const { data, error } = await supabase
         .from('products')
         .select('*')
-        .eq('id', id)
+        .ilike('title', title)
         .single();
       
       if (error) throw error;
       return data;
     },
-    enabled: !!id,
+    enabled: !!slug,
   });
 
   if (isLoading) {

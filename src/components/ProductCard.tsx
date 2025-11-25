@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Play, Download, ShoppingCart } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { titleToSlug } from "@/lib/utils";
 
 interface ProductCardProps {
   id: string;
@@ -29,7 +30,7 @@ export const ProductCard = ({
   const navigate = useNavigate();
 
   const handleCardClick = () => {
-    navigate(`/product/${id}`);
+    navigate(`/product/${titleToSlug(title)}`);
   };
 
   const handlePurchase = (e: React.MouseEvent) => {
