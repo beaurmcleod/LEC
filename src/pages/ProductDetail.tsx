@@ -1,18 +1,55 @@
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ShoppingCart, ArrowLeft, Download } from "lucide-react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+
 export default function ProductDetail() {
-  const [searchParams] = useSearchParams();
+  const { id } = useParams();
   const navigate = useNavigate();
-  const id = searchParams.get("id") || "";
-  const title = searchParams.get("title") || "";
-  const price = searchParams.get("price") || "";
-  const image = searchParams.get("image") || "";
-  const category = searchParams.get("category") || "";
-  const bpm = searchParams.get("bpm");
-  const key = searchParams.get("key");
+
+  const { data: product, isLoading } = useQuery({
+    queryKey: ['product', id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!id,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <Header />
+        <main className="flex-1 container mx-auto px-4 py-8">
+          <p>Loading...</p>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (!product) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <Header />
+        <main className="flex-1 container mx-auto px-4 py-8">
+          <p>Product not found</p>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  const { title, price, image, category, bpm, key } = product;
 
   // Product descriptions (you can move this to a separate data file later)
   const getProductDescription = (productTitle: string) => {
@@ -65,7 +102,7 @@ export default function ProductDetail() {
   };
   const description = getProductDescription(title);
   const handlePurchase = () => {
-    navigate(`/checkout?title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&id=${encodeURIComponent(id)}`);
+    navigate(`/checkout?title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&id=${encodeURIComponent(product.id)}`);
   };
   return <div className="min-h-screen bg-background flex flex-col">
       <Header />
