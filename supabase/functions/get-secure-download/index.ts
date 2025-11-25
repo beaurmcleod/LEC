@@ -156,14 +156,14 @@ serve(async (req) => {
       downloads_remaining: downloadToken.max_downloads - downloadToken.download_count - 1 
     });
 
-    return new Response(
-      JSON.stringify({ 
-        downloadUrl: finalDownloadUrl,
-        productTitle: product?.title || 'Digital Product',
-        downloadsRemaining: downloadToken.max_downloads - downloadToken.download_count - 1
-      }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    // Redirect to the download URL instead of returning JSON
+    return new Response(null, {
+      status: 302,
+      headers: {
+        ...corsHeaders,
+        'Location': finalDownloadUrl
+      }
+    });
 
   } catch (error) {
     console.error('Error in get-secure-download:', error);
