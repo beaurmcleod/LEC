@@ -63,6 +63,7 @@ export default function ProductDetail() {
       short: string;
       full: string;
       features: string[];
+      videoUrl?: string;
     }> = {
       "27 OTT Rack": {
         short: "27 OTTs for crazy glitch and bass sound design",
@@ -98,6 +99,12 @@ export default function ProductDetail() {
         short: "Advanced Serum wavetable control rack for Ableton Live",
         full: "This powerful Ableton rack gives you intuitive control over Serum's wavetable parameters including timbre, speed, hyper, warp, and wavetable position controls. Perfect for creating evolving textures and dynamic sound design!",
         features: ["6 macro controls", "Timbre & Speed control", "Warp parameters", "Wavetable position control", "Ableton Live rack format"]
+      },
+      "Key & BPM Finder": {
+        short: "Your new cheat code for working fast and staying perfectly in tune",
+        full: "Key & BPM Detector is your new cheat code for working fast and staying perfectly in tune. Just drop in any track, loop, acapella, or sample and it instantly reads the exact key, BPM, and relative key, so you always know exactly where your music lives harmonically and rhythmically. No more guessing notes, tapping tempos, or wasting time cycling through scales – you get clean, reliable data in seconds that you can trust when you're remixing, layering basslines, building transitions, or prepping DJ edits. Whether you're a producer organizing huge sample libraries or a DJ sorting playlists, Key & BPM Detector keeps everything labeled, locked in, and ready to use, so you can spend less time analyzing and more time actually creating.",
+        features: ["Instant key detection", "Accurate BPM analysis", "Relative key finder", "Works with any audio file", "Perfect for DJs & producers"],
+        videoUrl: "https://www.youtube.com/embed/SOjierLwIew"
       }
     };
     return descriptions[productTitle] || {
@@ -167,6 +174,22 @@ export default function ProductDetail() {
                   {description.full}
                 </p>
               </div>
+
+              {description.videoUrl && (
+                <div className="mb-8">
+                  <div className="aspect-video rounded-lg overflow-hidden border border-border">
+                    <iframe
+                      width="100%"
+                      height="100%"
+                      src={description.videoUrl}
+                      title="Product demonstration"
+                      frameBorder="0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    ></iframe>
+                  </div>
+                </div>
+              )}
             </div>
             
             <div className="flex gap-3">
