@@ -1,8 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Play, Download, ShoppingCart } from "lucide-react";
+import { Play, ShoppingCart } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { titleToSlug } from "@/lib/utils";
+import { useCartStore } from "@/lib/cartStore";
+import { toast } from "@/hooks/use-toast";
 
 interface ProductCardProps {
   id: string;
@@ -28,9 +30,21 @@ export const ProductCard = ({
   isOnSale 
 }: ProductCardProps) => {
   const navigate = useNavigate();
+  const addItem = useCartStore((state) => state.addItem);
 
   const handleCardClick = () => {
     navigate(`/product/${titleToSlug(title)}`);
+  };
+
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    addItem({ id, title, price, image });
+    toast({
+      title: "Added to cart",
+      description: `${title} has been added to your cart`,
+    });
   };
 
   const handlePurchase = (e: React.MouseEvent) => {
@@ -103,11 +117,11 @@ export const ProductCard = ({
           </div>
 
           <div className="flex gap-2">
-            <Button variant="outline" size="sm">
-              <Download className="h-4 w-4" />
+            <Button variant="outline" size="sm" onClick={handleAddToCart}>
+              <ShoppingCart className="h-4 w-4" />
             </Button>
             <Button variant="default" size="sm" onClick={handlePurchase}>
-              <ShoppingCart className="h-4 w-4" />
+              Buy Now
             </Button>
           </div>
         </div>
