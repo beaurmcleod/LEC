@@ -8,48 +8,52 @@ Bright, energetic colors inspired by the colorful lollipop logo
 
 @layer base {
   :root {
-    --background: 0 0% 4%;
-    --foreground: 60 100% 95%;
+    /* Dark candy shop vibes - rich purples, pinks, and neon accents */
+    --background: 280 40% 8%;
+    --foreground: 40 100% 98%;
 
-    --card: 0 0% 8%;
-    --card-foreground: 60 100% 95%;
+    --card: 280 35% 12%;
+    --card-foreground: 40 100% 98%;
 
-    --popover: 0 0% 8%;
-    --popover-foreground: 60 100% 95%;
+    --popover: 280 35% 12%;
+    --popover-foreground: 40 100% 98%;
 
-    --primary: 55 100% 60%;
-    --primary-foreground: 0 0% 4%;
+    /* Bright candy yellow - main brand color */
+    --primary: 48 100% 60%;
+    --primary-foreground: 280 40% 8%;
 
-    --secondary: 315 65% 60%;
-    --secondary-foreground: 0 0% 95%;
+    /* Hot pink candy accent */
+    --secondary: 330 85% 60%;
+    --secondary-foreground: 280 40% 8%;
 
-    --muted: 0 0% 12%;
-    --muted-foreground: 60 10% 70%;
+    --muted: 280 30% 18%;
+    --muted-foreground: 40 15% 70%;
 
-    --accent: 195 85% 55%;
-    --accent-foreground: 0 0% 4%;
+    /* Electric cyan accent */
+    --accent: 190 95% 55%;
+    --accent-foreground: 280 40% 8%;
 
-    --destructive: 0 75% 55%;
-    --destructive-foreground: 0 0% 95%;
+    --destructive: 0 85% 60%;
+    --destructive-foreground: 40 100% 98%;
 
-    --border: 0 0% 15%;
-    --input: 0 0% 12%;
-    --ring: 55 100% 60%;
+    --border: 280 30% 20%;
+    --input: 280 30% 15%;
+    --ring: 48 100% 60%;
 
     --radius: 1rem;
 
-    /* Custom gradients and effects for music producer vibes */
-    --gradient-primary: linear-gradient(135deg, hsl(55 100% 60%), hsl(315 65% 60%));
-    --gradient-accent: linear-gradient(135deg, hsl(195 85% 55%), hsl(270 75% 60%));
-    --gradient-hero: linear-gradient(135deg, hsl(55 100% 60%) 0%, hsl(315 65% 60%) 50%, hsl(195 85% 55%) 100%);
-    --glow-primary: 0 0 30px hsl(55 100% 60% / 0.5);
-    --glow-accent: 0 0 20px hsl(195 85% 55% / 0.4);
+    /* Candy-inspired gradients with vibrant colors */
+    --gradient-primary: linear-gradient(135deg, hsl(48 100% 60%), hsl(330 85% 60%));
+    --gradient-accent: linear-gradient(135deg, hsl(190 95% 55%), hsl(280 85% 65%));
+    --gradient-hero: linear-gradient(135deg, hsl(48 100% 60%) 0%, hsl(330 85% 60%) 50%, hsl(190 95% 55%) 100%);
+    --glow-primary: 0 0 40px hsl(48 100% 60% / 0.6);
+    --glow-accent: 0 0 30px hsl(330 85% 60% / 0.5);
     
-    /* Studio/Producer specific colors */
-    --studio-warm: 35 85% 65%;
-    --studio-cool: 200 75% 55%;
-    --beats-purple: 270 75% 60%;
-    --samples-orange: 25 90% 65%;
+    /* Candy flavors - additional accent colors */
+    --studio-warm: 35 95% 65%;
+    --studio-cool: 200 85% 60%;
+    --beats-purple: 280 85% 65%;
+    --samples-orange: 25 100% 65%;
 
     --sidebar-background: 0 0% 98%;
 
@@ -69,39 +73,40 @@ Bright, energetic colors inspired by the colorful lollipop logo
   }
 
   .light {
-    --background: 60 100% 98%;
-    --foreground: 0 0% 10%;
+    /* Light candy shop - bright and sweet */
+    --background: 40 100% 98%;
+    --foreground: 280 40% 12%;
 
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 10%;
+    --card-foreground: 280 40% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 10%;
+    --popover-foreground: 280 40% 12%;
 
-    --primary: 55 100% 50%;
-    --primary-foreground: 0 0% 10%;
+    --primary: 48 100% 50%;
+    --primary-foreground: 280 40% 12%;
 
-    --secondary: 315 65% 50%;
-    --secondary-foreground: 0 0% 95%;
+    --secondary: 330 85% 55%;
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 60 20% 95%;
-    --muted-foreground: 0 0% 40%;
+    --muted: 40 30% 95%;
+    --muted-foreground: 280 20% 40%;
 
-    --accent: 195 85% 45%;
-    --accent-foreground: 0 0% 95%;
+    --accent: 190 95% 45%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 75% 45%;
-    --destructive-foreground: 0 0% 95%;
+    --destructive: 0 85% 50%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 60 20% 90%;
-    --input: 60 20% 95%;
-    --ring: 55 100% 50%;
+    --border: 40 30% 88%;
+    --input: 40 30% 92%;
+    --ring: 48 100% 50%;
 
-    --gradient-primary: linear-gradient(135deg, hsl(55 100% 50%), hsl(315 65% 50%));
-    --gradient-accent: linear-gradient(135deg, hsl(195 85% 45%), hsl(270 75% 50%));
-    --gradient-hero: linear-gradient(135deg, hsl(55 100% 50%) 0%, hsl(315 65% 50%) 50%, hsl(195 85% 45%) 100%);
-    --glow-primary: 0 0 20px hsl(55 100% 50% / 0.3);
-    --glow-accent: 0 0 15px hsl(195 85% 45% / 0.3);
+    --gradient-primary: linear-gradient(135deg, hsl(48 100% 50%), hsl(330 85% 55%));
+    --gradient-accent: linear-gradient(135deg, hsl(190 95% 45%), hsl(280 85% 60%));
+    --gradient-hero: linear-gradient(135deg, hsl(48 100% 50%) 0%, hsl(330 85% 55%) 50%, hsl(190 95% 45%) 100%);
+    --glow-primary: 0 0 25px hsl(48 100% 50% / 0.4);
+    --glow-accent: 0 0 20px hsl(330 85% 55% / 0.4);
   }
 }
 
