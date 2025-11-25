@@ -53,9 +53,9 @@ serve(async (req) => {
 
     console.log("Sending purchase email to:", to);
 
-    // Build secure download URL with token
+    // Build secure download URL with token - use the full Supabase URL directly
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const downloadUrl = `${supabaseUrl.replace('.supabase.co', '')}.supabase.co/functions/v1/get-secure-download?token=${downloadToken}`;
+    const downloadUrl = `${supabaseUrl}/functions/v1/get-secure-download?token=${downloadToken}`;
 
     const emailHtml = `
       <!DOCTYPE html>

@@ -18,22 +18,30 @@ serve(async (req) => {
   }
 
   try {
-    const body = await req.json();
+    // Get token from query parameter
+    const url = new URL(req.url);
+    const token = url.searchParams.get('token');
     
-    // Validate and parse input with zod
-    const validation = requestSchema.safeParse(body);
+    if (!token) {
+      return new Response(
+        JSON.stringify({ error: 'Missing token parameter' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // Validate token format
+    const validation = requestSchema.safeParse({ token });
     if (!validation.success) {
       console.error('Validation error:', validation.error.errors);
       return new Response(
         JSON.stringify({ 
-          error: 'Invalid input',
+          error: 'Invalid token format',
           details: validation.error.errors.map(e => e.message).join(', ')
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const { token } = validation.data;
     console.log('Secure download request with token');
 
     // Initialize Supabase client
