@@ -106,7 +106,17 @@ export default function ProductDetail() {
               </p>
               
               <div className="flex items-baseline gap-4 mb-4">
-                <span className="text-4xl font-bold text-primary">{price}</span>
+                {title === "Key & BPM Finder" ? (
+                  <>
+                    <span className="text-4xl font-bold text-primary">${price}</span>
+                    <span className="text-2xl text-muted-foreground line-through">$19.99</span>
+                    <span className="bg-destructive text-destructive-foreground text-sm px-2 py-1 rounded-md font-semibold">
+                      BLACK FRIDAY
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-4xl font-bold text-primary">{price}</span>
+                )}
               </div>
               
               <div className="mb-8">
