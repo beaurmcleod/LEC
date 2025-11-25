@@ -102,7 +102,7 @@ export default function ProductDetail() {
       },
       "Key & BPM Finder": {
         short: "Your new cheat code for working fast and staying perfectly in tune",
-        full: "Key & BPM Detector is your new cheat code for working fast and staying perfectly in tune. Just drop in any track, loop, acapella, or sample and it instantly reads the exact key, BPM, and relative key, so you always know exactly where your music lives harmonically and rhythmically. No more guessing notes, tapping tempos, or wasting time cycling through scales – you get clean, reliable data in seconds that you can trust when you're remixing, layering basslines, building transitions, or prepping DJ edits. Whether you're a producer organizing huge sample libraries or a DJ sorting playlists, Key & BPM Detector keeps everything labeled, locked in, and ready to use, so you can spend less time analyzing and more time actually creating.",
+        full: "Key & BPM Detector is your new cheat code for working fast and staying perfectly in tune. Just drop in any track, loop, acapella, or sample and it instantly reads the exact key, BPM, and relative key. No more guessing notes or tapping tempos – you get clean, reliable data in seconds when you're remixing, layering basslines, or prepping DJ edits. Perfect for producers organizing sample libraries or DJs sorting playlists.",
         features: ["Instant key detection", "Accurate BPM analysis", "Relative key finder", "Works with any audio file", "Perfect for DJs & producers"],
         videoUrl: "https://www.youtube.com/embed/SOjierLwIew"
       }
