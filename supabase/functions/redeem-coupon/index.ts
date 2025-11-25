@@ -109,23 +109,53 @@ serve(async (req) => {
     }
 
     // Get download info
-    const { data: productDownload } = await supabase
+    const { data: productDownload, error: downloadError } = await supabase
       .from('product_downloads')
       .select('download_path, download_url')
       .eq('product_id', productId)
       .single();
 
-    let downloadUrl = productDownload?.download_url || '';
+    if (downloadError) {
+      console.error('Download info error:', downloadError);
+    }
+
+    console.log('Product download info:', productDownload);
+
+    let downloadUrl = '';
 
     // Generate signed URL if using storage
     if (productDownload?.download_path) {
-      const { data: signedUrlData } = await supabase.storage
+      const { data: signedUrlData, error: storageError } = await supabase.storage
         .from('product-downloads')
-        .createSignedUrl(productDownload.download_path, 3600);
+        .createSignedUrl(productDownload.download_path, 86400); // 24 hours
+
+      console.log('Signed URL result:', { signedUrlData, storageError });
 
       if (signedUrlData?.signedUrl) {
         downloadUrl = signedUrlData.signedUrl;
       }
+    } else if (productDownload?.download_url) {
+      downloadUrl = productDownload.download_url;
+    }
+
+    console.log('Final download URL:', downloadUrl);
+
+    // Send purchase email
+    try {
+      await supabase.functions.invoke('send-purchase-email', {
+        body: {
+          to: customerEmail,
+          productTitle: product.title,
+          amount: 0,
+          paymentIntentId: `coupon_${couponCode}_${Date.now()}`,
+          productId,
+          downloadToken: token,
+        },
+      });
+      console.log('Purchase email sent to:', customerEmail);
+    } catch (emailError) {
+      console.error('Failed to send email:', emailError);
+      // Don't fail the entire request if email fails
     }
 
     console.log('Coupon redeemed successfully:', { productId, customerEmail, couponCode });
