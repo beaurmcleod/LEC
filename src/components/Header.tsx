@@ -4,6 +4,7 @@ import { ShoppingCart, Search, Menu, User, LogOut, Package } from "lucide-react"
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useCartStore } from "@/lib/cartStore";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,6 +16,7 @@ import {
 export const Header = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
+  const itemCount = useCartStore((state) => state.getItemCount());
 
   useEffect(() => {
     // Get initial session
@@ -96,8 +98,13 @@ export const Header = () => {
             </Button>
           )}
 
-          <Button variant="ghost" size="icon" className="relative" onClick={() => navigate('/shop')}>
+          <Button variant="ghost" size="icon" className="relative" onClick={() => navigate('/cart')}>
             <ShoppingCart className="h-4 w-4" />
+            {itemCount > 0 && (
+              <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center">
+                {itemCount}
+              </span>
+            )}
           </Button>
           <Button variant="ghost" size="icon" className="md:hidden">
             <Menu className="h-4 w-4" />
