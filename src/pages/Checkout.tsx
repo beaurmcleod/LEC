@@ -4,7 +4,8 @@ import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ArrowLeft, CreditCard } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ArrowLeft, CreditCard, Tag } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
@@ -149,11 +150,56 @@ const Checkout = () => {
   const [loading, setLoading] = useState(true);
   const [freeData, setFreeData] = useState<{ downloadUrl: string; productTitle: string } | null>(null);
   const [error, setError] = useState<string>("");
+  const [couponCode, setCouponCode] = useState<string>("");
+  const [couponApplied, setCouponApplied] = useState(false);
+  const [originalPrice, setOriginalPrice] = useState<string>("");
   
   const productTitle = searchParams.get("title") || "";
   const price = searchParams.get("price") || "";
   const productId = searchParams.get("id") || "";
   const customerEmail = searchParams.get("email") || "";
+  
+  const applyCoupon = async () => {
+    if (couponCode.toLowerCase() === "bohemythtest") {
+      setCouponApplied(true);
+      setOriginalPrice(price);
+      toast({
+        title: "Coupon Applied!",
+        description: "This product is now free!",
+      });
+      
+      // Get free download
+      try {
+        const { data: freeResp, error: freeErr } = await supabase.functions.invoke('get-free-download', {
+          body: { productId },
+        });
+
+        if (freeErr) {
+          throw new Error(freeErr.message || 'Unable to get free download');
+        }
+
+        if (!freeResp?.downloadUrl) {
+          throw new Error('No download URL received');
+        }
+
+        setFreeData({ downloadUrl: freeResp.downloadUrl, productTitle: freeResp.productTitle || productTitle });
+        setClientSecret("");
+        setLoading(false);
+      } catch (err: any) {
+        toast({
+          title: "Error",
+          description: err.message || "Failed to apply coupon",
+          variant: "destructive",
+        });
+      }
+    } else {
+      toast({
+        title: "Invalid Coupon",
+        description: "The coupon code you entered is not valid.",
+        variant: "destructive",
+      });
+    }
+  };
   
   console.log("Checkout params:", { productTitle, price, productId, customerEmail });
   
@@ -317,6 +363,13 @@ const Checkout = () => {
             </div>
           ) : freeData ? (
             <div className="space-y-4">
+              {couponApplied && (
+                <div className="bg-green-100 dark:bg-green-900/20 border border-green-500 p-3 rounded-lg text-center">
+                  <p className="text-green-700 dark:text-green-300 font-semibold">
+                    Coupon Applied! Original price: {originalPrice} → Now: FREE
+                  </p>
+                </div>
+              )}
               <h3 className="font-semibold">{freeData.productTitle}</h3>
               <p className="text-muted-foreground">This item is free. Click below to download instantly.</p>
               <Button size="lg" className="w-full" onClick={() => (window.location.href = freeData.downloadUrl)}>
@@ -324,15 +377,36 @@ const Checkout = () => {
               </Button>
             </div>
           ) : clientSecret ? (
-            <Elements options={options} stripe={stripePromise}>
-              <CheckoutForm 
-                clientSecret={clientSecret}
-                productTitle={productTitle}
-                price={price}
-                productId={productId}
-                customerEmail={customerEmail}
-              />
-            </Elements>
+            <>
+              {!couponApplied && (
+                <div className="mb-6 space-y-3">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <Tag className="h-4 w-4" />
+                    Have a Coupon Code?
+                  </h3>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Enter coupon code"
+                      value={couponCode}
+                      onChange={(e) => setCouponCode(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && applyCoupon()}
+                    />
+                    <Button onClick={applyCoupon} variant="outline">
+                      Apply
+                    </Button>
+                  </div>
+                </div>
+              )}
+              <Elements options={options} stripe={stripePromise}>
+                <CheckoutForm 
+                  clientSecret={clientSecret}
+                  productTitle={productTitle}
+                  price={price}
+                  productId={productId}
+                  customerEmail={customerEmail}
+                />
+              </Elements>
+            </>
           ) : (
             <div className="text-center text-muted-foreground">
               <p>Setting up payment form...</p>
