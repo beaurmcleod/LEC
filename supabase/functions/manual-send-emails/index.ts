@@ -18,11 +18,9 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get the three paid customers and their tokens
+    // Send to specific customer
     const customers = [
-      { email: "daniel.r.j.salazar@gmail.com", token: "bccba0e2-3593-4eb9-8a3e-bf10b54dff4f-mif990l2" },
-      { email: "brandonbvrke@gmail.com", token: "72f3b974-a9b8-4aa7-a8d2-8043869f32ac-mif3blce" },
-      { email: "cantadora12345@gmail.com", token: "f67f4970-f8a7-492d-87d6-b5948e628d61-mieudba7" }
+      { email: "beaurmcleod@gmail.com", token: "2792a5e4-a17c-4ca1-9b12-1873b01c4aab" }
     ];
 
     const results = [];
