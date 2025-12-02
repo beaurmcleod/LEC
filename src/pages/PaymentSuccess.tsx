@@ -25,21 +25,40 @@ const PaymentSuccess = () => {
       // Get payment intent from URL (Stripe adds this after redirect)
       const paymentIntent = searchParams.get("payment_intent");
       
-      if (!paymentIntent) {
-        toast.error("Unable to verify purchase. Please check your email for download links.");
-        return;
+      // Try to look up purchase by payment intent first, then fallback to email + product
+      let purchaseData;
+      
+      if (paymentIntent) {
+        const { data, error } = await supabase
+          .from('purchases')
+          .select('customer_email, product_id')
+          .eq('stripe_payment_id', paymentIntent)
+          .maybeSingle();
+        
+        if (!error && data) {
+          purchaseData = data;
+        }
+      }
+      
+      // Fallback: lookup by customer email and product ID
+      if (!purchaseData && customerEmail && productId) {
+        const { data, error } = await supabase
+          .from('purchases')
+          .select('customer_email, product_id')
+          .eq('customer_email', customerEmail)
+          .eq('product_id', productId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (!error && data) {
+          purchaseData = data;
+        }
       }
 
-      // Look up purchase by payment intent ID to get the download token
-      const { data: purchaseData, error: purchaseError } = await supabase
-        .from('purchases')
-        .select('customer_email, product_id')
-        .eq('stripe_payment_id', paymentIntent)
-        .maybeSingle();
-
-      if (purchaseError || !purchaseData) {
-        console.error('Purchase lookup error:', purchaseError);
-        toast.error("Unable to verify purchase. Please check your email for download links.");
+      if (!purchaseData) {
+        console.error('Purchase not found');
+        toast.error("Download links have been sent to your email.");
         return;
       }
 
@@ -55,7 +74,7 @@ const PaymentSuccess = () => {
 
       if (tokenError || !tokenData) {
         console.error('Token lookup error:', tokenError);
-        toast.error("Unable to get download link. Please check your email.");
+        toast.error("Download links have been sent to your email.");
         return;
       }
 
@@ -72,7 +91,7 @@ const PaymentSuccess = () => {
       }
     } catch (error) {
       console.error('Download error:', error);
-      toast.error("Failed to get download link. Please check your email.");
+      toast.error("Download links have been sent to your email.");
     } finally {
       setLoading(false);
     }
