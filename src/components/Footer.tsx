@@ -21,6 +21,13 @@ export const Footer = () => {
             <p className="text-muted-foreground mb-4">
               Premium digital products for music producers and Ableton Live users.
             </p>
+            <a 
+              href="mailto:beau@lowendcandy.com" 
+              className="text-primary hover:text-primary/80 transition-colors flex items-center gap-2 mb-4 text-sm font-medium"
+            >
+              <Mail className="h-4 w-4" />
+              beau@lowendcandy.com
+            </a>
             <div className="flex gap-2">
               <Button variant="ghost" size="icon">
                 <Instagram className="h-4 w-4" />
@@ -51,7 +58,7 @@ export const Footer = () => {
             <h4 className="font-semibold mb-4">Support</h4>
             <ul className="space-y-2 text-muted-foreground">
               <li><a href="#" className="hover:text-primary transition-colors">Help Center</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Contact Us</a></li>
+              <li><a href="mailto:beau@lowendcandy.com" className="hover:text-primary transition-colors">Contact Us</a></li>
               <li><a href="#" className="hover:text-primary transition-colors">License Agreement</a></li>
               <li><a href="#" className="hover:text-primary transition-colors">Downloads</a></li>
               <li><a href="#" className="hover:text-primary transition-colors">Terms of Service</a></li>
