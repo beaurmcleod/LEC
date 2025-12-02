@@ -123,9 +123,17 @@ const PaymentSuccess = () => {
           </Button>
         </div>
 
-        <p className="text-xs text-muted-foreground mt-6">
-          Download links will also be sent to your email address.
-        </p>
+        <div className="mt-6 pt-6 border-t border-border">
+          <p className="text-xs text-muted-foreground mb-2">
+            Download links will also be sent to your email address.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Having issues with your purchase? Contact us at{' '}
+            <a href="mailto:beau@lowendcandy.com" className="text-primary hover:text-primary/80 font-medium">
+              beau@lowendcandy.com
+            </a>
+          </p>
+        </div>
       </Card>
     </div>
   );
