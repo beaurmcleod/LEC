@@ -134,13 +134,13 @@ serve(async (req) => {
               Please save this email for future reference.
             </p>
 
-            <p>If you have any questions or need support, please don't hesitate to reach out.</p>
+            <p>If you have any questions or need support, please contact us at <a href="mailto:beau@lowendcandy.com" style="color: #667eea; text-decoration: none;">beau@lowendcandy.com</a></p>
 
             <p>Happy creating!</p>
           </div>
           <div class="footer">
             <p>This email was sent because you made a purchase on our store.</p>
-            <p>If you didn't make this purchase, please contact us immediately.</p>
+            <p>If you didn't make this purchase, please contact us immediately at <a href="mailto:beau@lowendcandy.com" style="color: #667eea;">beau@lowendcandy.com</a></p>
           </div>
         </body>
       </html>
