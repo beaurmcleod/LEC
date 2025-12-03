@@ -127,9 +127,16 @@ serve(async (req) => {
     }
 
     // Generate signed URL if download_path exists (private bucket)
-    let finalDownloadUrl = productDownload.download_url;
+    let finalDownloadUrl = productDownload.download_url || '';
+    
+    console.log('Product download info:', { 
+      download_path: productDownload.download_path, 
+      download_url: productDownload.download_url 
+    });
     
     if (productDownload.download_path) {
+      console.log('Attempting to create signed URL for path:', productDownload.download_path);
+      
       const { data: signedUrlData, error: signedUrlError } = await supabase
         .storage
         .from('product-downloads')
@@ -137,11 +144,22 @@ serve(async (req) => {
 
       if (signedUrlError) {
         console.error('Error generating signed URL:', signedUrlError);
-        // Fallback to download_url if signed URL generation fails
+        return new Response(
+          JSON.stringify({ error: 'Failed to generate download link. Please contact support.' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       } else if (signedUrlData?.signedUrl) {
         finalDownloadUrl = signedUrlData.signedUrl;
-        console.log('Generated signed URL with 1-hour expiry');
+        console.log('Generated signed URL successfully');
       }
+    }
+    
+    if (!finalDownloadUrl) {
+      console.error('No download URL available');
+      return new Response(
+        JSON.stringify({ error: 'Download not configured. Please contact support.' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Get product title for response
