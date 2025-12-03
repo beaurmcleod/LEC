@@ -58,7 +58,8 @@ serve(async (req) => {
     // Input validation with zod
     const paymentSchema = z.object({
       productId: z.string().min(1, { message: "Product ID is required" }),
-      customerEmail: z.string().email().max(255).optional()
+      customerEmail: z.string().email().max(255).optional(),
+      couponCode: z.string().optional()
     });
 
     const validation = paymentSchema.safeParse(body);
@@ -73,7 +74,7 @@ serve(async (req) => {
       );
     }
 
-    const { productId, customerEmail } = validation.data;
+    const { productId, customerEmail, couponCode } = validation.data;
 
     // SECURITY: Fetch actual price from database instead of trusting client
     // Support both UUID and title/slug lookup
@@ -106,9 +107,17 @@ serve(async (req) => {
     });
 
     // Convert database price to cents
-    const priceInCents = Math.round(parseFloat(product.price.replace('$', '')) * 100);
+    let priceInCents = Math.round(parseFloat(product.price.replace('$', '')) * 100);
+    let discountApplied = false;
 
-    console.log('Creating payment intent for product:', product.title, 'amount:', priceInCents);
+    // Validate and apply coupon code
+    if (couponCode && couponCode.toUpperCase() === 'LOWENDCANDYFAMILY') {
+      priceInCents = Math.round(priceInCents * 0.75); // 25% off
+      discountApplied = true;
+      console.log('Coupon LOWENDCANDYFAMILY applied, 25% discount');
+    }
+
+    console.log('Creating payment intent for product:', product.title, 'amount:', priceInCents, 'discountApplied:', discountApplied);
     
     // Create a payment intent for embedded checkout
     const paymentIntent = await stripe.paymentIntents.create({
@@ -119,6 +128,8 @@ serve(async (req) => {
       metadata: {
         product_id: product.id, // Always use the actual UUID from database
         product_title: product.title,
+        coupon_code: discountApplied ? 'LOWENDCANDYFAMILY' : '',
+        discount_applied: discountApplied ? '25%' : '',
       },
     });
 
