@@ -15,59 +15,19 @@ const PaymentSuccess = () => {
   const [loading, setLoading] = useState(false);
 
   const handleDownload = async () => {
-    if (!productId) {
-      toast.error("Missing product information");
+    if (!productId || !customerEmail) {
+      toast.error("Download links have been sent to your email.");
       return;
     }
 
     setLoading(true);
     try {
-      // Get payment intent from URL (Stripe adds this after redirect)
-      const paymentIntent = searchParams.get("payment_intent");
-      
-      // Try to look up purchase by payment intent first, then fallback to email + product
-      let purchaseData;
-      
-      if (paymentIntent) {
-        const { data, error } = await supabase
-          .from('purchases')
-          .select('customer_email, product_id')
-          .eq('stripe_payment_id', paymentIntent)
-          .maybeSingle();
-        
-        if (!error && data) {
-          purchaseData = data;
-        }
-      }
-      
-      // Fallback: lookup by customer email and product ID
-      if (!purchaseData && customerEmail && productId) {
-        const { data, error } = await supabase
-          .from('purchases')
-          .select('customer_email, product_id')
-          .eq('customer_email', customerEmail)
-          .eq('product_id', productId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        
-        if (!error && data) {
-          purchaseData = data;
-        }
-      }
-
-      if (!purchaseData) {
-        console.error('Purchase not found');
-        toast.error("Download links have been sent to your email.");
-        return;
-      }
-
-      // Get download token for this purchase
+      // Query download_tokens directly by customer_email and product_id
       const { data: tokenData, error: tokenError } = await supabase
         .from('download_tokens')
         .select('token')
-        .eq('product_id', purchaseData.product_id)
-        .eq('customer_email', purchaseData.customer_email)
+        .eq('product_id', productId)
+        .eq('customer_email', customerEmail)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
