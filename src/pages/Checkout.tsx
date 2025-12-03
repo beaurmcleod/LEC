@@ -16,9 +16,12 @@ interface CheckoutFormProps {
   price: string;
   productId: string;
   customerEmail: string;
+  originalPrice?: string;
+  discountApplied?: boolean;
+  finalAmount?: number;
 }
 
-const CheckoutForm = ({ clientSecret, productTitle, price, productId, customerEmail }: CheckoutFormProps) => {
+const CheckoutForm = ({ clientSecret, productTitle, price, productId, customerEmail, originalPrice, discountApplied, finalAmount }: CheckoutFormProps) => {
   const stripe = useStripe();
   const elements = useElements();
   const navigate = useNavigate();
@@ -90,14 +93,28 @@ const CheckoutForm = ({ clientSecret, productTitle, price, productId, customerEm
     setIsLoading(false);
   };
 
+  const displayPrice = finalAmount ? `$${(finalAmount / 100).toFixed(2)}` : price;
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="bg-muted/50 p-4 rounded-lg">
         <h3 className="font-semibold mb-2">Order Summary</h3>
         <div className="flex justify-between items-center">
           <span>{productTitle}</span>
-          <span className="font-bold text-primary">{price}</span>
+          <div className="text-right">
+            {discountApplied && originalPrice ? (
+              <>
+                <span className="line-through text-muted-foreground mr-2">{originalPrice}</span>
+                <span className="font-bold text-primary">{displayPrice}</span>
+              </>
+            ) : (
+              <span className="font-bold text-primary">{displayPrice}</span>
+            )}
+          </div>
         </div>
+        {discountApplied && (
+          <p className="text-sm text-green-600 mt-2">25% discount applied!</p>
+        )}
       </div>
 
       <div className="space-y-4">
@@ -135,7 +152,7 @@ const CheckoutForm = ({ clientSecret, productTitle, price, productId, customerEm
         className="w-full"
         size="lg"
       >
-        {isLoading ? "Processing..." : `Pay ${price}`}
+        {isLoading ? "Processing..." : `Pay ${displayPrice}`}
       </Button>
     </form>
   );
@@ -149,11 +166,14 @@ const Checkout = () => {
   const [loading, setLoading] = useState(true);
   const [freeData, setFreeData] = useState<{ downloadUrl: string; productTitle: string } | null>(null);
   const [error, setError] = useState<string>("");
+  const [finalAmount, setFinalAmount] = useState<number | null>(null);
+  const [discountApplied, setDiscountApplied] = useState(false);
   
   const productTitle = searchParams.get("title") || "";
   const price = searchParams.get("price") || "";
   const productId = searchParams.get("id") || "";
   const customerEmail = searchParams.get("email") || "";
+  const couponCode = searchParams.get("coupon") || "";
   
   console.log("Checkout params:", { productTitle, price, productId, customerEmail });
   
@@ -230,6 +250,7 @@ const Checkout = () => {
           body: {
             productId: productId,
             customerEmail: customerEmail,
+            couponCode: couponCode || undefined,
           },
         });
 
@@ -247,6 +268,8 @@ const Checkout = () => {
 
         console.log('Payment intent created successfully, client secret received');
         setClientSecret(data.client_secret);
+        setFinalAmount(data.amount);
+        setDiscountApplied(couponCode.toUpperCase() === 'LOWENDCANDYFAMILY');
         setLoading(false);
       } catch (error: any) {
         console.error('Error initializing checkout:', error);
@@ -331,6 +354,9 @@ const Checkout = () => {
                 price={price}
                 productId={productId}
                 customerEmail={customerEmail}
+                originalPrice={price}
+                discountApplied={discountApplied}
+                finalAmount={finalAmount || undefined}
               />
             </Elements>
           ) : (

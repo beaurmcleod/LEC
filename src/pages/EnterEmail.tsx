@@ -11,11 +11,34 @@ const EnterEmail = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
+  const [couponCode, setCouponCode] = useState("");
   const [loading, setLoading] = useState(false);
+  const [discountApplied, setDiscountApplied] = useState(false);
 
   const productTitle = searchParams.get("title") || "";
   const price = searchParams.get("price") || "";
   const productId = searchParams.get("id") || "";
+
+  // Calculate discounted price
+  const originalPriceNum = parseFloat(price.replace(/[^0-9.]/g, '')) || 0;
+  const discountedPrice = discountApplied ? (originalPriceNum * 0.75).toFixed(2) : null;
+
+  const handleApplyCoupon = () => {
+    if (couponCode.toUpperCase() === 'LOWENDCANDYFAMILY') {
+      setDiscountApplied(true);
+      toast({
+        title: "Coupon Applied!",
+        description: "25% discount has been applied to your order.",
+      });
+    } else if (couponCode.trim()) {
+      setDiscountApplied(false);
+      toast({
+        title: "Invalid Coupon",
+        description: "This coupon code is not valid.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,8 +54,9 @@ const EnterEmail = () => {
 
     setLoading(true);
     
-    // Navigate to checkout with email
-    navigate(`/checkout?title=${encodeURIComponent(productTitle)}&price=${encodeURIComponent(price)}&id=${productId}&email=${encodeURIComponent(email)}`);
+    // Navigate to checkout with email and coupon
+    const checkoutUrl = `/checkout?title=${encodeURIComponent(productTitle)}&price=${encodeURIComponent(price)}&id=${productId}&email=${encodeURIComponent(email)}${discountApplied ? '&coupon=LOWENDCANDYFAMILY' : ''}`;
+    navigate(checkoutUrl);
   };
 
   return (
@@ -60,7 +84,36 @@ const EnterEmail = () => {
               <h3 className="font-semibold mb-2">Your Purchase</h3>
               <div className="flex justify-between items-center">
                 <span>{productTitle}</span>
-                <span className="font-bold text-primary">{price}</span>
+                <div className="text-right">
+                  {discountApplied ? (
+                    <>
+                      <span className="line-through text-muted-foreground mr-2">{price}</span>
+                      <span className="font-bold text-primary">${discountedPrice}</span>
+                    </>
+                  ) : (
+                    <span className="font-bold text-primary">{price}</span>
+                  )}
+                </div>
+              </div>
+              {discountApplied && (
+                <p className="text-sm text-green-600 mt-2">25% discount applied!</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="coupon">Discount Code (optional)</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="coupon"
+                  type="text"
+                  placeholder="Enter coupon code"
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value)}
+                  className="flex-1"
+                />
+                <Button type="button" variant="outline" onClick={handleApplyCoupon}>
+                  Apply
+                </Button>
               </div>
             </div>
 
@@ -73,7 +126,6 @@ const EnterEmail = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                autoFocus
               />
             </div>
 
