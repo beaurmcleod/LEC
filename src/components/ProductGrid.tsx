@@ -28,18 +28,25 @@ export const ProductGrid = () => {
       if (error) {
         console.error('Error fetching products:', error);
       } else if (data) {
-        // Sort: paid products first (by created_at), then free products
+        // Sort: Key & BPM Finder first, then paid products by descending price, then free
         const sortedProducts = data.sort((a, b) => {
           const aPrice = parseFloat(a.price);
           const bPrice = parseFloat(b.price);
           const aIsFree = isNaN(aPrice) || aPrice === 0;
           const bIsFree = isNaN(bPrice) || bPrice === 0;
           
-          // If one is free and other is paid, paid comes first
+          // Key & BPM Finder always first
+          if (a.title === 'Key & BPM Finder') return -1;
+          if (b.title === 'Key & BPM Finder') return 1;
+          
+          // Paid products before free products
           if (aIsFree && !bIsFree) return 1;
           if (!aIsFree && bIsFree) return -1;
           
-          // Both same type (both paid or both free), maintain created_at order
+          // Both paid: sort by descending price
+          if (!aIsFree && !bIsFree) return bPrice - aPrice;
+          
+          // Both free: maintain order
           return 0;
         });
         setProducts(sortedProducts);
