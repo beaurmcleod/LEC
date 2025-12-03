@@ -78,17 +78,11 @@ const PaymentSuccess = () => {
         return;
       }
 
-      const { data, error } = await supabase.functions.invoke('get-secure-download', {
-        body: { token: tokenData.token }
-      });
-
-      if (error) throw error;
-
-      if (data?.downloadUrl) {
-        setDownloadUrl(data.downloadUrl);
-        window.open(data.downloadUrl, '_blank');
-        toast.success(`Download started! You have ${data.downloadsRemaining || 0} downloads remaining.`);
-      }
+      // Open the download URL directly - the edge function handles the redirect
+      const downloadUrl = `https://ocydkbblpnshbvkilngl.supabase.co/functions/v1/get-secure-download?token=${encodeURIComponent(tokenData.token)}`;
+      setDownloadUrl(downloadUrl);
+      window.open(downloadUrl, '_blank');
+      toast.success("Download started!");
     } catch (error) {
       console.error('Download error:', error);
       toast.error("Download links have been sent to your email.");
