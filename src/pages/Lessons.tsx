@@ -1,0 +1,240 @@
+import { useState } from "react";
+import { Calendar } from "@/components/ui/calendar";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ArrowLeft, Clock, Users, Check } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
+
+interface LessonOption {
+  id: string;
+  title: string;
+  duration: string;
+  price: number;
+  description: string;
+  features: string[];
+}
+
+const lessonOptions: LessonOption[] = [
+  {
+    id: "1-hour",
+    title: "1 Hour Session",
+    duration: "60 minutes",
+    price: 99,
+    description: "Perfect for focused feedback or tackling specific production challenges",
+    features: [
+      "One-on-one video call",
+      "Screen sharing & live feedback",
+      "Recording of session provided",
+      "Follow-up notes & resources",
+    ],
+  },
+  {
+    id: "2-hour",
+    title: "2 Hour Session",
+    duration: "120 minutes",
+    price: 149,
+    description: "Deep dive into your project with comprehensive guidance",
+    features: [
+      "Extended one-on-one session",
+      "Full track review & feedback",
+      "Live production demonstrations",
+      "Recording of session provided",
+      "Detailed follow-up notes",
+    ],
+  },
+  {
+    id: "4-pack",
+    title: "4 Lesson Pack",
+    duration: "4 × 60 minutes",
+    price: 300,
+    description: "Commit to your growth with a structured lesson series",
+    features: [
+      "Four 1-hour sessions",
+      "Flexible scheduling",
+      "Personalized curriculum",
+      "Progress tracking",
+      "Priority booking",
+      "Save $96 vs individual lessons",
+    ],
+  },
+];
+
+const Lessons = () => {
+  const navigate = useNavigate();
+  const [selectedOption, setSelectedOption] = useState<LessonOption | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+
+  const handleBookLesson = () => {
+    if (!selectedOption || !selectedDate) return;
+
+    // Navigate to checkout with lesson details
+    const params = new URLSearchParams({
+      type: "lesson",
+      lessonId: selectedOption.id,
+      title: selectedOption.title,
+      price: selectedOption.price.toString(),
+      date: selectedDate.toISOString(),
+    });
+
+    navigate(`/enter-email?${params.toString()}`);
+  };
+
+  return (
+    <div className="min-h-screen bg-background relative overflow-hidden">
+      {/* Animated background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-secondary/5" />
+      <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse" />
+      <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-1000" />
+
+      <div className="relative z-10 container max-w-6xl mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="mb-8">
+          <Link
+            to="/links"
+            className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-6"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Links
+          </Link>
+          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+            Book a Private Lesson
+          </h1>
+          <p className="mt-4 text-lg text-muted-foreground max-w-2xl">
+            Level up your music production skills with personalized one-on-one coaching. 
+            Whether you're just starting out or looking to refine your craft, I'll help you reach your goals.
+          </p>
+        </div>
+
+        <div className="grid lg:grid-cols-2 gap-8">
+          {/* Lesson Options */}
+          <div className="space-y-4">
+            <h2 className="text-2xl font-semibold text-foreground mb-4">Choose Your Session</h2>
+            {lessonOptions.map((option) => (
+              <Card
+                key={option.id}
+                className={cn(
+                  "cursor-pointer transition-all duration-300 hover:border-primary/50",
+                  selectedOption?.id === option.id
+                    ? "border-primary shadow-glow-primary"
+                    : "border-border"
+                )}
+                onClick={() => setSelectedOption(option)}
+              >
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="text-xl">{option.title}</CardTitle>
+                      <CardDescription className="flex items-center gap-2 mt-1">
+                        <Clock className="w-4 h-4" />
+                        {option.duration}
+                      </CardDescription>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-2xl font-bold text-primary">${option.price}</span>
+                      {option.id === "4-pack" && (
+                        <span className="block text-xs text-accent">Best Value</span>
+                      )}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-muted-foreground mb-4">{option.description}</p>
+                  <ul className="space-y-2">
+                    {option.features.map((feature, index) => (
+                      <li key={index} className="flex items-center gap-2 text-sm">
+                        <Check className="w-4 h-4 text-primary" />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Calendar & Booking */}
+          <div className="space-y-6">
+            <Card className="border-border">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-primary" />
+                  Select a Date
+                </CardTitle>
+                <CardDescription>
+                  Choose your preferred date for the lesson. We'll confirm the exact time via email.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex justify-center">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={setSelectedDate}
+                  disabled={(date) => date < new Date() || date.getDay() === 0}
+                  className="rounded-md border border-border pointer-events-auto"
+                />
+              </CardContent>
+            </Card>
+
+            {/* Summary & Book Button */}
+            <Card className="border-border bg-card/50">
+              <CardContent className="pt-6">
+                <h3 className="text-lg font-semibold mb-4">Booking Summary</h3>
+                {selectedOption ? (
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Session</span>
+                      <span className="font-medium">{selectedOption.title}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Duration</span>
+                      <span className="font-medium">{selectedOption.duration}</span>
+                    </div>
+                    {selectedDate && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Date</span>
+                        <span className="font-medium">{format(selectedDate, "EEEE, MMMM d, yyyy")}</span>
+                      </div>
+                    )}
+                    <div className="border-t border-border pt-3 mt-3">
+                      <div className="flex justify-between text-lg">
+                        <span className="font-semibold">Total</span>
+                        <span className="font-bold text-primary">${selectedOption.price}</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground text-center py-4">
+                    Select a session type to see pricing
+                  </p>
+                )}
+
+                <Button
+                  className="w-full mt-6"
+                  size="lg"
+                  disabled={!selectedOption || !selectedDate}
+                  onClick={handleBookLesson}
+                >
+                  {selectedOption && selectedDate
+                    ? `Book & Pay $${selectedOption.price}`
+                    : "Select a session and date"}
+                </Button>
+
+                <p className="text-xs text-muted-foreground text-center mt-4">
+                  After payment, you'll receive an email to confirm the exact time. 
+                  Questions? Contact{" "}
+                  <a href="mailto:beau@lowendcandy.com" className="text-primary hover:underline">
+                    beau@lowendcandy.com
+                  </a>
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Lessons;
