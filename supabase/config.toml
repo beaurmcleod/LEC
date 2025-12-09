@@ -17,6 +17,3 @@ verify_jwt = false
 
 [functions.submit-candy-club]
 verify_jwt = false
-
-[functions.manual-send-emails]
-verify_jwt = false
