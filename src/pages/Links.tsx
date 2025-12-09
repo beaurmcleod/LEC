@@ -23,9 +23,8 @@ const Links = () => {
       title: "Book a Private Lesson With me",
       description: "One-on-one music production coaching",
       icon: Calendar,
-      url: "https://calendly.com/bohemyth",
+      url: "/lessons",
       gradient: "from-blue-500 to-cyan-500",
-      external: true,
     },
     {
       title: "Free Ableton Live Course",

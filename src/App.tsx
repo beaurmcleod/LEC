@@ -17,6 +17,7 @@ import Racks from "./pages/Racks";
 import Auth from "./pages/Auth";
 import MyPurchases from "./pages/MyPurchases";
 import Links from "./pages/Links";
+import Lessons from "./pages/Lessons";
 import CandyClub from "./pages/CandyClub";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminSetup from "./pages/AdminSetup";
@@ -36,6 +37,7 @@ const App = () => (
           <Route path="/free" element={<Free />} />
           <Route path="/racks" element={<Racks />} />
           <Route path="/links" element={<Links />} />
+          <Route path="/lessons" element={<Lessons />} />
           <Route path="/candy-club" element={<CandyClub />} />
           <Route path="/product/:id" element={<ProductDetail />} />
           <Route path="/enter-email" element={<EnterEmail />} />
