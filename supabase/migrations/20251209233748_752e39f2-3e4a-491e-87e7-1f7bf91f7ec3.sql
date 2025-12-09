@@ -1,0 +1,7 @@
+-- Insert lesson products
+INSERT INTO products (title, price, category, short_description, full_description, features, image)
+VALUES 
+  ('1 Hour Session', '$99', 'lessons', 'Perfect for focused feedback or tackling specific production challenges', 'One-on-one private lesson with personalized coaching to help you level up your music production skills.', ARRAY['One-on-one video call', 'Screen sharing & live feedback', 'Recording of session provided', 'Follow-up notes & resources'], '/placeholder.svg'),
+  ('2 Hour Session', '$149', 'lessons', 'Deep dive into your project with comprehensive guidance', 'Extended one-on-one session for a thorough review of your projects and in-depth production demonstrations.', ARRAY['Extended one-on-one session', 'Full track review & feedback', 'Live production demonstrations', 'Recording of session provided', 'Detailed follow-up notes'], '/placeholder.svg'),
+  ('4 Lesson Pack', '$300', 'lessons', 'Commit to your growth with a structured lesson series', 'Four 1-hour sessions with flexible scheduling and a personalized curriculum to track your progress.', ARRAY['Four 1-hour sessions', 'Flexible scheduling', 'Personalized curriculum', 'Progress tracking', 'Priority booking', 'Save $96 vs individual lessons'], '/placeholder.svg')
+ON CONFLICT (title) DO NOTHING;
