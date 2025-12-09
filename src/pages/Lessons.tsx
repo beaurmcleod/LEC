@@ -199,37 +199,39 @@ const Lessons = () => {
             </Card>
 
             {/* Time Slot Selection */}
-            {selectedDate && (
-              <Card className="border-border">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Clock className="w-5 h-5 text-primary" />
-                    Select a Time (PST)
-                  </CardTitle>
-                  <CardDescription>
-                    Choose your preferred time slot for {format(selectedDate, "EEEE, MMMM d")}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-3 gap-2">
-                    {timeSlots.map((time) => (
-                      <Button
-                        key={time}
-                        variant={selectedTime === time ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setSelectedTime(time)}
-                        className={cn(
-                          "transition-all",
-                          selectedTime === time && "shadow-glow-primary"
-                        )}
-                      >
-                        {time}
-                      </Button>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            <Card className="border-border">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-primary" />
+                  Select a Time (PST)
+                </CardTitle>
+                <CardDescription>
+                  {selectedDate 
+                    ? `Choose your preferred time slot for ${format(selectedDate, "EEEE, MMMM d")}`
+                    : "First select a date above"
+                  }
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-3 gap-2">
+                  {timeSlots.map((time) => (
+                    <Button
+                      key={time}
+                      variant={selectedTime === time ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setSelectedTime(time)}
+                      disabled={!selectedDate}
+                      className={cn(
+                        "transition-all",
+                        selectedTime === time && "shadow-glow-primary"
+                      )}
+                    >
+                      {time}
+                    </Button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
 
             {/* Summary & Book Button */}
             <Card className="border-border bg-card/50">
