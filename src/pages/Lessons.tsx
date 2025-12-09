@@ -4,8 +4,20 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Clock, Users, Check } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import { format } from "date-fns";
+import { format, isWeekend } from "date-fns";
 import { cn } from "@/lib/utils";
+
+const timeSlots = [
+  "9:00 AM",
+  "10:00 AM",
+  "11:00 AM",
+  "12:00 PM",
+  "1:00 PM",
+  "2:00 PM",
+  "3:00 PM",
+  "4:00 PM",
+  "5:00 PM",
+];
 
 interface LessonOption {
   id: string;
@@ -65,9 +77,10 @@ const Lessons = () => {
   const navigate = useNavigate();
   const [selectedOption, setSelectedOption] = useState<LessonOption | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [selectedTime, setSelectedTime] = useState<string | null>(null);
 
   const handleBookLesson = () => {
-    if (!selectedOption || !selectedDate) return;
+    if (!selectedOption || !selectedDate || !selectedTime) return;
 
     // Navigate to checkout with lesson details
     const params = new URLSearchParams({
@@ -76,6 +89,7 @@ const Lessons = () => {
       title: selectedOption.title,
       price: selectedOption.price.toString(),
       date: selectedDate.toISOString(),
+      time: selectedTime,
     });
 
     navigate(`/enter-email?${params.toString()}`);
@@ -163,19 +177,59 @@ const Lessons = () => {
                   Select a Date
                 </CardTitle>
                 <CardDescription>
-                  Choose your preferred date for the lesson. We'll confirm the exact time via email.
+                  Available Monday - Friday. All times are in PST.
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex justify-center">
                 <Calendar
                   mode="single"
                   selected={selectedDate}
-                  onSelect={setSelectedDate}
-                  disabled={(date) => date < new Date() || date.getDay() === 0}
+                  onSelect={(date) => {
+                    setSelectedDate(date);
+                    setSelectedTime(null); // Reset time when date changes
+                  }}
+                  disabled={(date) => {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    return date < today || isWeekend(date);
+                  }}
                   className="rounded-md border border-border pointer-events-auto"
                 />
               </CardContent>
             </Card>
+
+            {/* Time Slot Selection */}
+            {selectedDate && (
+              <Card className="border-border">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-primary" />
+                    Select a Time (PST)
+                  </CardTitle>
+                  <CardDescription>
+                    Choose your preferred time slot for {format(selectedDate, "EEEE, MMMM d")}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-3 gap-2">
+                    {timeSlots.map((time) => (
+                      <Button
+                        key={time}
+                        variant={selectedTime === time ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setSelectedTime(time)}
+                        className={cn(
+                          "transition-all",
+                          selectedTime === time && "shadow-glow-primary"
+                        )}
+                      >
+                        {time}
+                      </Button>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Summary & Book Button */}
             <Card className="border-border bg-card/50">
@@ -197,6 +251,12 @@ const Lessons = () => {
                         <span className="font-medium">{format(selectedDate, "EEEE, MMMM d, yyyy")}</span>
                       </div>
                     )}
+                    {selectedTime && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Time (PST)</span>
+                        <span className="font-medium">{selectedTime}</span>
+                      </div>
+                    )}
                     <div className="border-t border-border pt-3 mt-3">
                       <div className="flex justify-between text-lg">
                         <span className="font-semibold">Total</span>
@@ -213,12 +273,12 @@ const Lessons = () => {
                 <Button
                   className="w-full mt-6"
                   size="lg"
-                  disabled={!selectedOption || !selectedDate}
+                  disabled={!selectedOption || !selectedDate || !selectedTime}
                   onClick={handleBookLesson}
                 >
-                  {selectedOption && selectedDate
+                  {selectedOption && selectedDate && selectedTime
                     ? `Book & Pay $${selectedOption.price}`
-                    : "Select a session and date"}
+                    : "Select a session, date, and time"}
                 </Button>
 
                 <p className="text-xs text-muted-foreground text-center mt-4">
