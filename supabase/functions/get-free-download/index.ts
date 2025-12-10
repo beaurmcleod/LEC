@@ -77,7 +77,7 @@ serve(async (req) => {
     // Fetch product download path from product_downloads table
     const { data: productDownload, error: downloadError } = await supabase
       .from('product_downloads')
-      .select('download_path, download_url')
+      .select('download_path')
       .eq('product_id', productId)
       .maybeSingle();
 
@@ -97,29 +97,34 @@ serve(async (req) => {
       );
     }
 
-    // Generate signed URL if download_path exists (private bucket)
-    let finalDownloadUrl = productDownload.download_url;
-    
-    if (productDownload.download_path) {
-      const { data: signedUrlData, error: signedUrlError } = await supabase
-        .storage
-        .from('product-downloads')
-        .createSignedUrl(productDownload.download_path, 3600); // 1 hour expiry
-
-      if (signedUrlError) {
-        console.error('Error generating signed URL:', signedUrlError);
-        // Fallback to download_url if signed URL generation fails
-      } else if (signedUrlData?.signedUrl) {
-        finalDownloadUrl = signedUrlData.signedUrl;
-        console.log('Generated signed URL for free download with 1-hour expiry');
-      }
+    // Require download_path for secure signed URL generation
+    if (!productDownload.download_path) {
+      console.error('No secure download path configured for product:', productId);
+      return new Response(
+        JSON.stringify({ error: 'Secure download not configured for this product' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    console.log("Granting free download", { title: product.title });
+    // Generate signed URL from private bucket (required - no fallback)
+    const { data: signedUrlData, error: signedUrlError } = await supabase
+      .storage
+      .from('product-downloads')
+      .createSignedUrl(productDownload.download_path, 3600); // 1 hour expiry
+
+    if (signedUrlError || !signedUrlData?.signedUrl) {
+      console.error('Error generating signed URL:', signedUrlError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to generate secure download link' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log("Granting free download with secure signed URL", { title: product.title });
 
     return new Response(
       JSON.stringify({
-        downloadUrl: finalDownloadUrl,
+        downloadUrl: signedUrlData.signedUrl,
         productTitle: product.title,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
