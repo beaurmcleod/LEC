@@ -47,8 +47,7 @@ const Index = () => {
       title: "Book a Private Lesson With me",
       description: "One-on-one music production coaching",
       preview: previewLesson,
-      url: "https://calendly.com/bohemyth",
-      external: true,
+      url: "/lessons",
     },
     {
       title: "Free Ableton Live Course",
