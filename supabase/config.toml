@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.submit-candy-club]
 verify_jwt = false
+
+[functions.send-lesson-notification]
+verify_jwt = false

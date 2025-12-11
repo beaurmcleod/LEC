@@ -175,7 +175,13 @@ const Checkout = () => {
   const customerEmail = searchParams.get("email") || "";
   const couponCode = searchParams.get("coupon") || "";
   
-  console.log("Checkout params:", { productTitle, price, productId, customerEmail });
+  // Lesson booking params
+  const isLesson = searchParams.get("type") === "lesson";
+  const lessonId = searchParams.get("lessonId") || "";
+  const lessonDate = searchParams.get("date") || "";
+  const lessonTime = searchParams.get("time") || "";
+  
+  console.log("Checkout params:", { productTitle, price, productId, customerEmail, isLesson, lessonDate, lessonTime });
   
   // Add toast notification to help with debugging
   if (productTitle && price) {
@@ -246,12 +252,22 @@ const Checkout = () => {
 
         // Paid product - create payment intent
         console.log('Creating payment intent for paid product');
+        const paymentBody: any = {
+          productId: productId,
+          customerEmail: customerEmail,
+          couponCode: couponCode || undefined,
+        };
+        
+        // Add lesson metadata if this is a lesson booking
+        if (isLesson) {
+          paymentBody.isLesson = true;
+          paymentBody.lessonId = lessonId;
+          paymentBody.lessonDate = lessonDate;
+          paymentBody.lessonTime = lessonTime;
+        }
+        
         const { data, error } = await supabase.functions.invoke('create-payment-intent', {
-          body: {
-            productId: productId,
-            customerEmail: customerEmail,
-            couponCode: couponCode || undefined,
-          },
+          body: paymentBody,
         });
 
         console.log('Payment intent response:', { data, error });

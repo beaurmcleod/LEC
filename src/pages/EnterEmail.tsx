@@ -18,6 +18,12 @@ const EnterEmail = () => {
   const productTitle = searchParams.get("title") || "";
   const price = searchParams.get("price") || "";
   const productId = searchParams.get("id") || "";
+  
+  // Lesson booking params
+  const isLesson = searchParams.get("type") === "lesson";
+  const lessonId = searchParams.get("lessonId") || "";
+  const lessonDate = searchParams.get("date") || "";
+  const lessonTime = searchParams.get("time") || "";
 
   // Calculate discounted price
   const originalPriceNum = parseFloat(price.replace(/[^0-9.]/g, '')) || 0;
@@ -54,8 +60,13 @@ const EnterEmail = () => {
 
     setLoading(true);
     
-    // Navigate to checkout with email and coupon
-    const checkoutUrl = `/checkout?title=${encodeURIComponent(productTitle)}&price=${encodeURIComponent(price)}&id=${productId}&email=${encodeURIComponent(email)}${discountApplied ? '&coupon=LOWENDCANDYFAMILY' : ''}`;
+    // Navigate to checkout with email and coupon (and lesson params if applicable)
+    let checkoutUrl = `/checkout?title=${encodeURIComponent(productTitle)}&price=${encodeURIComponent(price)}&id=${productId}&email=${encodeURIComponent(email)}${discountApplied ? '&coupon=LOWENDCANDYFAMILY' : ''}`;
+    
+    if (isLesson) {
+      checkoutUrl += `&type=lesson&lessonId=${encodeURIComponent(lessonId)}&date=${encodeURIComponent(lessonDate)}&time=${encodeURIComponent(lessonTime)}`;
+    }
+    
     navigate(checkoutUrl);
   };
 

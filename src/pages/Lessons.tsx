@@ -30,7 +30,7 @@ interface LessonOption {
 
 const lessonOptions: LessonOption[] = [
   {
-    id: "1-hour",
+    id: "78ec84c6-1fef-4a1b-833e-abb9039b9298",
     title: "1 Hour Session",
     duration: "60 minutes",
     price: 99,
@@ -43,7 +43,7 @@ const lessonOptions: LessonOption[] = [
     ],
   },
   {
-    id: "2-hour",
+    id: "4ddb3517-4204-4b51-9625-6d6861181eb1",
     title: "2 Hour Session",
     duration: "120 minutes",
     price: 149,
@@ -57,7 +57,7 @@ const lessonOptions: LessonOption[] = [
     ],
   },
   {
-    id: "4-pack",
+    id: "ed2732f3-a006-4dc6-a9f3-d07f75111e0f",
     title: "4 Lesson Pack",
     duration: "4 × 60 minutes",
     price: 300,
@@ -82,13 +82,17 @@ const Lessons = () => {
   const handleBookLesson = () => {
     if (!selectedOption || !selectedDate || !selectedTime) return;
 
-    // Navigate to checkout with lesson details
+    // Navigate to email entry with lesson details
+    // Format the date as YYYY-MM-DD for consistency
+    const formattedDate = format(selectedDate, "yyyy-MM-dd");
+    
     const params = new URLSearchParams({
       type: "lesson",
       lessonId: selectedOption.id,
+      id: selectedOption.id, // Product ID for checkout
       title: selectedOption.title,
-      price: selectedOption.price.toString(),
-      date: selectedDate.toISOString(),
+      price: `$${selectedOption.price}`,
+      date: formattedDate,
       time: selectedTime,
     });
 
@@ -147,7 +151,7 @@ const Lessons = () => {
                     </div>
                     <div className="text-right">
                       <span className="text-2xl font-bold text-primary">${option.price}</span>
-                      {option.id === "4-pack" && (
+                      {option.title === "4 Lesson Pack" && (
                         <span className="block text-xs text-accent">Best Value</span>
                       )}
                     </div>
