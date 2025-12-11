@@ -59,7 +59,12 @@ serve(async (req) => {
     const paymentSchema = z.object({
       productId: z.string().min(1, { message: "Product ID is required" }),
       customerEmail: z.string().email().max(255).optional(),
-      couponCode: z.string().optional()
+      couponCode: z.string().optional(),
+      // Lesson booking fields
+      isLesson: z.boolean().optional(),
+      lessonId: z.string().optional(),
+      lessonDate: z.string().optional(),
+      lessonTime: z.string().optional(),
     });
 
     const validation = paymentSchema.safeParse(body);
@@ -74,7 +79,7 @@ serve(async (req) => {
       );
     }
 
-    const { productId, customerEmail, couponCode } = validation.data;
+    const { productId, customerEmail, couponCode, isLesson, lessonId, lessonDate, lessonTime } = validation.data;
 
     // SECURITY: Fetch actual price from database instead of trusting client
     // Support both UUID and title/slug lookup
@@ -117,7 +122,23 @@ serve(async (req) => {
       console.log('Coupon LOWENDCANDYFAMILY applied, 25% discount');
     }
 
-    console.log('Creating payment intent for product:', product.title, 'amount:', priceInCents, 'discountApplied:', discountApplied);
+    console.log('Creating payment intent for product:', product.title, 'amount:', priceInCents, 'discountApplied:', discountApplied, 'isLesson:', isLesson);
+    
+    // Build metadata object
+    const metadata: Record<string, string> = {
+      product_id: product.id,
+      product_title: product.title,
+      coupon_code: discountApplied ? 'LOWENDCANDYFAMILY' : '',
+      discount_applied: discountApplied ? '25%' : '',
+    };
+    
+    // Add lesson metadata if applicable
+    if (isLesson) {
+      metadata.is_lesson = 'true';
+      metadata.lesson_id = lessonId || '';
+      metadata.lesson_date = lessonDate || '';
+      metadata.lesson_time = lessonTime || '';
+    }
     
     // Create a payment intent for embedded checkout
     const paymentIntent = await stripe.paymentIntents.create({
@@ -125,12 +146,7 @@ serve(async (req) => {
       currency: "usd",
       description: `${product.title} - Digital music production content`,
       receipt_email: customerEmail || undefined,
-      metadata: {
-        product_id: product.id, // Always use the actual UUID from database
-        product_title: product.title,
-        coupon_code: discountApplied ? 'LOWENDCANDYFAMILY' : '',
-        discount_applied: discountApplied ? '25%' : '',
-      },
+      metadata,
     });
 
     console.log('Payment intent created:', paymentIntent.id);

@@ -121,6 +121,40 @@ serve(async (req) => {
         } else {
           console.log("Purchase email sent successfully");
         }
+
+        // Check if this is a lesson booking and send notification to instructor
+        const isLesson = paymentIntent.metadata?.is_lesson === 'true';
+        if (isLesson) {
+          const lessonDate = paymentIntent.metadata?.lesson_date;
+          const lessonTime = paymentIntent.metadata?.lesson_time;
+          
+          // Calculate duration from product title
+          let durationMinutes = 60; // default
+          if (productTitle.includes('2 Hour')) {
+            durationMinutes = 120;
+          } else if (productTitle.includes('4 Lesson')) {
+            durationMinutes = 60; // First session is 1 hour
+          }
+          
+          console.log("Sending lesson notification for:", { productTitle, lessonDate, lessonTime });
+          
+          const { error: lessonEmailError } = await supabase.functions.invoke("send-lesson-notification", {
+            body: {
+              customerEmail: email,
+              lessonTitle: productTitle,
+              lessonDate: lessonDate,
+              lessonTime: lessonTime,
+              durationMinutes: durationMinutes,
+              amountPaid: amount,
+            },
+          });
+
+          if (lessonEmailError) {
+            console.error("Error sending lesson notification:", lessonEmailError);
+          } else {
+            console.log("Lesson notification email sent successfully");
+          }
+        }
       }
     }
 
