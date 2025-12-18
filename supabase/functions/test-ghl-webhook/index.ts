@@ -15,6 +15,8 @@ serve(async (req) => {
   try {
     const testPayload = {
       email: "test@example.com",
+      first_name: "John",
+      last_name: "Doe",
       product_title: "Test Product - Sample Pack",
       amount_paid: 29.99,
       purchase_date: new Date().toISOString(),
