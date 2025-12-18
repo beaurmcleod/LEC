@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -29,6 +29,8 @@ const AdminDashboard = () => {
   const [popularLinks, setPopularLinks] = useState<LinkClickData[]>([]);
   const [clickTrends, setClickTrends] = useState<TimeSeriesData[]>([]);
   const [totalClicks, setTotalClicks] = useState(0);
+  const [backfillLoading, setBackfillLoading] = useState(false);
+  const [backfillProgress, setBackfillProgress] = useState<string | null>(null);
 
   useEffect(() => {
     checkAdminAccess();
@@ -130,6 +132,66 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleBackfillGHL = async () => {
+    setBackfillLoading(true);
+    setBackfillProgress("Starting backfill...");
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error("Not authenticated");
+        return;
+      }
+
+      let lastProcessed: string | null = null;
+      let totalProcessed = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const response = await fetch(
+          "https://ocydkbblpnshbvkilngl.supabase.co/functions/v1/backfill-purchases-ghl",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({
+              startFrom: lastProcessed,
+              limit: 10,
+            }),
+          }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || "Backfill failed");
+        }
+
+        if (result.processed === 0) {
+          hasMore = false;
+        } else {
+          totalProcessed += result.processed;
+          lastProcessed = result.lastProcessed;
+          setBackfillProgress(`Processed ${totalProcessed} purchases...`);
+          
+          // Small delay between batches
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+
+      toast.success(`Successfully sent ${totalProcessed} purchases to GHL!`);
+      setBackfillProgress(null);
+    } catch (error) {
+      console.error("Backfill error:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to backfill purchases");
+      setBackfillProgress(null);
+    } finally {
+      setBackfillLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -169,6 +231,31 @@ const AdminDashboard = () => {
           <h1 className="text-4xl font-bold mb-2">Admin Dashboard</h1>
           <p className="text-muted-foreground">Link click analytics and trends</p>
         </div>
+
+        {/* GHL Backfill Card */}
+        <Card className="mb-8 border-primary/20">
+          <CardHeader>
+            <CardTitle>GoHighLevel Sync</CardTitle>
+            <CardDescription>Send all previous purchases to GHL</CardDescription>
+          </CardHeader>
+          <CardContent className="flex items-center gap-4">
+            <Button
+              onClick={handleBackfillGHL}
+              disabled={backfillLoading}
+              className="gap-2"
+            >
+              {backfillLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              {backfillLoading ? "Sending..." : "Backfill Purchases to GHL"}
+            </Button>
+            {backfillProgress && (
+              <span className="text-sm text-muted-foreground">{backfillProgress}</span>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Summary Card */}
         <Card className="mb-8">
