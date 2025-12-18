@@ -12,7 +12,8 @@ import { z } from "zod";
 const authSchema = z.object({
   email: z.string().email("Invalid email address").max(255),
   password: z.string().min(6, "Password must be at least 6 characters").max(100),
-  fullName: z.string().max(100).optional(),
+  firstName: z.string().min(1, "First name is required").max(50).optional(),
+  lastName: z.string().min(1, "Last name is required").max(50).optional(),
 });
 
 const Auth = () => {
@@ -21,7 +22,8 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,7 +34,8 @@ const Auth = () => {
       const validatedData = authSchema.parse({
         email: email.trim(),
         password,
-        fullName: isLogin ? undefined : fullName.trim(),
+        firstName: isLogin ? undefined : firstName.trim(),
+        lastName: isLogin ? undefined : lastName.trim(),
       });
 
       if (isLogin) {
@@ -60,7 +63,9 @@ const Auth = () => {
           password: validatedData.password,
           options: {
             data: {
-              full_name: validatedData.fullName || "",
+              first_name: validatedData.firstName || "",
+              last_name: validatedData.lastName || "",
+              full_name: `${validatedData.firstName || ""} ${validatedData.lastName || ""}`.trim(),
             },
             emailRedirectTo: `${window.location.origin}/`,
           },
@@ -117,17 +122,32 @@ const Auth = () => {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {!isLogin && (
-              <div className="space-y-2">
-                <Label htmlFor="fullName">Full Name</Label>
-                <Input
-                  id="fullName"
-                  type="text"
-                  placeholder="John Doe"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  maxLength={100}
-                />
-              </div>
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="firstName">First Name</Label>
+                  <Input
+                    id="firstName"
+                    type="text"
+                    placeholder="John"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    required
+                    maxLength={50}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lastName">Last Name</Label>
+                  <Input
+                    id="lastName"
+                    type="text"
+                    placeholder="Doe"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    required
+                    maxLength={50}
+                  />
+                </div>
+              </>
             )}
 
             <div className="space-y-2">
