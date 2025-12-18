@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -29,6 +29,7 @@ const AdminDashboard = () => {
   const [popularLinks, setPopularLinks] = useState<LinkClickData[]>([]);
   const [clickTrends, setClickTrends] = useState<TimeSeriesData[]>([]);
   const [totalClicks, setTotalClicks] = useState(0);
+  const [sendingManual, setSendingManual] = useState(false);
 
   useEffect(() => {
     checkAdminAccess();
@@ -130,6 +131,57 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleSendManualPurchases = async () => {
+    setSendingManual(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error("Not authenticated");
+        return;
+      }
+
+      const purchases = [
+        { email: "jnmalgas@gmail.com", name: "Jon Casey" },
+        { email: "wtfischee@gmail.com", name: "Lee Chee" },
+        { email: "arnold@reinvented.ai", name: "Arnold Adel" },
+        { email: "Strongbycory@gmail.com", name: "Cory Etchason" },
+        { email: "danemorrismusic@gmail.com", name: "Dane Morris" },
+        { email: "Pdawgsurf@gmail.com", name: "Perry Morrison" },
+        { email: "emileestech@gmail.com", name: "Emi Stech" },
+      ];
+
+      const response = await fetch(
+        "https://ocydkbblpnshbvkilngl.supabase.co/functions/v1/add-manual-purchases",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            productId: "8fbb3028-e57f-4e44-91ab-44f9229aaf8f",
+            productTitle: "Key & BPM Finder",
+            purchases,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to send");
+      }
+
+      toast.success(`Sent ${result.results.length} purchases to GHL!`);
+      console.log("Results:", result.results);
+    } catch (error) {
+      console.error("Error:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to send");
+    } finally {
+      setSendingManual(false);
+    }
+  };
+
 
   if (loading) {
     return (
@@ -170,6 +222,28 @@ const AdminDashboard = () => {
           <h1 className="text-4xl font-bold mb-2">Admin Dashboard</h1>
           <p className="text-muted-foreground">Link click analytics and trends</p>
         </div>
+
+        {/* Manual Purchases Card - Temporary */}
+        <Card className="mb-8 border-primary/20">
+          <CardHeader>
+            <CardTitle>Add Manual Purchases</CardTitle>
+            <CardDescription>Send 7 Key & BPM Finder purchases to GHL</CardDescription>
+          </CardHeader>
+          <CardContent className="flex items-center gap-4">
+            <Button
+              onClick={handleSendManualPurchases}
+              disabled={sendingManual}
+              className="gap-2"
+            >
+              {sendingManual ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              {sendingManual ? "Sending..." : "Send 7 Purchases"}
+            </Button>
+          </CardContent>
+        </Card>
 
 
         {/* Summary Card */}
