@@ -10,6 +10,40 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+const GHL_WEBHOOK_URL = "https://services.leadconnectorhq.com/hooks/84LVJ79Hb6dDlqcCFKVc/webhook-trigger/7e17eafa-bfec-4f9a-8ece-311a11d5db3b";
+
+// Send purchase data to GoHighLevel
+async function sendToGHL(purchaseData: {
+  email: string;
+  productTitle: string;
+  amount: number;
+  purchaseDate: string;
+  paymentId: string;
+}) {
+  try {
+    const response = await fetch(GHL_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: purchaseData.email,
+        product_title: purchaseData.productTitle,
+        amount_paid: purchaseData.amount,
+        purchase_date: purchaseData.purchaseDate,
+        stripe_payment_id: purchaseData.paymentId,
+        source: "bohemyth_store",
+      }),
+    });
+    
+    if (!response.ok) {
+      console.error("GHL webhook failed:", response.status, await response.text());
+    } else {
+      console.log("GHL webhook sent successfully for:", purchaseData.email);
+    }
+  } catch (error) {
+    console.error("Error sending to GHL:", error);
+  }
+}
+
 serve(async (req) => {
   const signature = req.headers.get("stripe-signature");
   
@@ -79,6 +113,15 @@ serve(async (req) => {
         } else {
           console.log("Purchase recorded successfully", profile?.id ? 'with user_id' : 'without user_id');
         }
+
+        // Send to GoHighLevel webhook
+        await sendToGHL({
+          email: email,
+          productTitle: productTitle,
+          amount: amount,
+          purchaseDate: new Date().toISOString(),
+          paymentId: paymentIntent.id,
+        });
 
         // Generate secure download token (7-day expiry, 5 downloads max)
         const downloadToken = crypto.randomUUID() + '-' + Date.now().toString(36);
