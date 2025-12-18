@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const GHL_WEBHOOK_URL = "https://services.leadconnectorhq.com/hooks/84LVJ79Hb6dDlqcCFKVc/webhook-trigger/7e17eafa-bfec-4f9a-8ece-311a11d5db3b";
+const GHL_WEBHOOK_URL = "https://services.leadconnectorhq.com/hooks/84LVJ79Hb6dDlqcCFKVc/webhook-trigger/8dc2462a-0a56-47e8-99f8-247082fd8dae";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
