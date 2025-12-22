@@ -32,3 +32,12 @@ verify_jwt = false
 
 [functions.send-lesson-reminders]
 verify_jwt = false
+
+[functions.google-calendar-auth]
+verify_jwt = false
+
+[functions.google-calendar-callback]
+verify_jwt = false
+
+[functions.get-calendar-busy-times]
+verify_jwt = false

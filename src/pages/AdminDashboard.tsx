@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Calendar, CheckCircle, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -29,7 +29,8 @@ const AdminDashboard = () => {
   const [popularLinks, setPopularLinks] = useState<LinkClickData[]>([]);
   const [clickTrends, setClickTrends] = useState<TimeSeriesData[]>([]);
   const [totalClicks, setTotalClicks] = useState(0);
-  
+  const [calendarConnected, setCalendarConnected] = useState(false);
+  const [connectingCalendar, setConnectingCalendar] = useState(false);
 
   useEffect(() => {
     checkAdminAccess();
@@ -60,7 +61,7 @@ const AdminDashboard = () => {
       }
 
       setIsAdmin(true);
-      await fetchAnalytics();
+      await Promise.all([fetchAnalytics(), checkCalendarConnection()]);
     } catch (error) {
       console.error('Error checking admin access:', error);
       toast.error("Failed to verify access");
@@ -131,6 +132,61 @@ const AdminDashboard = () => {
     }
   };
 
+  const checkCalendarConnection = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke("get-calendar-busy-times", {
+        body: { startDate: new Date().toISOString(), endDate: new Date().toISOString() },
+      });
+      setCalendarConnected(data?.connected || false);
+    } catch (error) {
+      console.error("Error checking calendar connection:", error);
+    }
+  };
+
+  const connectGoogleCalendar = async () => {
+    setConnectingCalendar(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error("Please sign in first");
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke("google-calendar-auth", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (error) {
+        toast.error("Failed to start Google Calendar authorization");
+        return;
+      }
+
+      // Open Google OAuth in a new window
+      const authWindow = window.open(data.authUrl, "_blank", "width=500,height=600");
+      
+      // Poll to check if the connection was successful
+      const pollInterval = setInterval(async () => {
+        await checkCalendarConnection();
+        if (calendarConnected || !authWindow || authWindow.closed) {
+          clearInterval(pollInterval);
+          if (calendarConnected) {
+            toast.success("Google Calendar connected successfully!");
+          }
+        }
+      }, 2000);
+
+      // Stop polling after 2 minutes
+      setTimeout(() => clearInterval(pollInterval), 120000);
+    } catch (error) {
+      console.error("Error connecting Google Calendar:", error);
+      toast.error("Failed to connect Google Calendar");
+    } finally {
+      setConnectingCalendar(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -170,6 +226,44 @@ const AdminDashboard = () => {
           <h1 className="text-4xl font-bold mb-2">Admin Dashboard</h1>
           <p className="text-muted-foreground">Link click analytics and trends</p>
         </div>
+
+        {/* Google Calendar Connection */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
+              Google Calendar Integration
+            </CardTitle>
+            <CardDescription>
+              Connect your Google Calendar to automatically block unavailable time slots on the lessons booking page
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {calendarConnected ? (
+                  <>
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    <span className="text-green-500 font-medium">Calendar Connected</span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="h-5 w-5 text-muted-foreground" />
+                    <span className="text-muted-foreground">Not connected</span>
+                  </>
+                )}
+              </div>
+              <Button 
+                onClick={connectGoogleCalendar} 
+                disabled={connectingCalendar}
+                variant={calendarConnected ? "outline" : "default"}
+              >
+                {connectingCalendar && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {calendarConnected ? "Reconnect Calendar" : "Connect Google Calendar"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Summary Card */}
         <Card className="mb-8">
