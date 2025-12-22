@@ -113,13 +113,22 @@ serve(async (req) => {
 
     // Convert database price to cents
     let priceInCents = Math.round(parseFloat(product.price.replace('$', '')) * 100);
-    let discountApplied = false;
+    let discountApplied = '';
+    const upperCoupon = couponCode?.toUpperCase() || '';
 
     // Validate and apply coupon code
-    if (couponCode && couponCode.toUpperCase() === 'LOWENDCANDYFAMILY') {
+    if (upperCoupon === 'LOWENDCANDYFAMILY') {
       priceInCents = Math.round(priceInCents * 0.75); // 25% off
-      discountApplied = true;
+      discountApplied = '25%';
       console.log('Coupon LOWENDCANDYFAMILY applied, 25% discount');
+    } else if (upperCoupon === 'LEGACY' && isLesson) {
+      priceInCents = Math.round(priceInCents * 0.50); // 50% off for lessons
+      discountApplied = '50%';
+      console.log('Coupon LEGACY applied, 50% discount for lesson');
+    } else if (upperCoupon === 'BOHEMYTHTEST' && isLesson) {
+      priceInCents = 0; // Free for lessons
+      discountApplied = '100%';
+      console.log('Coupon BOHEMYTHTEST applied, free lesson');
     }
 
     console.log('Creating payment intent for product:', product.title, 'amount:', priceInCents, 'discountApplied:', discountApplied, 'isLesson:', isLesson);
@@ -128,8 +137,8 @@ serve(async (req) => {
     const metadata: Record<string, string> = {
       product_id: product.id,
       product_title: product.title,
-      coupon_code: discountApplied ? 'LOWENDCANDYFAMILY' : '',
-      discount_applied: discountApplied ? '25%' : '',
+      coupon_code: discountApplied ? upperCoupon : '',
+      discount_applied: discountApplied,
     };
     
     // Add lesson metadata if applicable
