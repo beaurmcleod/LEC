@@ -13,7 +13,7 @@ const EnterEmail = () => {
   const [email, setEmail] = useState("");
   const [couponCode, setCouponCode] = useState("");
   const [loading, setLoading] = useState(false);
-  const [discountApplied, setDiscountApplied] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
 
   const productTitle = searchParams.get("title") || "";
   const price = searchParams.get("price") || "";
@@ -25,22 +25,59 @@ const EnterEmail = () => {
   const lessonDate = searchParams.get("date") || "";
   const lessonTime = searchParams.get("time") || "";
 
-  // Calculate discounted price
+  // Calculate discounted price based on coupon
   const originalPriceNum = parseFloat(price.replace(/[^0-9.]/g, '')) || 0;
-  const discountedPrice = discountApplied ? (originalPriceNum * 0.75).toFixed(2) : null;
+  
+  const getDiscountedPrice = () => {
+    if (!appliedCoupon) return null;
+    const code = appliedCoupon.toUpperCase();
+    if (code === 'LOWENDCANDYFAMILY') return (originalPriceNum * 0.75).toFixed(2); // 25% off
+    if (code === 'LEGACY' && isLesson) return (originalPriceNum * 0.50).toFixed(2); // 50% off
+    if (code === 'BOHEMYTHTEST' && isLesson) return '0.00'; // Free
+    return null;
+  };
+  
+  const getDiscountMessage = () => {
+    if (!appliedCoupon) return null;
+    const code = appliedCoupon.toUpperCase();
+    if (code === 'LOWENDCANDYFAMILY') return '25% discount applied!';
+    if (code === 'LEGACY' && isLesson) return '50% discount applied!';
+    if (code === 'BOHEMYTHTEST' && isLesson) return 'Free lesson applied!';
+    return null;
+  };
+  
+  const discountedPrice = getDiscountedPrice();
+  const discountMessage = getDiscountMessage();
 
   const handleApplyCoupon = () => {
-    if (couponCode.toUpperCase() === 'LOWENDCANDYFAMILY') {
-      setDiscountApplied(true);
+    const code = couponCode.toUpperCase();
+    
+    // Check for valid coupon codes
+    if (code === 'LOWENDCANDYFAMILY') {
+      setAppliedCoupon(code);
       toast({
         title: "Coupon Applied!",
         description: "25% discount has been applied to your order.",
       });
+    } else if (code === 'LEGACY' && isLesson) {
+      setAppliedCoupon(code);
+      toast({
+        title: "Coupon Applied!",
+        description: "50% discount has been applied to your lesson.",
+      });
+    } else if (code === 'BOHEMYTHTEST' && isLesson) {
+      setAppliedCoupon(code);
+      toast({
+        title: "Coupon Applied!",
+        description: "Your lesson is now free!",
+      });
     } else if (couponCode.trim()) {
-      setDiscountApplied(false);
+      setAppliedCoupon(null);
       toast({
         title: "Invalid Coupon",
-        description: "This coupon code is not valid.",
+        description: isLesson && (code === 'LEGACY' || code === 'BOHEMYTHTEST') 
+          ? "This coupon is only valid for lessons."
+          : "This coupon code is not valid.",
         variant: "destructive",
       });
     }
@@ -61,7 +98,7 @@ const EnterEmail = () => {
     setLoading(true);
     
     // Navigate to checkout with email and coupon (and lesson params if applicable)
-    let checkoutUrl = `/checkout?title=${encodeURIComponent(productTitle)}&price=${encodeURIComponent(price)}&id=${productId}&email=${encodeURIComponent(email)}${discountApplied ? '&coupon=LOWENDCANDYFAMILY' : ''}`;
+    let checkoutUrl = `/checkout?title=${encodeURIComponent(productTitle)}&price=${encodeURIComponent(price)}&id=${productId}&email=${encodeURIComponent(email)}${appliedCoupon ? `&coupon=${appliedCoupon}` : ''}`;
     
     if (isLesson) {
       checkoutUrl += `&type=lesson&lessonId=${encodeURIComponent(lessonId)}&date=${encodeURIComponent(lessonDate)}&time=${encodeURIComponent(lessonTime)}`;
@@ -96,7 +133,7 @@ const EnterEmail = () => {
               <div className="flex justify-between items-center">
                 <span>{productTitle}</span>
                 <div className="text-right">
-                  {discountApplied ? (
+                  {discountedPrice ? (
                     <>
                       <span className="line-through text-muted-foreground mr-2">{price}</span>
                       <span className="font-bold text-primary">${discountedPrice}</span>
@@ -106,8 +143,8 @@ const EnterEmail = () => {
                   )}
                 </div>
               </div>
-              {discountApplied && (
-                <p className="text-sm text-green-600 mt-2">25% discount applied!</p>
+              {discountMessage && (
+                <p className="text-sm text-green-600 mt-2">{discountMessage}</p>
               )}
             </div>
 

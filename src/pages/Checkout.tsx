@@ -17,7 +17,7 @@ interface CheckoutFormProps {
   productId: string;
   customerEmail: string;
   originalPrice?: string;
-  discountApplied?: boolean;
+  discountApplied?: string | null;
   finalAmount?: number;
 }
 
@@ -113,7 +113,7 @@ const CheckoutForm = ({ clientSecret, productTitle, price, productId, customerEm
           </div>
         </div>
         {discountApplied && (
-          <p className="text-sm text-green-600 mt-2">25% discount applied!</p>
+          <p className="text-sm text-green-600 mt-2">{discountApplied}</p>
         )}
       </div>
 
@@ -167,7 +167,7 @@ const Checkout = () => {
   const [freeData, setFreeData] = useState<{ downloadUrl: string; productTitle: string } | null>(null);
   const [error, setError] = useState<string>("");
   const [finalAmount, setFinalAmount] = useState<number | null>(null);
-  const [discountApplied, setDiscountApplied] = useState(false);
+  const [discountApplied, setDiscountApplied] = useState<string | null>(null);
   
   const productTitle = searchParams.get("title") || "";
   const price = searchParams.get("price") || "";
@@ -285,7 +285,14 @@ const Checkout = () => {
         console.log('Payment intent created successfully, client secret received');
         setClientSecret(data.client_secret);
         setFinalAmount(data.amount);
-        setDiscountApplied(couponCode.toUpperCase() === 'LOWENDCANDYFAMILY');
+        const upperCoupon = couponCode.toUpperCase();
+        if (upperCoupon === 'LOWENDCANDYFAMILY') {
+          setDiscountApplied('25% discount applied!');
+        } else if (upperCoupon === 'LEGACY' && isLesson) {
+          setDiscountApplied('50% discount applied!');
+        } else if (upperCoupon === 'BOHEMYTHTEST' && isLesson) {
+          setDiscountApplied('Free lesson applied!');
+        }
         setLoading(false);
       } catch (error: any) {
         console.error('Error initializing checkout:', error);
