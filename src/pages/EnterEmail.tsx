@@ -52,6 +52,8 @@ const EnterEmail = () => {
   const handleApplyCoupon = () => {
     const code = couponCode.toUpperCase();
     
+    console.log('Coupon attempt:', { code, isLesson, productTitle, price });
+    
     // Check for valid coupon codes
     if (code === 'LOWENDCANDYFAMILY') {
       setAppliedCoupon(code);
@@ -75,7 +77,7 @@ const EnterEmail = () => {
       setAppliedCoupon(null);
       toast({
         title: "Invalid Coupon",
-        description: isLesson && (code === 'LEGACY' || code === 'BOHEMYTHTEST') 
+        description: !isLesson && (code === 'LEGACY' || code === 'BOHEMYTHTEST') 
           ? "This coupon is only valid for lessons."
           : "This coupon code is not valid.",
         variant: "destructive",
