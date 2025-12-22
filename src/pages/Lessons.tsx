@@ -2,11 +2,11 @@ import { useState, useMemo } from "react";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Clock, Users, Check, Globe } from "lucide-react";
+import { ArrowLeft, Clock, Users, Check, Globe, CalendarX } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { format, isWeekend } from "date-fns";
 import { cn } from "@/lib/utils";
-
+import { useCalendarBusyTimes, isTimeSlotBusy } from "@/hooks/useCalendarBusyTimes";
 // PST time slots (what Beau works in)
 const pstTimeSlots = [
   { hour: 9, label: "9:00 AM" },
@@ -147,14 +147,31 @@ const Lessons = () => {
   const userTimezoneAbbr = useMemo(() => getTimezoneAbbr(userTimezone), [userTimezone]);
   const isPST = userTimezone.includes('Pacific') || userTimezone.includes('Los_Angeles');
 
-  // Convert time slots for display
+  // Fetch busy times from Google Calendar
+  const { busyTimes, isLoading: isLoadingBusyTimes, isConnected: isCalendarConnected } = useCalendarBusyTimes();
+
+  // Get duration in minutes for the selected lesson
+  const lessonDurationMinutes = useMemo(() => {
+    if (!selectedOption) return 60;
+    if (selectedOption.title.includes("2 Hour")) return 120;
+    return 60; // Default to 60 minutes
+  }, [selectedOption]);
+
+  // Convert time slots for display with busy status
   const displayTimeSlots = useMemo(() => {
-    return pstTimeSlots.map(slot => ({
-      pstHour: slot.hour,
-      pstLabel: slot.label,
-      local: convertPSTToLocal(slot.hour, selectedDate),
-    }));
-  }, [selectedDate]);
+    return pstTimeSlots.map(slot => {
+      const isBusy = selectedDate 
+        ? isTimeSlotBusy(busyTimes, selectedDate, slot.hour, lessonDurationMinutes)
+        : false;
+      
+      return {
+        pstHour: slot.hour,
+        pstLabel: slot.label,
+        local: convertPSTToLocal(slot.hour, selectedDate),
+        isBusy,
+      };
+    });
+  }, [selectedDate, busyTimes, lessonDurationMinutes]);
 
   const handleBookLesson = () => {
     if (!selectedOption || !selectedDate || selectedPSTHour === null) return;
@@ -311,15 +328,24 @@ const Lessons = () => {
                       variant={selectedPSTHour === slot.pstHour ? "default" : "outline"}
                       size="sm"
                       onClick={() => setSelectedPSTHour(slot.pstHour)}
-                      disabled={!selectedDate}
+                      disabled={!selectedDate || slot.isBusy}
                       className={cn(
-                        "transition-all flex flex-col h-auto py-2",
-                        selectedPSTHour === slot.pstHour && "shadow-glow-primary"
+                        "transition-all flex flex-col h-auto py-2 relative",
+                        selectedPSTHour === slot.pstHour && "shadow-glow-primary",
+                        slot.isBusy && "opacity-50 cursor-not-allowed line-through"
                       )}
                     >
-                      <span className="font-medium">{slot.local.label}</span>
+                      {slot.isBusy && (
+                        <CalendarX className="w-3 h-3 absolute top-1 right-1 text-destructive" />
+                      )}
+                      <span className={cn("font-medium", slot.isBusy && "line-through")}>
+                        {slot.local.label}
+                      </span>
                       {!isPST && (
                         <span className="text-[10px] opacity-70">{slot.pstLabel} PST</span>
+                      )}
+                      {slot.isBusy && (
+                        <span className="text-[10px] text-destructive">Unavailable</span>
                       )}
                     </Button>
                   ))}
