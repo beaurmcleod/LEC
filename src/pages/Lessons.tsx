@@ -49,6 +49,7 @@ const lessonOptions: LessonOption[] = [
     price: 149,
     description: "Deep dive into your project with comprehensive guidance",
     features: [
+      "Can be split into 2 × 1-hour lessons",
       "Extended one-on-one session",
       "Full track review & feedback",
       "Live production demonstrations",
