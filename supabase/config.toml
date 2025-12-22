@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.add-manual-purchases]
 verify_jwt = false
+
+[functions.send-lesson-reminders]
+verify_jwt = false
