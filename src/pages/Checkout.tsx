@@ -277,6 +277,13 @@ const Checkout = () => {
           throw new Error(`Payment setup failed: ${error.message || 'Please try again'}`);
         }
 
+        // Handle free purchases (e.g., BOHEMYTHTEST coupon)
+        if (data?.free) {
+          console.log('Free purchase confirmed, redirecting to success page');
+          navigate(`/payment-success?product_id=${productId}&customer_email=${encodeURIComponent(customerEmail)}&free=true&lesson_date=${encodeURIComponent(lessonDate)}&lesson_time=${encodeURIComponent(lessonTime)}`);
+          return;
+        }
+
         if (!data?.client_secret) {
           console.error('No client secret received:', data);
           throw new Error('Payment setup incomplete. Please try again.');

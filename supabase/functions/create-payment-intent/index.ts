@@ -149,6 +149,20 @@ serve(async (req) => {
       metadata.lesson_time = lessonTime || '';
     }
     
+    // Handle free purchases (e.g., BOHEMYTHTEST coupon)
+    if (priceInCents === 0) {
+      console.log('Free purchase - skipping Stripe, returning free confirmation');
+      return new Response(JSON.stringify({ 
+        free: true,
+        amount: 0,
+        currency: "usd",
+        metadata
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+    
     // Create a payment intent for embedded checkout
     const paymentIntent = await stripe.paymentIntents.create({
       amount: priceInCents,
