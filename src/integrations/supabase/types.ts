@@ -65,6 +65,45 @@ export type Database = {
           },
         ]
       }
+      lesson_reminders: {
+        Row: {
+          created_at: string
+          customer_email: string
+          duration_minutes: number
+          id: string
+          lesson_date: string
+          lesson_start_utc: string
+          lesson_time: string
+          lesson_title: string
+          reminder_sent: boolean
+          reminder_time: string
+        }
+        Insert: {
+          created_at?: string
+          customer_email: string
+          duration_minutes: number
+          id?: string
+          lesson_date: string
+          lesson_start_utc: string
+          lesson_time: string
+          lesson_title: string
+          reminder_sent?: boolean
+          reminder_time: string
+        }
+        Update: {
+          created_at?: string
+          customer_email?: string
+          duration_minutes?: number
+          id?: string
+          lesson_date?: string
+          lesson_start_utc?: string
+          lesson_time?: string
+          lesson_title?: string
+          reminder_sent?: boolean
+          reminder_time?: string
+        }
+        Relationships: []
+      }
       link_clicks: {
         Row: {
           clicked_at: string
