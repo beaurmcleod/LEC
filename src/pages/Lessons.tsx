@@ -1,22 +1,23 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Clock, Users, Check } from "lucide-react";
+import { ArrowLeft, Clock, Users, Check, Globe } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { format, isWeekend } from "date-fns";
 import { cn } from "@/lib/utils";
 
-const timeSlots = [
-  "9:00 AM",
-  "10:00 AM",
-  "11:00 AM",
-  "12:00 PM",
-  "1:00 PM",
-  "2:00 PM",
-  "3:00 PM",
-  "4:00 PM",
-  "5:00 PM",
+// PST time slots (what Beau works in)
+const pstTimeSlots = [
+  { hour: 9, label: "9:00 AM" },
+  { hour: 10, label: "10:00 AM" },
+  { hour: 11, label: "11:00 AM" },
+  { hour: 12, label: "12:00 PM" },
+  { hour: 13, label: "1:00 PM" },
+  { hour: 14, label: "2:00 PM" },
+  { hour: 15, label: "3:00 PM" },
+  { hour: 16, label: "4:00 PM" },
+  { hour: 17, label: "5:00 PM" },
 ];
 
 interface LessonOption {
@@ -74,31 +75,110 @@ const lessonOptions: LessonOption[] = [
   },
 ];
 
+// Get user's timezone
+function getUserTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+// Get timezone abbreviation for display
+function getTimezoneAbbr(timezone: string): string {
+  const date = new Date();
+  const options: Intl.DateTimeFormatOptions = { timeZoneName: 'short' };
+  const parts = new Intl.DateTimeFormat('en-US', { ...options, timeZone: timezone }).formatToParts(date);
+  const tzPart = parts.find(part => part.type === 'timeZoneName');
+  return tzPart?.value || timezone;
+}
+
+// Convert PST hour to user's local time
+function convertPSTToLocal(pstHour: number, selectedDate: Date | undefined): { hour: number; label: string; nextDay: boolean } {
+  if (!selectedDate) {
+    // Return placeholder if no date selected
+    const isPM = pstHour >= 12;
+    const displayHour = pstHour > 12 ? pstHour - 12 : pstHour === 0 ? 12 : pstHour;
+    return { hour: pstHour, label: `${displayHour}:00 ${isPM ? 'PM' : 'AM'}`, nextDay: false };
+  }
+
+  // Create a date in PST (UTC-8)
+  // PST is UTC-8, PDT is UTC-7. For simplicity, we'll use -8 (standard time)
+  // A more robust solution would detect DST, but this works for most cases
+  const pstOffset = -8; // PST offset from UTC
+  
+  // Create the PST time
+  const pstDate = new Date(selectedDate);
+  pstDate.setHours(pstHour, 0, 0, 0);
+  
+  // Convert PST to UTC
+  const utcTime = new Date(pstDate.getTime() - (pstOffset * 60 * 60 * 1000));
+  
+  // Get the user's local offset
+  const localOffset = new Date().getTimezoneOffset(); // in minutes, negative for ahead of UTC
+  
+  // Convert UTC to local
+  const localTime = new Date(utcTime.getTime() - (localOffset * 60 * 1000));
+  
+  const localHour = localTime.getHours();
+  const isPM = localHour >= 12;
+  const displayHour = localHour > 12 ? localHour - 12 : localHour === 0 ? 12 : localHour;
+  
+  // Check if it's the next day
+  const nextDay = localTime.getDate() !== selectedDate.getDate();
+  
+  return { 
+    hour: localHour, 
+    label: `${displayHour}:00 ${isPM ? 'PM' : 'AM'}${nextDay ? ' (+1 day)' : ''}`,
+    nextDay 
+  };
+}
+
+// Format PST time for display
+function formatPSTTime(pstHour: number): string {
+  const isPM = pstHour >= 12;
+  const displayHour = pstHour > 12 ? pstHour - 12 : pstHour === 0 ? 12 : pstHour;
+  return `${displayHour}:00 ${isPM ? 'PM' : 'AM'}`;
+}
+
 const Lessons = () => {
   const navigate = useNavigate();
   const [selectedOption, setSelectedOption] = useState<LessonOption | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
-  const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [selectedPSTHour, setSelectedPSTHour] = useState<number | null>(null);
+
+  const userTimezone = useMemo(() => getUserTimezone(), []);
+  const userTimezoneAbbr = useMemo(() => getTimezoneAbbr(userTimezone), [userTimezone]);
+  const isPST = userTimezone.includes('Pacific') || userTimezone.includes('Los_Angeles');
+
+  // Convert time slots for display
+  const displayTimeSlots = useMemo(() => {
+    return pstTimeSlots.map(slot => ({
+      pstHour: slot.hour,
+      pstLabel: slot.label,
+      local: convertPSTToLocal(slot.hour, selectedDate),
+    }));
+  }, [selectedDate]);
 
   const handleBookLesson = () => {
-    if (!selectedOption || !selectedDate || !selectedTime) return;
+    if (!selectedOption || !selectedDate || selectedPSTHour === null) return;
 
-    // Navigate to email entry with lesson details
     // Format the date as YYYY-MM-DD for consistency
     const formattedDate = format(selectedDate, "yyyy-MM-dd");
+    const pstTimeLabel = formatPSTTime(selectedPSTHour);
     
     const params = new URLSearchParams({
       type: "lesson",
       lessonId: selectedOption.id,
-      id: selectedOption.id, // Product ID for checkout
+      id: selectedOption.id,
       title: selectedOption.title,
       price: `$${selectedOption.price}`,
       date: formattedDate,
-      time: selectedTime,
+      time: pstTimeLabel, // Always send PST time to backend
     });
 
     navigate(`/enter-email?${params.toString()}`);
   };
+
+  const selectedLocalTime = selectedPSTHour !== null 
+    ? convertPSTToLocal(selectedPSTHour, selectedDate) 
+    : null;
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
@@ -182,7 +262,7 @@ const Lessons = () => {
                   Select a Date
                 </CardTitle>
                 <CardDescription>
-                  Available Monday - Friday. All times are in PST.
+                  Available Monday - Friday
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex justify-center">
@@ -191,7 +271,7 @@ const Lessons = () => {
                   selected={selectedDate}
                   onSelect={(date) => {
                     setSelectedDate(date);
-                    setSelectedTime(null); // Reset time when date changes
+                    setSelectedPSTHour(null); // Reset time when date changes
                   }}
                   disabled={(date) => {
                     const today = new Date();
@@ -208,33 +288,47 @@ const Lessons = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Clock className="w-5 h-5 text-primary" />
-                  Select a Time (PST)
+                  Select a Time
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="space-y-1">
                   {selectedDate 
                     ? `Choose your preferred time slot for ${format(selectedDate, "EEEE, MMMM d")}`
                     : "First select a date above"
                   }
+                  {!isPST && (
+                    <span className="flex items-center gap-1 text-xs text-primary mt-1">
+                      <Globe className="w-3 h-3" />
+                      Showing times in your timezone ({userTimezoneAbbr})
+                    </span>
+                  )}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-3 gap-2">
-                  {timeSlots.map((time) => (
+                  {displayTimeSlots.map((slot) => (
                     <Button
-                      key={time}
-                      variant={selectedTime === time ? "default" : "outline"}
+                      key={slot.pstHour}
+                      variant={selectedPSTHour === slot.pstHour ? "default" : "outline"}
                       size="sm"
-                      onClick={() => setSelectedTime(time)}
+                      onClick={() => setSelectedPSTHour(slot.pstHour)}
                       disabled={!selectedDate}
                       className={cn(
-                        "transition-all",
-                        selectedTime === time && "shadow-glow-primary"
+                        "transition-all flex flex-col h-auto py-2",
+                        selectedPSTHour === slot.pstHour && "shadow-glow-primary"
                       )}
                     >
-                      {time}
+                      <span className="font-medium">{slot.local.label}</span>
+                      {!isPST && (
+                        <span className="text-[10px] opacity-70">{slot.pstLabel} PST</span>
+                      )}
                     </Button>
                   ))}
                 </div>
+                {!isPST && (
+                  <p className="text-xs text-muted-foreground mt-3 text-center">
+                    All lessons are conducted in Pacific Time (PST/PDT)
+                  </p>
+                )}
               </CardContent>
             </Card>
 
@@ -258,10 +352,17 @@ const Lessons = () => {
                         <span className="font-medium">{format(selectedDate, "EEEE, MMMM d, yyyy")}</span>
                       </div>
                     )}
-                    {selectedTime && (
+                    {selectedPSTHour !== null && selectedLocalTime && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Time (PST)</span>
-                        <span className="font-medium">{selectedTime}</span>
+                        <span className="text-muted-foreground">Time</span>
+                        <div className="text-right">
+                          <span className="font-medium">{selectedLocalTime.label}</span>
+                          {!isPST && (
+                            <span className="block text-xs text-muted-foreground">
+                              {formatPSTTime(selectedPSTHour)} PST
+                            </span>
+                          )}
+                        </div>
                       </div>
                     )}
                     <div className="border-t border-border pt-3 mt-3">
@@ -280,10 +381,10 @@ const Lessons = () => {
                 <Button
                   className="w-full mt-6"
                   size="lg"
-                  disabled={!selectedOption || !selectedDate || !selectedTime}
+                  disabled={!selectedOption || !selectedDate || selectedPSTHour === null}
                   onClick={handleBookLesson}
                 >
-                  {selectedOption && selectedDate && selectedTime
+                  {selectedOption && selectedDate && selectedPSTHour !== null
                     ? `Book & Pay $${selectedOption.price}`
                     : "Select a session, date, and time"}
                 </Button>
