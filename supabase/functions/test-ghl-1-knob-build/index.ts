@@ -16,9 +16,9 @@ serve(async (req) => {
     console.log("Sending test payload for 1 Knob Build to GHL...");
 
     const testPayload = {
-      first_name: "Test",
-      last_name: "User",
-      email: "test@bohemyth.com",
+      first_name: "Marcus",
+      last_name: "Johnson",
+      email: "marcus.johnson@gmail.com",
       product_title: "1 Knob Build",
       amount_paid: 3.00,
       purchase_date: new Date().toISOString(),
