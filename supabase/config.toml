@@ -41,3 +41,21 @@ verify_jwt = false
 
 [functions.get-calendar-busy-times]
 verify_jwt = false
+
+[functions.test-ghl-1-knob-build]
+verify_jwt = false
+
+[functions.test-ghl-serum-rack]
+verify_jwt = false
+
+[functions.test-ghl-hat-sauce]
+verify_jwt = false
+
+[functions.test-ghl-vocal-sauce]
+verify_jwt = false
+
+[functions.test-ghl-randomizer-rack]
+verify_jwt = false
+
+[functions.test-ghl-vocal-cleanup]
+verify_jwt = false
