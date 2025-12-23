@@ -10,7 +10,7 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-const GHL_WEBHOOK_URL = "https://services.leadconnectorhq.com/hooks/84LVJ79Hb6dDlqcCFKVc/webhook-trigger/8dc2462a-0a56-47e8-99f8-247082fd8dae";
+const MAKE_WEBHOOK_URL = "https://hook.us2.make.com/9568sygekt6l2vvyjbtvamhd1ptuim46";
 
 serve(async (req) => {
   // Handle CORS preflight
@@ -101,11 +101,13 @@ serve(async (req) => {
       const productTitle = (purchase.products as any)?.title || "Unknown Product";
       
       try {
-        const response = await fetch(GHL_WEBHOOK_URL, {
+        const response = await fetch(MAKE_WEBHOOK_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             email: purchase.customer_email,
+            first_name: "",
+            last_name: "",
             product_title: productTitle,
             amount_paid: purchase.amount_paid / 100, // Convert cents to dollars
             purchase_date: purchase.purchased_at,
@@ -115,7 +117,7 @@ serve(async (req) => {
         });
 
         const success = response.ok;
-        console.log(`Sent to GHL: ${purchase.customer_email} - ${productTitle} - ${success ? "SUCCESS" : "FAILED"}`);
+        console.log(`Sent to Make.com: ${purchase.customer_email} - ${productTitle} - ${success ? "SUCCESS" : "FAILED"}`);
         
         results.push({
           id: purchase.id,
@@ -130,7 +132,7 @@ serve(async (req) => {
           await new Promise(resolve => setTimeout(resolve, 500));
         }
       } catch (error) {
-        console.error(`Error sending ${purchase.customer_email} to GHL:`, error);
+        console.error(`Error sending ${purchase.customer_email} to Make.com:`, error);
         results.push({
           id: purchase.id,
           email: purchase.customer_email,
