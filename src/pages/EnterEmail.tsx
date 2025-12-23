@@ -10,6 +10,8 @@ import { toast } from "@/hooks/use-toast";
 const EnterEmail = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [couponCode, setCouponCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -88,6 +90,15 @@ const EnterEmail = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!firstName.trim() || !lastName.trim()) {
+      toast({
+        title: "Name Required",
+        description: "Please enter your first and last name",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       toast({
         title: "Invalid Email",
@@ -99,8 +110,8 @@ const EnterEmail = () => {
 
     setLoading(true);
     
-    // Navigate to checkout with email and coupon (and lesson params if applicable)
-    let checkoutUrl = `/checkout?title=${encodeURIComponent(productTitle)}&price=${encodeURIComponent(price)}&id=${productId}&email=${encodeURIComponent(email)}${appliedCoupon ? `&coupon=${appliedCoupon}` : ''}`;
+    // Navigate to checkout with name, email and coupon (and lesson params if applicable)
+    let checkoutUrl = `/checkout?title=${encodeURIComponent(productTitle)}&price=${encodeURIComponent(price)}&id=${productId}&email=${encodeURIComponent(email)}&firstName=${encodeURIComponent(firstName.trim())}&lastName=${encodeURIComponent(lastName.trim())}${appliedCoupon ? `&coupon=${appliedCoupon}` : ''}`;
     
     if (isLesson) {
       checkoutUrl += `&type=lesson&lessonId=${encodeURIComponent(lessonId)}&date=${encodeURIComponent(lessonDate)}&time=${encodeURIComponent(lessonTime)}`;
@@ -122,9 +133,9 @@ const EnterEmail = () => {
             Back to Store
           </Button>
           
-          <h1 className="text-3xl font-bold mb-2">Enter Your Email</h1>
+          <h1 className="text-3xl font-bold mb-2">Your Details</h1>
           <p className="text-muted-foreground">
-            We'll send your download link to this email
+            Enter your information to complete your purchase
           </p>
         </div>
 
@@ -164,6 +175,31 @@ const EnterEmail = () => {
                 <Button type="button" variant="outline" onClick={handleApplyCoupon}>
                   Apply
                 </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="firstName">First Name</Label>
+                <Input
+                  id="firstName"
+                  type="text"
+                  placeholder="John"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lastName">Last Name</Label>
+                <Input
+                  id="lastName"
+                  type="text"
+                  placeholder="Doe"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  required
+                />
               </div>
             </div>
 

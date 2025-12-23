@@ -173,6 +173,8 @@ const Checkout = () => {
   const price = searchParams.get("price") || "";
   const productId = searchParams.get("id") || "";
   const customerEmail = searchParams.get("email") || "";
+  const customerFirstName = searchParams.get("firstName") || "";
+  const customerLastName = searchParams.get("lastName") || "";
   const couponCode = searchParams.get("coupon") || "";
   
   // Lesson booking params
@@ -181,7 +183,7 @@ const Checkout = () => {
   const lessonDate = searchParams.get("date") || "";
   const lessonTime = searchParams.get("time") || "";
   
-  console.log("Checkout params:", { productTitle, price, productId, customerEmail, isLesson, lessonDate, lessonTime });
+  console.log("Checkout params:", { productTitle, price, productId, customerEmail, customerFirstName, customerLastName, isLesson, lessonDate, lessonTime });
   
   // Add toast notification to help with debugging
   if (productTitle && price) {
@@ -255,6 +257,8 @@ const Checkout = () => {
         const paymentBody: any = {
           productId: productId,
           customerEmail: customerEmail,
+          customerFirstName: customerFirstName,
+          customerLastName: customerLastName,
           couponCode: couponCode || undefined,
         };
         

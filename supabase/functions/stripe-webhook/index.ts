@@ -88,6 +88,8 @@ serve(async (req) => {
       
       const productTitle = paymentIntent.metadata?.product_title || "Digital Product";
       const productId = paymentIntent.metadata?.product_id;
+      const customerFirstName = paymentIntent.metadata?.customer_first_name || "";
+      const customerLastName = paymentIntent.metadata?.customer_last_name || "";
       const amount = paymentIntent.amount / 100;
 
       console.log("Recording purchase for:", email);
@@ -118,9 +120,11 @@ serve(async (req) => {
           console.log("Purchase recorded successfully", profile?.id ? 'with user_id' : 'without user_id');
         }
 
-        // Send to Make.com webhook
+        // Send to Make.com webhook with first/last name
         await sendToMake({
           email: email,
+          firstName: customerFirstName,
+          lastName: customerLastName,
           productTitle: productTitle,
           amount: amount,
           purchaseDate: new Date().toISOString(),
