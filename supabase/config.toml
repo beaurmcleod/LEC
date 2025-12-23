@@ -68,3 +68,6 @@ verify_jwt = false
 
 [functions.test-all-products-make]
 verify_jwt = false
+
+[functions.ask-producer]
+verify_jwt = false
