@@ -21,6 +21,7 @@ import Lessons from "./pages/Lessons";
 import CandyClub from "./pages/CandyClub";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminSetup from "./pages/AdminSetup";
+import AskProducer from "./pages/AskProducer";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +40,7 @@ const App = () => (
           <Route path="/links" element={<Links />} />
           <Route path="/lessons" element={<Lessons />} />
           <Route path="/candy-club" element={<CandyClub />} />
+          <Route path="/ask" element={<AskProducer />} />
           <Route path="/product/:id" element={<ProductDetail />} />
           <Route path="/enter-email" element={<EnterEmail />} />
           <Route path="/checkout" element={<Checkout />} />
