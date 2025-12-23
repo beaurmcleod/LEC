@@ -65,3 +65,6 @@ verify_jwt = false
 
 [functions.run-make-backfill]
 verify_jwt = false
+
+[functions.test-all-products-make]
+verify_jwt = false
