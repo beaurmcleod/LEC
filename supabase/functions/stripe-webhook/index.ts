@@ -10,22 +10,26 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-const GHL_WEBHOOK_URL = "https://services.leadconnectorhq.com/hooks/84LVJ79Hb6dDlqcCFKVc/webhook-trigger/7e17eafa-bfec-4f9a-8ece-311a11d5db3b";
+const MAKE_WEBHOOK_URL = "https://hook.us2.make.com/9568sygekt6l2vvyjbtvamhd1ptuim46";
 
-// Send purchase data to GoHighLevel
-async function sendToGHL(purchaseData: {
+// Send purchase data to Make.com
+async function sendToMake(purchaseData: {
   email: string;
+  firstName?: string;
+  lastName?: string;
   productTitle: string;
   amount: number;
   purchaseDate: string;
   paymentId: string;
 }) {
   try {
-    const response = await fetch(GHL_WEBHOOK_URL, {
+    const response = await fetch(MAKE_WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         email: purchaseData.email,
+        first_name: purchaseData.firstName || "",
+        last_name: purchaseData.lastName || "",
         product_title: purchaseData.productTitle,
         amount_paid: purchaseData.amount,
         purchase_date: purchaseData.purchaseDate,
@@ -35,12 +39,12 @@ async function sendToGHL(purchaseData: {
     });
     
     if (!response.ok) {
-      console.error("GHL webhook failed:", response.status, await response.text());
+      console.error("Make.com webhook failed:", response.status, await response.text());
     } else {
-      console.log("GHL webhook sent successfully for:", purchaseData.email);
+      console.log("Make.com webhook sent successfully for:", purchaseData.email);
     }
   } catch (error) {
-    console.error("Error sending to GHL:", error);
+    console.error("Error sending to Make.com:", error);
   }
 }
 
@@ -114,8 +118,8 @@ serve(async (req) => {
           console.log("Purchase recorded successfully", profile?.id ? 'with user_id' : 'without user_id');
         }
 
-        // Send to GoHighLevel webhook
-        await sendToGHL({
+        // Send to Make.com webhook
+        await sendToMake({
           email: email,
           productTitle: productTitle,
           amount: amount,
