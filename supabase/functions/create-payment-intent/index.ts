@@ -59,6 +59,8 @@ serve(async (req) => {
     const paymentSchema = z.object({
       productId: z.string().min(1, { message: "Product ID is required" }),
       customerEmail: z.string().email().max(255).optional(),
+      customerFirstName: z.string().max(100).optional(),
+      customerLastName: z.string().max(100).optional(),
       couponCode: z.string().optional(),
       // Lesson booking fields
       isLesson: z.boolean().optional(),
@@ -79,7 +81,7 @@ serve(async (req) => {
       );
     }
 
-    const { productId, customerEmail, couponCode, isLesson, lessonId, lessonDate, lessonTime } = validation.data;
+    const { productId, customerEmail, customerFirstName, customerLastName, couponCode, isLesson, lessonId, lessonDate, lessonTime } = validation.data;
 
     // SECURITY: Fetch actual price from database instead of trusting client
     // Support both UUID and title/slug lookup
@@ -137,6 +139,8 @@ serve(async (req) => {
     const metadata: Record<string, string> = {
       product_id: product.id,
       product_title: product.title,
+      customer_first_name: customerFirstName || '',
+      customer_last_name: customerLastName || '',
       coupon_code: discountApplied ? upperCoupon : '',
       discount_applied: discountApplied,
     };
