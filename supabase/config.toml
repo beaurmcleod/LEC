@@ -62,3 +62,6 @@ verify_jwt = false
 
 [functions.test-make-webhook]
 verify_jwt = false
+
+[functions.run-make-backfill]
+verify_jwt = false
