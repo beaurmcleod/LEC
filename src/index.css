@@ -54,6 +54,14 @@ Bright, energetic colors inspired by the colorful lollipop logo
     --studio-cool: 200 85% 60%;
     --beats-purple: 280 85% 65%;
     --samples-orange: 25 100% 65%;
+    
+    /* VSL Landing - Neon Volt Green (Ableton/Serum dark mode aesthetic) */
+    --neon: 75 100% 50%;
+    --neon-foreground: 0 0% 5%;
+    --charcoal: 220 15% 10%;
+    --charcoal-light: 220 12% 14%;
+    --obsidian: 220 20% 6%;
+    --glow-neon: 0 0 30px hsl(75 100% 50% / 0.4);
 
     --sidebar-background: 0 0% 98%;
 

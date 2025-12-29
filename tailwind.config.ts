@@ -58,7 +58,17 @@ export default {
 					cool: 'hsl(var(--studio-cool))'
 				},
 				beats: 'hsl(var(--beats-purple))',
-				samples: 'hsl(var(--samples-orange))'
+				samples: 'hsl(var(--samples-orange))',
+				// VSL Landing colors
+				neon: {
+					DEFAULT: 'hsl(var(--neon))',
+					foreground: 'hsl(var(--neon-foreground))'
+				},
+				charcoal: {
+					DEFAULT: 'hsl(var(--charcoal))',
+					light: 'hsl(var(--charcoal-light))'
+				},
+				obsidian: 'hsl(var(--obsidian))'
 			},
 			backgroundImage: {
 				'gradient-primary': 'var(--gradient-primary)',
@@ -67,7 +77,9 @@ export default {
 			},
 			boxShadow: {
 				'glow-primary': 'var(--glow-primary)',
-				'glow-accent': 'var(--glow-accent)'
+				'glow-accent': 'var(--glow-accent)',
+				'glow-neon': 'var(--glow-neon)',
+				'glow-neon-lg': '0 0 50px hsl(75 100% 50% / 0.3)'
 			},
 			borderRadius: {
 				lg: 'var(--radius)',
