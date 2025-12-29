@@ -41,9 +41,9 @@ export default function Collective() {
 
               <ul className="space-y-3 py-2">
                 {[
-                  "Weekly project file reviews with real feedback",
-                  "30-Day Bass Challenge with daily structure blueprints",
-                  "Crux Chords AI included for 1 year ($97 value)"
+                  "Weekly live streams with real-time mixdowns and feedback",
+                  "Full 30 Day EDM Producer curriculum access",
+                  "One year Crux Chords subscription included"
                 ].map((item, i) => (
                   <li key={i} className="flex items-start gap-3 text-muted-foreground">
                     <Check className="w-5 h-5 text-neon mt-0.5 flex-shrink-0" />
@@ -149,49 +149,58 @@ export default function Collective() {
           <div className="grid md:grid-cols-3 gap-6">
             {/* Standard Tier */}
             <div className="p-6 rounded-xl bg-charcoal border border-charcoal-light">
-              <div className="text-sm text-muted-foreground mb-2">Standard Tier</div>
-              <div className="text-3xl font-bold text-foreground mb-4">$0</div>
-              <h3 className="text-lg font-semibold text-foreground mb-3">Community Access</h3>
+              <div className="text-sm text-muted-foreground mb-2">Standard</div>
+              <div className="text-3xl font-bold text-foreground mb-4">Free</div>
+              <h3 className="text-lg font-semibold text-foreground mb-3">Community & Orientation</h3>
               <ul className="space-y-2 text-muted-foreground text-sm">
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
-                  <span>Full community access</span>
+                  <span>Join other producers and get technical questions answered</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
-                  <span>Free Ableton Foundations course</span>
+                  <span>Access to the Free Introductory Ableton Live Course</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
-                  <span>Production workflow templates</span>
+                  <span>Community visibility and discussion access</span>
                 </li>
               </ul>
+              <p className="text-xs text-muted-foreground mt-4 italic">Designed as a preview, not a complete solution</p>
             </div>
 
-            {/* Collective - Featured */}
+            {/* Premium - Featured */}
             <div className="p-6 rounded-xl bg-charcoal border-2 border-neon/50 relative shadow-glow-neon">
               <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-neon text-neon-foreground text-xs font-semibold px-3 py-1 rounded-full">
                 Most Popular
               </div>
-              <div className="text-sm text-muted-foreground mb-2">Collective</div>
+              <div className="text-sm text-muted-foreground mb-2">Premium</div>
               <div className="text-3xl font-bold text-foreground mb-4">$47<span className="text-lg font-normal text-muted-foreground">/mo</span></div>
-              <h3 className="text-lg font-semibold text-foreground mb-3">Full Workflow System</h3>
+              <h3 className="text-lg font-semibold text-foreground mb-3">The Core Transformation</h3>
               <ul className="space-y-2 text-muted-foreground text-sm">
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
-                  <span>30-Day Bass Challenge blueprint</span>
+                  <span>Finish one professional-grade track every 30 days</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
-                  <span>Weekly project file reviews</span>
+                  <span>Weekly live streams with real-time mixdowns and feedback</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
-                  <span>Monthly asset drops</span>
+                  <span>Weekly track reviews</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
-                  <span>1 year Crux Chords AI included</span>
+                  <span>Monthly drops of sample packs, Serum presets, and Max for Live devices</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
+                  <span>One year of Crux Chords subscription included</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
+                  <span>Access to the full 30 Day EDM Producer curriculum</span>
                 </li>
               </ul>
             </div>
@@ -199,23 +208,35 @@ export default function Collective() {
             {/* VIP Mentorship */}
             <div className="p-6 rounded-xl bg-charcoal border border-charcoal-light relative">
               <div className="absolute -top-3 right-4 bg-secondary/20 text-secondary text-xs font-medium px-2 py-1 rounded-full border border-secondary/30">
-                10 spots only
+                Limited spots
               </div>
-              <div className="text-sm text-muted-foreground mb-2">VIP Mentorship</div>
-              <div className="text-3xl font-bold text-foreground mb-4">Custom</div>
-              <h3 className="text-lg font-semibold text-foreground mb-3">Direct Guidance</h3>
+              <div className="text-sm text-muted-foreground mb-2">VIP</div>
+              <div className="text-3xl font-bold text-foreground mb-4">$297<span className="text-lg font-normal text-muted-foreground">/mo</span></div>
+              <h3 className="text-lg font-semibold text-foreground mb-3">Mentorship & Career Acceleration</h3>
               <ul className="space-y-2 text-muted-foreground text-sm">
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
-                  <span>Monthly 1:1 strategy calls</span>
+                  <span>Everything included in Premium</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
-                  <span>Career roadmap planning</span>
+                  <span>Priority private mentor access via direct messaging</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
-                  <span>Priority feedback queue</span>
+                  <span>Unlimited ongoing mentor support (priority-based)</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
+                  <span>Two private 60-minute monthly calls for music and career review</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
+                  <span>Direct contact hooks with A&R representatives</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
+                  <span>High-level release, branding, and career strategy guidance</span>
                 </li>
               </ul>
               <p className="text-xs text-muted-foreground mt-4 italic">Application required</p>
@@ -237,7 +258,7 @@ export default function Collective() {
           <div className="grid md:grid-cols-3 gap-6 mb-8">
             {/* Standard */}
             <div className="p-6 rounded-xl bg-obsidian border border-charcoal-light text-center">
-              <div className="text-2xl font-bold mb-2">$0</div>
+              <div className="text-2xl font-bold mb-2">Free</div>
               <div className="text-sm text-muted-foreground mb-4">Standard</div>
               <Button
                 asChild
@@ -250,24 +271,24 @@ export default function Collective() {
               </Button>
             </div>
 
-            {/* Collective */}
+            {/* Premium */}
             <div className="p-6 rounded-xl bg-obsidian border-2 border-neon/50 text-center shadow-glow-neon">
               <div className="text-2xl font-bold mb-2">$47/mo</div>
-              <div className="text-sm text-muted-foreground mb-4">Collective</div>
+              <div className="text-sm text-muted-foreground mb-4">Premium</div>
               <Button
                 asChild
                 className="w-full bg-neon hover:bg-neon/90 text-neon-foreground font-semibold"
               >
                 <a href={SKOOL_URL} target="_blank" rel="noopener noreferrer">
-                  Join the Collective
+                  Join Premium
                 </a>
               </Button>
             </div>
 
             {/* VIP */}
             <div className="p-6 rounded-xl bg-obsidian border border-charcoal-light text-center">
-              <div className="text-2xl font-bold mb-2">Apply</div>
-              <div className="text-sm text-muted-foreground mb-4">VIP Mentorship</div>
+              <div className="text-2xl font-bold mb-2">$297/mo</div>
+              <div className="text-sm text-muted-foreground mb-4">VIP</div>
               <Button
                 asChild
                 variant="outline"
@@ -294,7 +315,7 @@ export default function Collective() {
       <section className="py-20 bg-obsidian">
         <div className="container max-w-5xl mx-auto px-4">
           <h2 className="text-2xl md:text-3xl font-bold text-center mb-12">
-            Inside the 30-Day Bass Challenge
+            Inside the 30 Day EDM Producer Curriculum
           </h2>
 
           <div className="grid md:grid-cols-4 gap-4">
