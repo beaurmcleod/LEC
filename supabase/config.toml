@@ -71,3 +71,9 @@ verify_jwt = false
 
 [functions.ask-producer]
 verify_jwt = false
+
+[functions.create-cohort-subscription]
+verify_jwt = false
+
+[functions.cohort-webhook]
+verify_jwt = false
