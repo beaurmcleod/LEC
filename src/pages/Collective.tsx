@@ -447,28 +447,6 @@ export default function Collective() {
         </div>
       </section>
 
-      {/* Weekly Beat Reviews */}
-      <section className="py-20 bg-charcoal">
-        <div className="container max-w-4xl mx-auto px-4">
-          <h2 className="text-2xl md:text-3xl font-bold text-center mb-6">
-            What Happens on Weekly Beat Reviews
-          </h2>
-          <p className="text-muted-foreground text-center mb-12 max-w-2xl mx-auto">
-            You submit your Ableton project file. We review it live. Fix arrangement and mix bottlenecks. 
-            You learn by watching your own project get engineered.
-          </p>
-
-          {/* Placeholder for screenshot */}
-          <div className="aspect-video rounded-xl bg-charcoal-light border border-charcoal-light flex items-center justify-center">
-            <div className="text-center text-muted-foreground">
-              <div className="w-16 h-16 rounded-full bg-neon/10 flex items-center justify-center mx-auto mb-4">
-                <Play className="w-6 h-6 text-neon" />
-              </div>
-              <p className="text-sm">Live Review Session Preview</p>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* Social Proof / Founder Statement */}
       <section className="py-20 bg-obsidian">
