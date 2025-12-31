@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Play, Check, ChevronDown, ChevronUp } from "lucide-react";
 import {
@@ -9,10 +9,33 @@ import {
 } from "@/components/ui/accordion";
 
 const SKOOL_URL = "https://www.skool.com/low-end-candy-collective";
+const COHORT_START = new Date("2025-01-01T12:00:00");
+
+function useCountdown(targetDate: Date) {
+  const [timeLeft, setTimeLeft] = useState(() => {
+    const diff = targetDate.getTime() - Date.now();
+    return Math.max(0, diff);
+  });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const diff = targetDate.getTime() - Date.now();
+      setTimeLeft(Math.max(0, diff));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [targetDate]);
+
+  const hours = Math.floor(timeLeft / (1000 * 60 * 60));
+  const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+
+  return { hours, minutes, seconds, isExpired: timeLeft === 0 };
+}
 
 export default function Collective() {
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
+  const countdown = useCountdown(COHORT_START);
 
   const scrollToPricing = () => {
     document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" });
@@ -29,6 +52,25 @@ export default function Collective() {
           <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
             {/* Left Column */}
             <div className="order-2 lg:order-1 space-y-6">
+              {/* Countdown Timer */}
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Next cohort starts in:</span>
+                <div className="flex gap-1.5">
+                  {[
+                    { value: countdown.hours, label: "hrs" },
+                    { value: countdown.minutes, label: "min" },
+                    { value: countdown.seconds, label: "sec" },
+                  ].map((unit, i) => (
+                    <div key={i} className="flex items-center gap-1">
+                      <span className="bg-neon/10 text-neon font-mono font-bold px-2 py-1 rounded">
+                        {String(unit.value).padStart(2, "0")}
+                      </span>
+                      <span className="text-muted-foreground text-xs">{unit.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold leading-tight tracking-tight text-foreground">
                 You know how to make a fire loop.
                 <br />
