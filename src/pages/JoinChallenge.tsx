@@ -112,7 +112,7 @@ const JoinChallenge = () => {
                 {/* Screenshot */}
                 <div className="rounded-xl overflow-hidden border border-charcoal-light">
                   <img 
-                    src="/lovable-uploads/17f0f6b4-bbf0-451e-a479-5be9e3b0b5bf.png" 
+                    src="/lovable-uploads/85f899cb-b6ef-4b15-a096-6ca3abdfa412.png" 
                     alt="Click Unlock with Premium on the 30 Day EDM Producer course"
                     className="w-full"
                   />
