@@ -29,7 +29,7 @@ export default function CohortSuccess() {
             ⏰ Please allow up to 3 hours for access
           </p>
           <p className="text-muted-foreground text-sm mt-1">
-            Every membership is manually approved to ensure the best community experience.
+            Every membership needs to be manually approved per Skool's spam guidelines.
           </p>
         </div>
 
