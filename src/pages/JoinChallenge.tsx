@@ -308,9 +308,13 @@ const JoinChallenge = () => {
             </p>
             
             {billingPeriod === 'annual' && (
-              <div className="mt-4 p-3 rounded-lg bg-green-600/10 border border-green-600/30 text-center">
-                <p className="text-sm text-green-500">
-                  🎓 Annual members get access to exclusive educational discounts on plugins, samples & gear
+              <div className="mt-5 p-4 rounded-xl bg-gradient-to-r from-green-600/20 to-emerald-600/20 border-2 border-green-500/50 text-center shadow-lg shadow-green-500/10">
+                <div className="text-2xl mb-2">🎓</div>
+                <p className="text-base font-semibold text-green-400 mb-1">
+                  Exclusive Educational Discounts
+                </p>
+                <p className="text-sm text-green-300/80">
+                  Annual members get special pricing on plugins, sample packs & production gear from our partners
                 </p>
               </div>
             )}
