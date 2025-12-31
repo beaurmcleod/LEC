@@ -374,9 +374,9 @@ export default function Collective() {
                 asChild
                 className="w-full bg-neon hover:bg-neon/90 text-neon-foreground font-semibold"
               >
-                <a href={SKOOL_URL} target="_blank" rel="noopener noreferrer">
+                <Link to="/collective/join">
                   Join Premium
-                </a>
+                </Link>
               </Button>
             </div>
 
@@ -389,9 +389,9 @@ export default function Collective() {
                 variant="outline"
                 className="w-full border-charcoal-light hover:border-neon/50 hover:bg-neon/10"
               >
-                <a href={SKOOL_URL} target="_blank" rel="noopener noreferrer">
+                <Link to="/collective/join">
                   Apply Now
-                </a>
+                </Link>
               </Button>
             </div>
           </div>
@@ -572,9 +572,9 @@ export default function Collective() {
             size="lg"
             className="bg-neon hover:bg-neon/90 text-neon-foreground font-semibold text-lg h-14 px-10 rounded-xl shadow-glow-neon hover:shadow-glow-neon-lg hover:-translate-y-0.5 transition-all duration-200"
           >
-            <a href={SKOOL_URL} target="_blank" rel="noopener noreferrer">
+            <Link to="/collective/join">
               Join the Next Cohort
-            </a>
+            </Link>
           </Button>
 
           <p className="text-sm text-muted-foreground mt-6">
@@ -600,9 +600,9 @@ export default function Collective() {
           asChild
           className="w-full bg-neon hover:bg-neon/90 text-neon-foreground font-semibold h-12 rounded-xl shadow-glow-neon"
         >
-          <a href={SKOOL_URL} target="_blank" rel="noopener noreferrer">
+          <Link to="/collective/join">
             Join the Next Cohort
-          </a>
+          </Link>
         </Button>
       </div>
 
