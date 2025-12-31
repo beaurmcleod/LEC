@@ -69,17 +69,17 @@ export default function Collective() {
               </div>
 
               <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold leading-tight tracking-tight text-foreground">
-                You know how to make a fire loop.
+                2025: The year you finally
                 <br />
-                <span className="text-neon">But finishing tracks?</span>
+                <span className="text-neon">finish tracks & build your artist career.</span>
               </h1>
               
               <p className="text-lg md:text-xl text-muted-foreground leading-relaxed max-w-xl">
-                A structure-first system that turns loops into finished records in 30 days.
+                Stop collecting loops. Start releasing music. A proven 30-day system to finish professional tracks and launch your artist journey.
               </p>
 
               <ul className="space-y-3 py-2">
-                {["Weekly live streams with real-time mixdowns and feedback", "Full 30 Day EDM Producer curriculum access", "One year Crux Chords subscription included"].map((item, i) => <li key={i} className="flex items-start gap-3 text-muted-foreground">
+                {["Finish your first release-ready track in 30 days", "Weekly live sessions: mixdowns, feedback & career strategy", "Build your release catalog and artist brand for 2025"].map((item, i) => <li key={i} className="flex items-start gap-3 text-muted-foreground">
                     <Check className="w-5 h-5 text-neon mt-0.5 flex-shrink-0" />
                     <span>{item}</span>
                   </li>)}
@@ -174,7 +174,7 @@ export default function Collective() {
       <section className="py-12 bg-charcoal border-y border-charcoal-light">
         <div className="container max-w-5xl mx-auto px-4">
           <div className="grid md:grid-cols-3 gap-6">
-            {["You can make a loop that bangs.", "But finishing a full track stalls.", "This fixes structure first."].map((text, i) => <div key={i} className="text-center md:text-left p-4 rounded-lg border border-charcoal-light bg-charcoal-light/30">
+            {["You've got talent and ideas.", "But no finished tracks to show for it.", "2025 is the year that changes."].map((text, i) => <div key={i} className="text-center md:text-left p-4 rounded-lg border border-charcoal-light bg-charcoal-light/30">
                 <p className="text-foreground font-medium">{text}</p>
               </div>)}
           </div>
@@ -345,9 +345,12 @@ export default function Collective() {
       {/* 30-Day Challenge Timeline */}
       <section className="py-20 bg-obsidian">
         <div className="container max-w-5xl mx-auto px-4">
-          <h2 className="text-2xl md:text-3xl font-bold text-center mb-12">
-            Inside the 30 Day EDM Producer Curriculum
+          <h2 className="text-2xl md:text-3xl font-bold text-center mb-4">
+            Your 30-Day Track Finishing Roadmap
           </h2>
+          <p className="text-muted-foreground text-center mb-12 max-w-2xl mx-auto">
+            The exact system to go from idea to release-ready track—so you can start building your 2025 catalog.
+          </p>
 
           <div className="grid md:grid-cols-4 gap-4">
             {[{
@@ -408,11 +411,11 @@ export default function Collective() {
       <section className="py-20 bg-obsidian">
         <div className="container max-w-4xl mx-auto px-4">
           <div className="p-8 rounded-xl bg-charcoal border border-charcoal-light">
-            <h3 className="text-xl font-semibold text-foreground mb-4">Why I Built This</h3>
+            <h3 className="text-xl font-semibold text-foreground mb-4">Make 2025 Your Breakout Year</h3>
             <p className="text-muted-foreground leading-relaxed mb-6">
-              I spent years stuck in the loop trap—hundreds of 8-bar ideas, zero finished tracks. 
-              The breakthrough wasn&apos;t more tutorials or better plugins. It was a system that forced structure first. 
-              The Collective is that system, refined over 2 years of teaching producers just like you.
+              I spent years stuck in the loop trap—hundreds of ideas, zero releases. The breakthrough wasn&apos;t more tutorials or gear. 
+              It was a system that forced finishing first. Now I help producers like you build real catalogs and launch real artist careers. 
+              2025 is your year to stop dreaming and start releasing.
             </p>
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-full bg-neon/20 flex items-center justify-center text-neon font-bold">
@@ -507,11 +510,11 @@ export default function Collective() {
       <section className="py-20 bg-charcoal">
         <div className="container max-w-2xl mx-auto px-4 text-center">
           <h2 className="text-2xl md:text-3xl font-bold mb-6">
-            Six Months From Now
+            By the End of 2025
           </h2>
           <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
-            You&apos;ll either have a catalog of finished tracks and a system that works—or you&apos;ll still be tweaking the same 8-bar loop. 
-            The Collective is the difference.
+            You&apos;ll have a catalog of finished tracks, an artist identity, and momentum you can build on—or you&apos;ll still be tweaking the same loop. 
+            This is the system that makes 2025 your year.
           </p>
           
           <Button asChild size="lg" className="bg-neon hover:bg-neon/90 text-neon-foreground font-semibold text-lg h-14 px-10 rounded-xl shadow-glow-neon hover:shadow-glow-neon-lg hover:-translate-y-0.5 transition-all duration-200">
@@ -521,7 +524,7 @@ export default function Collective() {
           </Button>
 
           <p className="text-sm text-muted-foreground mt-6">
-            Next cohort starts January 15th · VIP capped at 10 spots
+            Start your 2025 artist journey today · VIP mentorship capped at 10 spots
           </p>
         </div>
       </section>
