@@ -77,3 +77,6 @@ verify_jwt = false
 
 [functions.cohort-webhook]
 verify_jwt = false
+
+[functions.create-free-cohort-member]
+verify_jwt = false
