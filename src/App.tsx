@@ -24,6 +24,7 @@ import AdminSetup from "./pages/AdminSetup";
 import AskProducer from "./pages/AskProducer";
 import Collective from "./pages/Collective";
 import JoinChallenge from "./pages/JoinChallenge";
+import CohortSuccess from "./pages/CohortSuccess";
 
 const queryClient = new QueryClient();
 
@@ -45,6 +46,7 @@ const App = () => (
           <Route path="/ask" element={<AskProducer />} />
           <Route path="/collective" element={<Collective />} />
           <Route path="/collective/join" element={<JoinChallenge />} />
+          <Route path="/collective/success" element={<CohortSuccess />} />
           <Route path="/product/:id" element={<ProductDetail />} />
           <Route path="/enter-email" element={<EnterEmail />} />
           <Route path="/checkout" element={<Checkout />} />

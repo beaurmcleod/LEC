@@ -1,10 +1,60 @@
-import { Button } from "@/components/ui/button";
-import { ArrowRight, Users, BookOpen, Unlock } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Users, CreditCard, Check, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 const SKOOL_URL = "https://www.skool.com/low-end-candy-collective-1686/about?ref=0475f2cfd1a94b63a5a389be8a3cb450";
 
 const JoinChallenge = () => {
+  const [selectedTier, setSelectedTier] = useState<'premium' | 'vip' | null>(null);
+  const [customerName, setCustomerName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handlePaidCheckout = async () => {
+    if (!selectedTier) {
+      toast.error("Please select a tier");
+      return;
+    }
+    if (!customerName.trim()) {
+      toast.error("Please enter your name");
+      return;
+    }
+    if (!customerEmail.trim() || !customerEmail.includes("@")) {
+      toast.error("Please enter a valid email");
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('create-cohort-subscription', {
+        body: {
+          tier: selectedTier,
+          customerEmail: customerEmail.trim(),
+          customerName: customerName.trim()
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error("No checkout URL returned");
+      }
+    } catch (error) {
+      console.error("Checkout error:", error);
+      toast.error("Unable to start checkout. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-obsidian text-foreground">
       {/* Header */}
@@ -17,129 +67,201 @@ const JoinChallenge = () => {
       </header>
 
       {/* Main Content */}
-      <main className="container max-w-3xl mx-auto px-4 py-12 md:py-20">
+      <main className="container max-w-4xl mx-auto px-4 py-12 md:py-20">
         <div className="text-center mb-12">
           <h1 className="text-3xl md:text-4xl font-bold mb-4">
-            How to Join the 30 Day Challenge
+            Join the Collective
           </h1>
           <p className="text-muted-foreground text-lg">
-            Follow these steps to unlock your free access to the program
+            Choose how you want to join the 30 Day EDM Producer Challenge
           </p>
         </div>
 
-        {/* Steps */}
-        <div className="space-y-8">
-          {/* Step 1 */}
-          <div className="relative p-6 md:p-8 rounded-2xl bg-charcoal/50 border border-charcoal-light">
-            <div className="flex items-start gap-4 md:gap-6">
-              <div className="flex-shrink-0 w-12 h-12 bg-neon rounded-full flex items-center justify-center">
-                <Users className="w-6 h-6 text-neon-foreground" />
+        {/* Two Options */}
+        <div className="grid md:grid-cols-2 gap-8 mb-12">
+          {/* Option 1: Free Community */}
+          <div className="p-6 md:p-8 rounded-2xl bg-charcoal/50 border border-charcoal-light">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center">
+                <Users className="w-6 h-6 text-foreground" />
               </div>
-              <div className="flex-1">
-                <div className="text-xs text-neon font-semibold uppercase tracking-wider mb-1">
-                  Step 1
-                </div>
-                <h2 className="text-xl md:text-2xl font-bold mb-2">
-                  Get Accepted into the Group
-                </h2>
-                <p className="text-muted-foreground mb-4">
-                  Click the button below to request access to the Low End Candy Collective on Skool. 
-                  Once accepted, you'll have access to the community and all its resources.
-                </p>
-                <Button
-                  asChild
-                  className="bg-neon hover:bg-neon/90 text-neon-foreground font-semibold"
-                >
-                  <a href={SKOOL_URL} target="_blank" rel="noopener noreferrer">
-                    Request to Join on Skool
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </a>
-                </Button>
+              <div>
+                <h2 className="text-xl font-bold">Free Community</h2>
+                <p className="text-muted-foreground text-sm">Standard Tier</p>
               </div>
             </div>
+
+            <div className="text-3xl font-bold mb-4">$0</div>
+
+            <ul className="space-y-2 mb-6 text-sm text-muted-foreground">
+              <li className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
+                <span>Join the community on Skool</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
+                <span>Access to Free Intro Ableton Course</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
+                <span>Community discussions & support</span>
+              </li>
+            </ul>
+
+            <Button
+              asChild
+              variant="outline"
+              className="w-full border-charcoal-light hover:border-neon/50 hover:bg-neon/10"
+            >
+              <a href={SKOOL_URL} target="_blank" rel="noopener noreferrer">
+                Join Free on Skool
+              </a>
+            </Button>
           </div>
 
-          {/* Arrow */}
-          <div className="flex justify-center">
-            <div className="w-px h-8 bg-charcoal-light" />
-          </div>
+          {/* Option 2: Paid Cohort */}
+          <div className="p-6 md:p-8 rounded-2xl bg-charcoal/50 border-2 border-neon/50 relative shadow-glow-neon">
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-neon text-neon-foreground text-xs font-semibold px-3 py-1 rounded-full">
+              Full Access
+            </div>
 
-          {/* Step 2 */}
-          <div className="relative p-6 md:p-8 rounded-2xl bg-charcoal/50 border border-charcoal-light">
-            <div className="flex items-start gap-4 md:gap-6">
-              <div className="flex-shrink-0 w-12 h-12 bg-muted rounded-full flex items-center justify-center">
-                <BookOpen className="w-6 h-6 text-foreground" />
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-neon rounded-full flex items-center justify-center">
+                <CreditCard className="w-6 h-6 text-neon-foreground" />
               </div>
-              <div className="flex-1">
-                <div className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-1">
-                  Step 2
-                </div>
-                <h2 className="text-xl md:text-2xl font-bold mb-2">
-                  Go to the Classroom
-                </h2>
-                <p className="text-muted-foreground">
-                  Once you're accepted, navigate to the <strong className="text-foreground">Classroom</strong> tab 
-                  inside the Skool community. This is where all courses are located.
-                </p>
+              <div>
+                <h2 className="text-xl font-bold">Join the Next Cohort</h2>
+                <p className="text-muted-foreground text-sm">Premium or VIP</p>
               </div>
             </div>
-          </div>
 
-          {/* Arrow */}
-          <div className="flex justify-center">
-            <div className="w-px h-8 bg-charcoal-light" />
-          </div>
+            {/* Tier Selection */}
+            <div className="space-y-3 mb-6">
+              <button
+                onClick={() => setSelectedTier('premium')}
+                className={`w-full p-4 rounded-xl border text-left transition-all ${
+                  selectedTier === 'premium'
+                    ? 'border-neon bg-neon/10'
+                    : 'border-charcoal-light hover:border-neon/30'
+                }`}
+              >
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="font-semibold text-foreground">Premium</div>
+                    <div className="text-sm text-muted-foreground">Full curriculum + weekly reviews</div>
+                  </div>
+                  <div className="text-xl font-bold">$47<span className="text-sm font-normal text-muted-foreground">/mo</span></div>
+                </div>
+              </button>
 
-          {/* Step 3 */}
-          <div className="relative p-6 md:p-8 rounded-2xl bg-charcoal/50 border border-charcoal-light">
-            <div className="flex items-start gap-4 md:gap-6">
-              <div className="flex-shrink-0 w-12 h-12 bg-muted rounded-full flex items-center justify-center">
-                <Unlock className="w-6 h-6 text-foreground" />
+              <button
+                onClick={() => setSelectedTier('vip')}
+                className={`w-full p-4 rounded-xl border text-left transition-all ${
+                  selectedTier === 'vip'
+                    ? 'border-neon bg-neon/10'
+                    : 'border-charcoal-light hover:border-neon/30'
+                }`}
+              >
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="font-semibold text-foreground">VIP Mentorship</div>
+                    <div className="text-sm text-muted-foreground">Everything + 1-on-1 calls & priority support</div>
+                  </div>
+                  <div className="text-xl font-bold">$297<span className="text-sm font-normal text-muted-foreground">/mo</span></div>
+                </div>
+              </button>
+            </div>
+
+            {/* Customer Info */}
+            <div className="space-y-4 mb-6">
+              <div>
+                <Label htmlFor="name" className="text-sm text-muted-foreground">Your Name</Label>
+                <Input
+                  id="name"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="John Doe"
+                  className="mt-1 bg-obsidian border-charcoal-light"
+                />
               </div>
-              <div className="flex-1">
-                <div className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-1">
-                  Step 3
-                </div>
-                <h2 className="text-xl md:text-2xl font-bold mb-2">
-                  Click "Unlock with Premium"
-                </h2>
-                <p className="text-muted-foreground mb-4">
-                  Find the <strong className="text-foreground">"30 Day EDM Producer"</strong> course and 
-                  click the <strong className="text-foreground">"Unlock with Premium"</strong> button. 
-                  This will give you instant free access to the full program!
-                </p>
-                
-                {/* Screenshot */}
-                <div className="rounded-xl overflow-hidden border border-charcoal-light">
-                  <img 
-                    src="/lovable-uploads/85f899cb-b6ef-4b15-a096-6ca3abdfa412.png" 
-                    alt="Click Unlock with Premium on the 30 Day EDM Producer course"
-                    className="w-full"
-                  />
-                </div>
+              <div>
+                <Label htmlFor="email" className="text-sm text-muted-foreground">Email Address</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={customerEmail}
+                  onChange={(e) => setCustomerEmail(e.target.value)}
+                  placeholder="john@example.com"
+                  className="mt-1 bg-obsidian border-charcoal-light"
+                />
               </div>
             </div>
+
+            <Button
+              onClick={handlePaidCheckout}
+              disabled={!selectedTier || isLoading}
+              className="w-full bg-neon hover:bg-neon/90 text-neon-foreground font-semibold h-12"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                `Join ${selectedTier ? (selectedTier === 'premium' ? 'Premium' : 'VIP') : 'Cohort'} - ${selectedTier === 'vip' ? '$297' : '$47'}/mo`
+              )}
+            </Button>
+
+            <p className="text-xs text-muted-foreground text-center mt-3">
+              Secure payment via Stripe. Cancel anytime.
+            </p>
           </div>
         </div>
 
-        {/* Final CTA */}
-        <div className="mt-12 text-center p-8 rounded-2xl bg-gradient-to-b from-neon/10 to-transparent border border-neon/20">
-          <h3 className="text-xl font-bold mb-2">Ready to Start?</h3>
-          <p className="text-muted-foreground mb-6">
-            The first step is getting accepted into the community
-          </p>
-          <Button
-            asChild
-            size="lg"
-            className="bg-neon hover:bg-neon/90 text-neon-foreground font-semibold text-lg h-14 px-10 rounded-xl shadow-glow-neon hover:shadow-glow-neon-lg hover:-translate-y-0.5 transition-all duration-200"
-          >
-            <a href={SKOOL_URL} target="_blank" rel="noopener noreferrer">
-              Join the Collective on Skool
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </a>
-          </Button>
+        {/* What's included comparison */}
+        <div className="p-6 rounded-xl bg-charcoal border border-charcoal-light">
+          <h3 className="font-semibold text-center mb-4">What's included in paid tiers:</h3>
+          <div className="grid md:grid-cols-2 gap-4 text-sm">
+            <ul className="space-y-2 text-muted-foreground">
+              <li className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
+                <span>Full 30 Day EDM Producer curriculum</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
+                <span>Weekly live streams & mixdown feedback</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
+                <span>Weekly track reviews</span>
+              </li>
+            </ul>
+            <ul className="space-y-2 text-muted-foreground">
+              <li className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
+                <span>Monthly sample packs & presets</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
+                <span>1 year Crux Chords subscription</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
+                <span>7-day money back guarantee</span>
+              </li>
+            </ul>
+          </div>
         </div>
       </main>
+
+      {/* Footer */}
+      <footer className="py-8 border-t border-charcoal-light">
+        <div className="container max-w-4xl mx-auto px-4 text-center">
+          <p className="text-sm text-muted-foreground">
+            Questions? Email us at support@lowendcandy.com
+          </p>
+        </div>
+      </footer>
     </div>
   );
 };
