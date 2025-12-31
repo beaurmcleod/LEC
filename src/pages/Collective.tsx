@@ -8,7 +8,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
-const SKOOL_URL = "https://www.skool.com/low-end-candy-collective";
+const SKOOL_URL = "https://www.skool.com/low-end-candy-collective-1686/about?ref=0475f2cfd1a94b63a5a389be8a3cb450";
 const COHORT_START = new Date("2025-01-01T12:00:00");
 
 function useCountdown(targetDate: Date) {
