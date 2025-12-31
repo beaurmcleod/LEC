@@ -15,6 +15,7 @@ const JoinChallenge = () => {
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   const pricing = {
     premium: {
@@ -56,6 +57,7 @@ const JoinChallenge = () => {
       if (error) throw error;
 
       if (data?.url) {
+        setIsRedirecting(true);
         window.location.href = data.url;
       } else {
         throw new Error("No checkout URL returned");
@@ -63,7 +65,6 @@ const JoinChallenge = () => {
     } catch (error) {
       console.error("Checkout error:", error);
       toast.error("Unable to start checkout. Please try again.");
-    } finally {
       setIsLoading(false);
     }
   };
@@ -74,7 +75,15 @@ const JoinChallenge = () => {
   };
 
   return (
-    <div className="min-h-screen bg-obsidian text-foreground">
+    <div className="min-h-screen bg-obsidian text-foreground relative">
+      {/* Full-screen loading overlay when redirecting to Stripe */}
+      {isRedirecting && (
+        <div className="fixed inset-0 z-50 bg-obsidian/95 backdrop-blur-sm flex flex-col items-center justify-center">
+          <Loader2 className="w-12 h-12 text-neon animate-spin mb-4" />
+          <p className="text-xl font-semibold text-foreground mb-2">Redirecting to checkout...</p>
+          <p className="text-muted-foreground">Please wait while we connect you to Stripe</p>
+        </div>
+      )}
       {/* Header */}
       <header className="border-b border-charcoal-light">
         <div className="container max-w-4xl mx-auto px-4 py-4">
