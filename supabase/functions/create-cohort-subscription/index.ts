@@ -45,9 +45,9 @@ serve(async (req) => {
   }
 
   try {
-    const { tier, billingPeriod, customerEmail, customerName } = await req.json();
+    const { tier, billingPeriod, customerEmail, customerName, couponCode } = await req.json();
     
-    console.log('Cohort subscription request:', { tier, billingPeriod, customerEmail, customerName });
+    console.log('Cohort subscription request:', { tier, billingPeriod, customerEmail, customerName, couponCode });
 
     if (!tier || !customerEmail || !customerName) {
       return new Response(
@@ -68,6 +68,13 @@ serve(async (req) => {
     // Validate billing period
     const validPeriods = ['monthly', 'annual'];
     const period = validPeriods.includes(billingPeriod) ? billingPeriod : 'monthly';
+
+    // Check for LEGACYSTUDENT coupon - only valid for Premium Monthly
+    const isLegacyStudent = couponCode?.toUpperCase() === 'LEGACYSTUDENT' && tier === 'premium' && period === 'monthly';
+    
+    if (isLegacyStudent) {
+      console.log('LEGACYSTUDENT coupon applied - first month free');
+    }
 
     // Set price based on tier and billing period
     const priceConfig = {
@@ -91,6 +98,12 @@ serve(async (req) => {
     // Get origin with fallback
     const origin = req.headers.get("origin") || "https://lowendcandy.com";
 
+    // Build subscription data with optional trial for LEGACYSTUDENT
+    const subscriptionData: any = {};
+    if (isLegacyStudent) {
+      subscriptionData.trial_period_days = 30; // Free first month
+    }
+
     // Create Stripe checkout session for subscription
     const session = await stripe.checkout.sessions.create({
       customer_email: customerEmail,
@@ -99,8 +112,8 @@ serve(async (req) => {
           price_data: {
             currency: "usd",
             product_data: { 
-              name: name,
-              description: `${interval === 'year' ? 'Annual' : 'Monthly'} subscription to the Low End Candy Collective - ${tier.charAt(0).toUpperCase() + tier.slice(1)} tier`
+              name: isLegacyStudent ? `${name} (First Month Free)` : name,
+              description: `${interval === 'year' ? 'Annual' : 'Monthly'} subscription to the Low End Candy Collective - ${tier.charAt(0).toUpperCase() + tier.slice(1)} tier${isLegacyStudent ? ' - LEGACYSTUDENT discount applied' : ''}`
             },
             unit_amount: amount,
             recurring: {
@@ -111,6 +124,7 @@ serve(async (req) => {
         },
       ],
       mode: "subscription",
+      subscription_data: Object.keys(subscriptionData).length > 0 ? subscriptionData : undefined,
       success_url: `${origin}/collective/success?session_id={CHECKOUT_SESSION_ID}&tier=${tier}`,
       cancel_url: `${origin}/collective/join`,
       metadata: {
@@ -118,6 +132,7 @@ serve(async (req) => {
         billing_period: period,
         customer_name: customerName,
         customer_email: customerEmail,
+        coupon_code: couponCode || '',
         product_type: 'cohort_subscription'
       },
     });
