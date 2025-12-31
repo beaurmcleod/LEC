@@ -79,6 +79,9 @@ serve(async (req) => {
       apiVersion: "2023-10-16",
     });
 
+    // Get origin with fallback
+    const origin = req.headers.get("origin") || "https://lowendcandy.com";
+
     // Create Stripe checkout session for subscription
     const session = await stripe.checkout.sessions.create({
       customer_email: customerEmail,
@@ -99,8 +102,8 @@ serve(async (req) => {
         },
       ],
       mode: "subscription",
-      success_url: `${req.headers.get("origin")}/collective/success?session_id={CHECKOUT_SESSION_ID}&tier=${tier}`,
-      cancel_url: `${req.headers.get("origin")}/collective/join`,
+      success_url: `${origin}/collective/success?session_id={CHECKOUT_SESSION_ID}&tier=${tier}`,
+      cancel_url: `${origin}/collective/join`,
       metadata: {
         tier: tier,
         customer_name: customerName,
