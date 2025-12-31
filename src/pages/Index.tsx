@@ -24,6 +24,12 @@ const Index = () => {
 
   const links = [
     {
+      title: "30 Day EDM Producer Challenge",
+      description: "Join our production community & level up",
+      preview: previewEdmCourse,
+      url: "/collective",
+    },
+    {
       title: "Crux Chords Ableton AI Chord Device",
       description: "AI-powered chord generation for Ableton",
       preview: previewCruxChords,
