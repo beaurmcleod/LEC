@@ -92,7 +92,7 @@ export default function Collective() {
                     </div>
                   ) : (
                     <iframe
-                      src="https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1"
+                      src="https://www.youtube.com/embed/wWK0TAbApOA?autoplay=1"
                       title="Low End Candy Collective VSL"
                       className="w-full h-full"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
