@@ -64,8 +64,69 @@ serve(async (req) => {
       );
     }
 
-    // Send notification email to admin
+    const SKOOL_URL = "https://www.skool.com/low-end-candy-collective-1686/about?ref=0475f2cfd1a94b63a5a389be8a3cb450";
+
+    // Send confirmation email to customer
     const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
+    
+    try {
+      const customerEmailResponse = await resend.emails.send({
+        from: "Low End Candy <onboarding@resend.dev>",
+        to: [customerEmail],
+        subject: `Welcome to the Low End Candy Collective! 🎉`,
+        html: `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #0a0a0a; color: #fff;">
+            <h1 style="color: #00FFD1; margin-bottom: 20px;">Thank You for Joining!</h1>
+            
+            <p style="color: #ccc; font-size: 16px; line-height: 1.6;">
+              Hey ${customerName}! 👋
+            </p>
+            
+            <p style="color: #ccc; font-size: 16px; line-height: 1.6;">
+              Thank you for joining the Low End Candy Collective! We're excited to have you on this journey to becoming a better producer.
+            </p>
+            
+            <div style="background: #1a1a1a; border-radius: 12px; padding: 24px; margin: 24px 0; border-left: 4px solid #00FFD1;">
+              <p style="color: #fff; margin: 0 0 12px 0; font-weight: bold;">⏰ Please allow up to 3 hours for access</p>
+              <p style="color: #888; margin: 0; font-size: 14px;">
+                Every membership needs to be manually approved per Skool's spam guidelines. You'll receive access to the community shortly!
+              </p>
+            </div>
+            
+            <div style="background: #1a1a1a; border-radius: 12px; padding: 24px; margin: 24px 0; border-left: 4px solid #fbbf24;">
+              <p style="color: #fbbf24; margin: 0 0 8px 0; font-weight: bold;">🎓 Free Month Applied!</p>
+              <p style="color: #888; margin: 0; font-size: 14px;">
+                Your LEGACYSTUDENT discount has been applied. Enjoy your first month free!
+              </p>
+            </div>
+            
+            <p style="color: #ccc; font-size: 16px; line-height: 1.6;">
+              Once approved, you can access the community here:
+            </p>
+            
+            <a href="${SKOOL_URL}" style="display: inline-block; background: #00FFD1; color: #000; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; margin: 16px 0;">
+              Go to Skool Community →
+            </a>
+            
+            <p style="color: #888; font-size: 14px; margin-top: 32px;">
+              Questions? Reply to this email or reach out at support@lowendcandy.com
+            </p>
+            
+            <hr style="border: none; border-top: 1px solid #333; margin: 24px 0;" />
+            
+            <p style="color: #666; font-size: 12px;">
+              Low End Candy Collective - PREMIUM Membership (Free Month)
+            </p>
+          </div>
+        `,
+      });
+
+      console.log("Customer confirmation email sent:", customerEmailResponse);
+    } catch (emailError) {
+      console.error("Failed to send customer confirmation email:", emailError);
+    }
+
+    // Send notification email to admin
     const adminEmail = Deno.env.get("ADMIN_NOTIFICATION_EMAIL");
     
     if (adminEmail) {
@@ -124,7 +185,6 @@ serve(async (req) => {
         console.log("Admin notification email sent:", emailResponse);
       } catch (emailError) {
         console.error("Failed to send admin notification email:", emailError);
-        // Don't fail if email fails
       }
     } else {
       console.warn("ADMIN_NOTIFICATION_EMAIL not configured");
