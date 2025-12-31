@@ -16,6 +16,7 @@ const JoinChallenge = () => {
   const [customerEmail, setCustomerEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const [couponCode, setCouponCode] = useState("");
 
   const pricing = {
     premium: {
@@ -50,7 +51,8 @@ const JoinChallenge = () => {
           tier: selectedTier,
           billingPeriod: billingPeriod,
           customerEmail: customerEmail.trim(),
-          customerName: customerName.trim()
+          customerName: customerName.trim(),
+          couponCode: couponCode.trim().toUpperCase()
         }
       });
 
@@ -287,6 +289,19 @@ const JoinChallenge = () => {
                   placeholder="john@example.com"
                   className="mt-1 bg-obsidian border-charcoal-light"
                 />
+              </div>
+              <div>
+                <Label htmlFor="coupon" className="text-sm text-muted-foreground">Discount Code (optional)</Label>
+                <Input
+                  id="coupon"
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value)}
+                  placeholder="Enter code"
+                  className="mt-1 bg-obsidian border-charcoal-light uppercase"
+                />
+                {couponCode.toUpperCase() === 'LEGACYSTUDENT' && selectedTier === 'premium' && billingPeriod === 'monthly' && (
+                  <p className="text-xs text-green-500 mt-1">✓ First month free! Regular billing starts after 30 days.</p>
+                )}
               </div>
             </div>
 
