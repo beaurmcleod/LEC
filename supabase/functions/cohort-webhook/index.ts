@@ -50,7 +50,7 @@ serve(async (req) => {
       if (customerEmail) {
         try {
           const customerEmailResponse = await resend.emails.send({
-            from: "Low End Candy <noreply@lowendcandy.com>",
+            from: "Low End Candy <beau@lowendcandy.com>",
             to: [customerEmail],
             subject: `Welcome to the Low End Candy Collective! 🎉`,
             html: `
@@ -105,7 +105,7 @@ serve(async (req) => {
       if (adminEmail) {
         try {
           const emailResponse = await resend.emails.send({
-            from: "Low End Candy <noreply@lowendcandy.com>",
+            from: "Low End Candy <beau@lowendcandy.com>",
             to: [adminEmail],
             subject: `🎉 New Cohort Member: ${customerName} (${tier.toUpperCase()})`,
             html: `
