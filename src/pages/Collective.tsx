@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Play, Check, ChevronDown, ChevronUp } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 const SKOOL_URL = "https://www.skool.com/low-end-candy-collective-1686/about?ref=0475f2cfd1a94b63a5a389be8a3cb450";
-const COHORT_START = new Date("2025-01-01T12:00:00");
+const COHORT_START = new Date("2025-02-01T12:00:00");
 function useCountdown(targetDate: Date) {
   const [timeLeft, setTimeLeft] = useState(() => {
     const diff = targetDate.getTime() - Date.now();
