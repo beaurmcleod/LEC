@@ -104,7 +104,7 @@ serve(async (req) => {
       subscriptionData.trial_period_days = 30; // Free first month
     }
 
-    // Create Stripe checkout session for subscription
+    // Create Stripe checkout session for one-time payment (manual recurring for now)
     const session = await stripe.checkout.sessions.create({
       customer_email: customerEmail,
       line_items: [
@@ -113,18 +113,14 @@ serve(async (req) => {
             currency: "usd",
             product_data: { 
               name: isLegacyStudent ? `${name} (First Month Free)` : name,
-              description: `${interval === 'year' ? 'Annual' : 'Monthly'} subscription to the Low End Candy Collective - ${tier.charAt(0).toUpperCase() + tier.slice(1)} tier${isLegacyStudent ? ' - LEGACYSTUDENT discount applied' : ''}`
+              description: `${interval === 'year' ? 'Annual' : 'Monthly'} membership to the Low End Candy Collective - ${tier.charAt(0).toUpperCase() + tier.slice(1)} tier${isLegacyStudent ? ' - LEGACYSTUDENT discount applied' : ''}`
             },
-            unit_amount: amount,
-            recurring: {
-              interval: interval
-            }
+            unit_amount: isLegacyStudent ? 0 : amount,
           },
           quantity: 1,
         },
       ],
-      mode: "subscription",
-      subscription_data: Object.keys(subscriptionData).length > 0 ? subscriptionData : undefined,
+      mode: "payment",
       success_url: `${origin}/collective/success?session_id={CHECKOUT_SESSION_ID}&tier=${tier}`,
       cancel_url: `${origin}/collective/join`,
       metadata: {
@@ -133,7 +129,7 @@ serve(async (req) => {
         customer_name: customerName,
         customer_email: customerEmail,
         coupon_code: couponCode || '',
-        product_type: 'cohort_subscription'
+        product_type: 'cohort_membership'
       },
     });
 
