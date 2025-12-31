@@ -25,15 +25,15 @@ serve(async (req) => {
       return new Response("Webhook secret not configured", { status: 500 });
     }
 
-    const event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    const event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
     console.log("Cohort webhook event received:", event.type);
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
       
-      // Check if this is a cohort subscription
-      if (session.metadata?.product_type !== 'cohort_subscription') {
-        console.log("Not a cohort subscription, skipping");
+      // Check if this is a cohort membership
+      if (session.metadata?.product_type !== 'cohort_membership') {
+        console.log("Not a cohort membership, skipping");
         return new Response(JSON.stringify({ received: true }), { status: 200 });
       }
 

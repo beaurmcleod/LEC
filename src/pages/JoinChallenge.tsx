@@ -29,6 +29,45 @@ const JoinChallenge = () => {
     }
   };
 
+  // Check if LEGACYSTUDENT coupon is valid (Premium + Monthly only)
+  const isFreeMember = couponCode.toUpperCase() === 'LEGACYSTUDENT' && selectedTier === 'premium' && billingPeriod === 'monthly';
+
+  const handleFreeMemberSignup = async () => {
+    if (!customerName.trim()) {
+      toast.error("Please enter your name");
+      return;
+    }
+    if (!customerEmail.trim() || !customerEmail.includes("@")) {
+      toast.error("Please enter a valid email");
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('create-free-cohort-member', {
+        body: {
+          customerEmail: customerEmail.trim(),
+          customerName: customerName.trim(),
+          couponCode: couponCode.trim().toUpperCase()
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        // Redirect to success page
+        window.location.href = `/collective/success?tier=premium&free=true`;
+      } else {
+        throw new Error("Failed to register");
+      }
+    } catch (error) {
+      console.error("Free signup error:", error);
+      toast.error("Unable to complete signup. Please try again.");
+      setIsLoading(false);
+    }
+  };
+
   const handlePaidCheckout = async () => {
     if (!selectedTier) {
       toast.error("Please select a tier");
@@ -40,6 +79,12 @@ const JoinChallenge = () => {
     }
     if (!customerEmail.trim() || !customerEmail.includes("@")) {
       toast.error("Please enter a valid email");
+      return;
+    }
+
+    // If free member, use the free flow
+    if (isFreeMember) {
+      await handleFreeMemberSignup();
       return;
     }
 
@@ -299,8 +344,8 @@ const JoinChallenge = () => {
                   placeholder="Enter code"
                   className="mt-1 bg-obsidian border-charcoal-light uppercase"
                 />
-                {couponCode.toUpperCase() === 'LEGACYSTUDENT' && selectedTier === 'premium' && billingPeriod === 'monthly' && (
-                  <p className="text-xs text-green-500 mt-1">✓ First month free! Regular billing starts after 30 days.</p>
+                {isFreeMember && (
+                  <p className="text-xs text-green-500 mt-1">✓ First month free! No card required.</p>
                 )}
               </div>
             </div>
@@ -315,6 +360,10 @@ const JoinChallenge = () => {
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Processing...
                 </>
+              ) : isFreeMember ? (
+                <>
+                  Join Premium - Free for 30 Days
+                </>
               ) : (
                 <>
                   Join {selectedTier ? (selectedTier === 'premium' ? 'Premium' : 'VIP') : 'Cohort'} - {getSelectedPrice().display}{getSelectedPrice().period}
@@ -328,7 +377,10 @@ const JoinChallenge = () => {
             </Button>
 
             <p className="text-xs text-muted-foreground text-center mt-3">
-              Secure payment via Stripe. {billingPeriod === 'monthly' ? 'Cancel anytime.' : 'Billed annually.'}
+              {isFreeMember 
+                ? "No payment required. We'll remind you before your free month ends."
+                : `Secure payment via Stripe. ${billingPeriod === 'monthly' ? 'Cancel anytime.' : 'Billed annually.'}`
+              }
             </p>
             
             {billingPeriod === 'annual' && (
