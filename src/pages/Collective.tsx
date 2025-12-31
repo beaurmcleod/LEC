@@ -69,7 +69,7 @@ export default function Collective() {
               </div>
 
               <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold leading-tight tracking-tight text-foreground">
-                2025: The year you finally
+                2026: The year you finally
                 <br />
                 <span className="text-neon">finish tracks & build your artist career.</span>
               </h1>
@@ -79,7 +79,7 @@ export default function Collective() {
               </p>
 
               <ul className="space-y-3 py-2">
-                {["Finish your first release-ready track in 30 days", "Weekly live sessions: mixdowns, feedback & career strategy", "Build your release catalog and artist brand for 2025"].map((item, i) => <li key={i} className="flex items-start gap-3 text-muted-foreground">
+                {["Finish your first release-ready track in 30 days", "Weekly live sessions: mixdowns, feedback & career strategy", "Build your release catalog and artist brand for 2026"].map((item, i) => <li key={i} className="flex items-start gap-3 text-muted-foreground">
                     <Check className="w-5 h-5 text-neon mt-0.5 flex-shrink-0" />
                     <span>{item}</span>
                   </li>)}
@@ -179,7 +179,7 @@ export default function Collective() {
       <section className="py-12 bg-charcoal border-y border-charcoal-light">
         <div className="container max-w-5xl mx-auto px-4">
           <div className="grid md:grid-cols-3 gap-6">
-            {["You've got talent and ideas.", "But no finished tracks to show for it.", "2025 is the year that changes."].map((text, i) => <div key={i} className="text-center md:text-left p-4 rounded-lg border border-charcoal-light bg-charcoal-light/30">
+            {["You've got talent and ideas.", "But no finished tracks to show for it.", "2026 is the year that changes."].map((text, i) => <div key={i} className="text-center md:text-left p-4 rounded-lg border border-charcoal-light bg-charcoal-light/30">
                 <p className="text-foreground font-medium">{text}</p>
               </div>)}
           </div>
@@ -354,7 +354,7 @@ export default function Collective() {
             Your 30-Day Track Finishing Roadmap
           </h2>
           <p className="text-muted-foreground text-center mb-12 max-w-2xl mx-auto">
-            The exact system to go from idea to release-ready track—so you can start building your 2025 catalog.
+            The exact system to go from idea to release-ready track—so you can start building your 2026 catalog.
           </p>
 
           <div className="grid md:grid-cols-4 gap-4">
@@ -416,11 +416,11 @@ export default function Collective() {
       <section className="py-20 bg-obsidian">
         <div className="container max-w-4xl mx-auto px-4">
           <div className="p-8 rounded-xl bg-charcoal border border-charcoal-light">
-            <h3 className="text-xl font-semibold text-foreground mb-4">Make 2025 Your Breakout Year</h3>
+            <h3 className="text-xl font-semibold text-foreground mb-4">Make 2026 Your Breakout Year</h3>
             <p className="text-muted-foreground leading-relaxed mb-6">
               I spent years stuck in the loop trap—hundreds of ideas, zero releases. The breakthrough wasn&apos;t more tutorials or gear. 
               It was a system that forced finishing first. Now I help producers like you build real catalogs and launch real artist careers. 
-              2025 is your year to stop dreaming and start releasing.
+              2026 is your year to stop dreaming and start releasing.
             </p>
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-full bg-neon/20 flex items-center justify-center text-neon font-bold">
@@ -515,7 +515,7 @@ export default function Collective() {
       <section className="py-20 bg-charcoal">
         <div className="container max-w-2xl mx-auto px-4 text-center">
           <h2 className="text-2xl md:text-3xl font-bold mb-6">
-            By the End of 2025
+            By the End of 2026
           </h2>
           <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
             You&apos;ll have a catalog of finished tracks, an artist identity, and momentum you can build on—or you&apos;ll still be tweaking the same loop. 
