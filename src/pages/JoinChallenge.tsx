@@ -11,9 +11,21 @@ const SKOOL_URL = "https://www.skool.com/low-end-candy-collective-1686/about?ref
 
 const JoinChallenge = () => {
   const [selectedTier, setSelectedTier] = useState<'premium' | 'vip' | null>(null);
+  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>('monthly');
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  const pricing = {
+    premium: {
+      monthly: { amount: 47, display: "$47", period: "/mo", billed: "$47 billed monthly" },
+      annual: { amount: 397, display: "$33", period: "/mo", billed: "$397 billed annually" }
+    },
+    vip: {
+      monthly: { amount: 297, display: "$297", period: "/mo", billed: "$297 billed monthly" },
+      annual: { amount: 2497, display: "$208", period: "/mo", billed: "$2,497 billed annually" }
+    }
+  };
 
   const handlePaidCheckout = async () => {
     if (!selectedTier) {
@@ -35,6 +47,7 @@ const JoinChallenge = () => {
       const { data, error } = await supabase.functions.invoke('create-cohort-subscription', {
         body: {
           tier: selectedTier,
+          billingPeriod: billingPeriod,
           customerEmail: customerEmail.trim(),
           customerName: customerName.trim()
         }
@@ -53,6 +66,11 @@ const JoinChallenge = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const getSelectedPrice = () => {
+    if (!selectedTier) return { display: "$47", period: "/mo" };
+    return pricing[selectedTier][billingPeriod];
   };
 
   return (
@@ -135,6 +153,56 @@ const JoinChallenge = () => {
               </div>
             </div>
 
+            {/* Billing Period Toggle */}
+            <div className="mb-6">
+              <div className="text-sm text-muted-foreground mb-2">Membership</div>
+              <div className="grid grid-cols-2 gap-2 relative">
+                <div className="absolute -top-2 -right-2 bg-green-600 text-white text-xs font-semibold px-2 py-0.5 rounded-full z-10">
+                  Save 30%
+                </div>
+                <button
+                  onClick={() => setBillingPeriod('monthly')}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    billingPeriod === 'monthly'
+                      ? 'border-neon bg-neon/10'
+                      : 'border-charcoal-light hover:border-neon/30'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                      billingPeriod === 'monthly' ? 'border-neon' : 'border-muted-foreground'
+                    }`}>
+                      {billingPeriod === 'monthly' && <div className="w-2 h-2 rounded-full bg-neon" />}
+                    </div>
+                    <span className="font-medium text-foreground">Monthly</span>
+                  </div>
+                  <div className="text-sm text-muted-foreground pl-6">
+                    {selectedTier ? pricing[selectedTier].monthly.billed : "Billed monthly"}
+                  </div>
+                </button>
+                <button
+                  onClick={() => setBillingPeriod('annual')}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    billingPeriod === 'annual'
+                      ? 'border-neon bg-neon/10'
+                      : 'border-charcoal-light hover:border-neon/30'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                      billingPeriod === 'annual' ? 'border-neon' : 'border-muted-foreground'
+                    }`}>
+                      {billingPeriod === 'annual' && <div className="w-2 h-2 rounded-full bg-neon" />}
+                    </div>
+                    <span className="font-medium text-foreground">Annual</span>
+                  </div>
+                  <div className="text-sm text-muted-foreground pl-6">
+                    {selectedTier ? pricing[selectedTier].annual.billed : "Billed annually"}
+                  </div>
+                </button>
+              </div>
+            </div>
+
             {/* Tier Selection */}
             <div className="space-y-3 mb-6">
               <button
@@ -150,7 +218,15 @@ const JoinChallenge = () => {
                     <div className="font-semibold text-foreground">Premium</div>
                     <div className="text-sm text-muted-foreground">Full curriculum + weekly reviews</div>
                   </div>
-                  <div className="text-xl font-bold">$47<span className="text-sm font-normal text-muted-foreground">/mo</span></div>
+                  <div className="text-right">
+                    <div className="text-xl font-bold">
+                      {pricing.premium[billingPeriod].display}
+                      <span className="text-sm font-normal text-muted-foreground">{pricing.premium[billingPeriod].period}</span>
+                    </div>
+                    {billingPeriod === 'annual' && (
+                      <div className="text-xs text-green-500">$397/year</div>
+                    )}
+                  </div>
                 </div>
               </button>
 
@@ -167,7 +243,15 @@ const JoinChallenge = () => {
                     <div className="font-semibold text-foreground">VIP Mentorship</div>
                     <div className="text-sm text-muted-foreground">Everything + 1-on-1 calls & priority support</div>
                   </div>
-                  <div className="text-xl font-bold">$297<span className="text-sm font-normal text-muted-foreground">/mo</span></div>
+                  <div className="text-right">
+                    <div className="text-xl font-bold">
+                      {pricing.vip[billingPeriod].display}
+                      <span className="text-sm font-normal text-muted-foreground">{pricing.vip[billingPeriod].period}</span>
+                    </div>
+                    {billingPeriod === 'annual' && (
+                      <div className="text-xs text-green-500">$2,497/year</div>
+                    )}
+                  </div>
                 </div>
               </button>
             </div>
@@ -208,12 +292,19 @@ const JoinChallenge = () => {
                   Processing...
                 </>
               ) : (
-                `Join ${selectedTier ? (selectedTier === 'premium' ? 'Premium' : 'VIP') : 'Cohort'} - ${selectedTier === 'vip' ? '$297' : '$47'}/mo`
+                <>
+                  Join {selectedTier ? (selectedTier === 'premium' ? 'Premium' : 'VIP') : 'Cohort'} - {getSelectedPrice().display}{getSelectedPrice().period}
+                  {billingPeriod === 'annual' && selectedTier && (
+                    <span className="ml-1 text-xs opacity-75">
+                      ({selectedTier === 'premium' ? '$397' : '$2,497'}/yr)
+                    </span>
+                  )}
+                </>
               )}
             </Button>
 
             <p className="text-xs text-muted-foreground text-center mt-3">
-              Secure payment via Stripe. Cancel anytime.
+              Secure payment via Stripe. {billingPeriod === 'monthly' ? 'Cancel anytime.' : 'Billed annually.'}
             </p>
           </div>
         </div>

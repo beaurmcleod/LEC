@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0";
-import { Resend } from "npm:resend@2.0.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -46,9 +45,9 @@ serve(async (req) => {
   }
 
   try {
-    const { tier, customerEmail, customerName } = await req.json();
+    const { tier, billingPeriod, customerEmail, customerName } = await req.json();
     
-    console.log('Cohort subscription request:', { tier, customerEmail, customerName });
+    console.log('Cohort subscription request:', { tier, billingPeriod, customerEmail, customerName });
 
     if (!tier || !customerEmail || !customerName) {
       return new Response(
@@ -66,13 +65,23 @@ serve(async (req) => {
       );
     }
 
-    // Set price based on tier
+    // Validate billing period
+    const validPeriods = ['monthly', 'annual'];
+    const period = validPeriods.includes(billingPeriod) ? billingPeriod : 'monthly';
+
+    // Set price based on tier and billing period
     const priceConfig = {
-      premium: { amount: 4700, name: 'Premium Cohort Membership', interval: 'month' as const },
-      vip: { amount: 29700, name: 'VIP Cohort Mentorship', interval: 'month' as const }
+      premium: {
+        monthly: { amount: 4700, name: 'Premium Cohort Membership (Monthly)', interval: 'month' as const },
+        annual: { amount: 39700, name: 'Premium Cohort Membership (Annual)', interval: 'year' as const }
+      },
+      vip: {
+        monthly: { amount: 29700, name: 'VIP Cohort Mentorship (Monthly)', interval: 'month' as const },
+        annual: { amount: 249700, name: 'VIP Cohort Mentorship (Annual)', interval: 'year' as const }
+      }
     };
 
-    const { amount, name, interval } = priceConfig[tier as keyof typeof priceConfig];
+    const { amount, name, interval } = priceConfig[tier as keyof typeof priceConfig][period as 'monthly' | 'annual'];
 
     // Initialize Stripe
     const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
@@ -91,7 +100,7 @@ serve(async (req) => {
             currency: "usd",
             product_data: { 
               name: name,
-              description: `Monthly subscription to the Low End Candy Collective - ${tier.charAt(0).toUpperCase() + tier.slice(1)} tier`
+              description: `${interval === 'year' ? 'Annual' : 'Monthly'} subscription to the Low End Candy Collective - ${tier.charAt(0).toUpperCase() + tier.slice(1)} tier`
             },
             unit_amount: amount,
             recurring: {
@@ -106,6 +115,7 @@ serve(async (req) => {
       cancel_url: `${origin}/collective/join`,
       metadata: {
         tier: tier,
+        billing_period: period,
         customer_name: customerName,
         customer_email: customerEmail,
         product_type: 'cohort_subscription'
