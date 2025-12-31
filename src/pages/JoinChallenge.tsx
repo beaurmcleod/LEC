@@ -311,10 +311,10 @@ const JoinChallenge = () => {
               <div className="mt-5 p-4 rounded-xl bg-gradient-to-r from-green-600/20 to-emerald-600/20 border-2 border-green-500/50 text-center shadow-lg shadow-green-500/10">
                 <div className="text-2xl mb-2">🎓</div>
                 <p className="text-base font-semibold text-green-400 mb-1">
-                  Exclusive Educational Discounts
+                  Exclusive Educational Discounts Included
                 </p>
                 <p className="text-sm text-green-300/80">
-                  Annual members get special pricing on plugins, sample packs & production gear from our partners
+                  Pay upfront for the year and unlock special pricing on plugins, sample packs & production gear from our partners
                 </p>
               </div>
             )}
