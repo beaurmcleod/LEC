@@ -161,6 +161,58 @@ export default function Collective() {
         </div>
       </section>
 
+      {/* How to Get Started */}
+      <section className="py-16 bg-charcoal/50 border-y border-charcoal-light">
+        <div className="container max-w-4xl mx-auto px-4">
+          <h2 className="text-xl md:text-2xl font-bold text-center mb-8">
+            How to Get Free Access
+          </h2>
+          
+          <div className="grid md:grid-cols-3 gap-6">
+            {[
+              {
+                step: "1",
+                title: "Join the Cohort",
+                description: "Click the button below to create your free Skool account and join the Low End Candy Collective."
+              },
+              {
+                step: "2",
+                title: "Go to the Classroom",
+                description: "Once inside, navigate to the Classroom tab to see all available courses."
+              },
+              {
+                step: "3",
+                title: "Unlock the Challenge",
+                description: "Find the \"30 Day EDM Producer\" course and click \"Unlock with Premium\" to start your journey."
+              }
+            ].map((item, i) => (
+              <div key={i} className="relative p-6 rounded-xl bg-obsidian border border-charcoal-light">
+                <div className="absolute -top-3 -left-3 w-8 h-8 bg-neon rounded-full flex items-center justify-center text-neon-foreground font-bold text-sm">
+                  {item.step}
+                </div>
+                <h3 className="font-semibold text-foreground mb-2 mt-2">{item.title}</h3>
+                <p className="text-sm text-muted-foreground">{item.description}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-8 text-center">
+            <Button
+              asChild
+              size="lg"
+              className="bg-neon hover:bg-neon/90 text-neon-foreground font-semibold text-lg h-14 px-10 rounded-xl shadow-glow-neon hover:shadow-glow-neon-lg hover:-translate-y-0.5 transition-all duration-200"
+            >
+              <a href={SKOOL_URL} target="_blank" rel="noopener noreferrer">
+                Join the Cohort — It's Free
+              </a>
+            </Button>
+            <p className="text-sm text-muted-foreground mt-3">
+              Create your account now. The next cohort kicks off when the timer hits zero.
+            </p>
+          </div>
+        </div>
+      </section>
+
       {/* Problem Recognition Strip */}
       <section className="py-12 bg-charcoal border-y border-charcoal-light">
         <div className="container max-w-5xl mx-auto px-4">
