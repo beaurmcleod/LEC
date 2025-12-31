@@ -17,13 +17,21 @@ export default function CohortSuccess() {
         </div>
 
         <h1 className="text-3xl md:text-4xl font-bold mb-4">
-          Welcome to the Collective!
+          Thank You for Your Purchase!
         </h1>
 
-        <p className="text-muted-foreground text-lg mb-8">
-          Your {tier === "vip" ? "VIP Mentorship" : "Premium"} subscription is now active.
-          We'll be adding you to the community shortly.
+        <p className="text-muted-foreground text-lg mb-4">
+          Your {tier === "vip" ? "VIP Mentorship" : "Premium"} subscription is confirmed.
         </p>
+        
+        <div className="bg-neon/10 border border-neon/30 rounded-lg p-4 mb-8">
+          <p className="text-neon font-medium">
+            ⏰ Please allow up to 3 hours for access
+          </p>
+          <p className="text-muted-foreground text-sm mt-1">
+            Every membership is manually approved to ensure the best community experience.
+          </p>
+        </div>
 
         {/* Next Steps */}
         <div className="p-6 rounded-xl bg-charcoal border border-charcoal-light text-left mb-8">
