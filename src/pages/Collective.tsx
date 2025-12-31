@@ -10,7 +10,16 @@ import {
 } from "@/components/ui/accordion";
 
 const SKOOL_URL = "https://www.skool.com/low-end-candy-collective-1686/about?ref=0475f2cfd1a94b63a5a389be8a3cb450";
-const COHORT_START = new Date("2025-01-01T12:00:00");
+
+// Get midnight tonight (or tomorrow if it's already past midnight)
+function getMidnightTonight() {
+  const now = new Date();
+  const midnight = new Date(now);
+  midnight.setHours(24, 0, 0, 0); // Sets to midnight of the next day
+  return midnight;
+}
+
+const COUNTDOWN_TARGET = getMidnightTonight();
 
 function useCountdown(targetDate: Date) {
   const [timeLeft, setTimeLeft] = useState(() => {
@@ -36,7 +45,7 @@ function useCountdown(targetDate: Date) {
 export default function Collective() {
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
-  const countdown = useCountdown(COHORT_START);
+  const countdown = useCountdown(COUNTDOWN_TARGET);
 
   const scrollToPricing = () => {
     document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" });
