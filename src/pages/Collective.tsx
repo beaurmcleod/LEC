@@ -129,19 +129,41 @@ export default function Collective() {
                 <div className="absolute -inset-1 bg-neon/10 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                 <div className="relative aspect-video bg-charcoal rounded-xl overflow-hidden border border-charcoal-light group-hover:border-neon/20 transition-colors duration-300">
                   {!isVideoPlaying ? (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-charcoal">
-                      {/* Poster placeholder */}
-                      <div className="absolute inset-0 bg-gradient-to-br from-charcoal-light to-charcoal" />
-                      <button
-                        onClick={() => setIsVideoPlaying(true)}
-                        className="relative z-10 flex flex-col items-center gap-4 group/play"
-                      >
-                        <div className="w-20 h-20 rounded-full bg-neon flex items-center justify-center shadow-glow-neon group-hover/play:scale-110 transition-transform duration-200">
+                    <button
+                      onClick={() => setIsVideoPlaying(true)}
+                      className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer group/play"
+                    >
+                      {/* YouTube thumbnail as background */}
+                      <img 
+                        src="https://img.youtube.com/vi/wWK0TAbApOA/maxresdefault.jpg" 
+                        alt="Watch the VSL"
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+                      {/* Gradient overlay for better text contrast */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-obsidian via-obsidian/40 to-transparent" />
+                      
+                      {/* Animated glow ring */}
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-28 h-28 rounded-full bg-neon/20 animate-ping" />
+                      </div>
+                      
+                      {/* Play button */}
+                      <div className="relative z-10 flex flex-col items-center gap-3">
+                        <div className="w-20 h-20 rounded-full bg-neon flex items-center justify-center shadow-glow-neon group-hover/play:scale-110 group-hover/play:shadow-glow-neon-lg transition-all duration-300">
                           <Play className="w-8 h-8 text-neon-foreground ml-1" fill="currentColor" />
                         </div>
-                        <span className="text-foreground font-medium">Watch this first</span>
-                      </button>
-                    </div>
+                        <div className="bg-obsidian/80 backdrop-blur-sm px-4 py-2 rounded-full border border-neon/30">
+                          <span className="text-foreground font-semibold text-sm">▶ Watch this first (3 min)</span>
+                        </div>
+                      </div>
+                      
+                      {/* Bottom text overlay */}
+                      <div className="absolute bottom-4 left-4 right-4 text-center">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                          See how producers finish tracks in 30 days
+                        </p>
+                      </div>
+                    </button>
                   ) : (
                     <iframe
                       src="https://www.youtube.com/embed/wWK0TAbApOA?autoplay=1"
