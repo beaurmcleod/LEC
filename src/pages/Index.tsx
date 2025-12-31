@@ -24,7 +24,7 @@ const Index = () => {
 
   const links = [
     {
-      title: "30 Day EDM Producer Challenge",
+      title: "Join The Collective",
       description: "Join our production community & level up",
       preview: previewEdmCourse,
       url: "/collective",
