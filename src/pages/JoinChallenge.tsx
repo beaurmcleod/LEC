@@ -306,6 +306,14 @@ const JoinChallenge = () => {
             <p className="text-xs text-muted-foreground text-center mt-3">
               Secure payment via Stripe. {billingPeriod === 'monthly' ? 'Cancel anytime.' : 'Billed annually.'}
             </p>
+            
+            {billingPeriod === 'annual' && (
+              <div className="mt-4 p-3 rounded-lg bg-green-600/10 border border-green-600/30 text-center">
+                <p className="text-sm text-green-500">
+                  🎓 Annual members get access to exclusive educational discounts on plugins, samples & gear
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
