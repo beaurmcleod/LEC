@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Play, Check, ChevronDown, ChevronUp } from "lucide-react";
 import {
@@ -100,9 +101,9 @@ export default function Collective() {
                   size="lg"
                   className="bg-neon hover:bg-neon/90 text-neon-foreground font-semibold text-lg h-14 px-8 rounded-xl shadow-glow-neon hover:shadow-glow-neon-lg hover:-translate-y-0.5 transition-all duration-200"
                 >
-                  <a href={SKOOL_URL} target="_blank" rel="noopener noreferrer">
+                  <Link to="/collective/join">
                     Join the Next Cohort
-                  </a>
+                  </Link>
                 </Button>
                 <button
                   onClick={scrollToPricing}
@@ -151,9 +152,9 @@ export default function Collective() {
                   size="lg"
                   className="w-full bg-neon hover:bg-neon/90 text-neon-foreground font-semibold text-lg h-14 rounded-xl shadow-glow-neon hover:shadow-glow-neon-lg hover:-translate-y-0.5 transition-all duration-200"
                 >
-                  <a href={SKOOL_URL} target="_blank" rel="noopener noreferrer">
+                  <Link to="/collective/join">
                     Join the Next Cohort
-                  </a>
+                  </Link>
                 </Button>
               </div>
             </div>
@@ -202,9 +203,9 @@ export default function Collective() {
               size="lg"
               className="bg-neon hover:bg-neon/90 text-neon-foreground font-semibold text-lg h-14 px-10 rounded-xl shadow-glow-neon hover:shadow-glow-neon-lg hover:-translate-y-0.5 transition-all duration-200"
             >
-              <a href={SKOOL_URL} target="_blank" rel="noopener noreferrer">
+              <Link to="/collective/join">
                 Join the Cohort — It's Free
-              </a>
+              </Link>
             </Button>
             <p className="text-sm text-muted-foreground mt-3">
               Create your account now. The next cohort kicks off when the timer hits zero.

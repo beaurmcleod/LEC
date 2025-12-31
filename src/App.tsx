@@ -23,6 +23,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import AdminSetup from "./pages/AdminSetup";
 import AskProducer from "./pages/AskProducer";
 import Collective from "./pages/Collective";
+import JoinChallenge from "./pages/JoinChallenge";
 
 const queryClient = new QueryClient();
 
@@ -43,6 +44,7 @@ const App = () => (
           <Route path="/candy-club" element={<CandyClub />} />
           <Route path="/ask" element={<AskProducer />} />
           <Route path="/collective" element={<Collective />} />
+          <Route path="/collective/join" element={<JoinChallenge />} />
           <Route path="/product/:id" element={<ProductDetail />} />
           <Route path="/enter-email" element={<EnterEmail />} />
           <Route path="/checkout" element={<Checkout />} />
