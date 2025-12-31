@@ -103,8 +103,13 @@ export default function Collective() {
                 <div className="absolute -inset-1 bg-neon/10 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                 <div className="relative aspect-video bg-charcoal rounded-xl overflow-hidden border border-charcoal-light group-hover:border-neon/20 transition-colors duration-300">
                   {!isVideoPlaying ? <div className="absolute inset-0 flex flex-col items-center justify-center bg-charcoal">
-                      {/* Poster placeholder */}
-                      <div className="absolute inset-0 bg-gradient-to-br from-charcoal-light to-charcoal" />
+                      {/* YouTube Thumbnail */}
+                      <img 
+                        src="https://img.youtube.com/vi/wWK0TAbApOA/maxresdefault.jpg" 
+                        alt="Low End Candy Collective Video Thumbnail"
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-black/30" />
                       <button onClick={() => setIsVideoPlaying(true)} className="relative z-10 flex flex-col items-center gap-4 group/play">
                         <div className="w-20 h-20 rounded-full bg-neon flex items-center justify-center shadow-glow-neon group-hover/play:scale-110 transition-transform duration-200">
                           <Play className="w-8 h-8 text-neon-foreground ml-1" fill="currentColor" />
