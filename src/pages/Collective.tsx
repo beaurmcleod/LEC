@@ -132,9 +132,7 @@ export default function Collective() {
       {/* How to Get Started */}
       <section className="py-16 bg-charcoal/50 border-y border-charcoal-light">
         <div className="container max-w-4xl mx-auto px-4">
-          <h2 className="text-xl md:text-2xl font-bold text-center mb-8">
-            How to Get Free Access
-          </h2>
+          <h2 className="text-xl md:text-2xl font-bold text-center mb-8">How to Get Access</h2>
           
           <div className="grid md:grid-cols-3 gap-6">
             {[{
