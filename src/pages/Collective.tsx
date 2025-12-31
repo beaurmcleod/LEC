@@ -104,11 +104,7 @@ export default function Collective() {
                 <div className="relative aspect-video bg-charcoal rounded-xl overflow-hidden border border-charcoal-light group-hover:border-neon/20 transition-colors duration-300">
                   {!isVideoPlaying ? <div className="absolute inset-0 flex flex-col items-center justify-center bg-charcoal">
                       {/* YouTube Thumbnail */}
-                      <img 
-                        src="https://img.youtube.com/vi/wWK0TAbApOA/maxresdefault.jpg" 
-                        alt="Low End Candy Collective Video Thumbnail"
-                        className="absolute inset-0 w-full h-full object-cover"
-                      />
+                      <img src="https://img.youtube.com/vi/wWK0TAbApOA/maxresdefault.jpg" alt="Low End Candy Collective Video Thumbnail" className="absolute inset-0 w-full h-full object-cover" />
                       <div className="absolute inset-0 bg-black/30" />
                       <button onClick={() => setIsVideoPlaying(true)} className="relative z-10 flex flex-col items-center gap-4 group/play">
                         <div className="w-20 h-20 rounded-full bg-neon flex items-center justify-center shadow-glow-neon group-hover/play:scale-110 transition-transform duration-200">
@@ -164,9 +160,7 @@ export default function Collective() {
 
           <div className="mt-8 text-center">
             <Button asChild size="lg" className="bg-neon hover:bg-neon/90 text-neon-foreground font-semibold text-lg h-14 px-10 rounded-xl shadow-glow-neon hover:shadow-glow-neon-lg hover:-translate-y-0.5 transition-all duration-200">
-              <Link to="/collective/join">
-                Join the Cohort — It's Free
-              </Link>
+              <Link to="/collective/join">Join the Community — It's Free</Link>
             </Button>
             <p className="text-sm text-muted-foreground mt-3">
               Create your account now. The next cohort kicks off when the timer hits zero.
