@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import previewEdmCourse from "@/assets/preview-edm-course.jpg";
-import previewCandyStore from "@/assets/preview-candy-store.jpg";
+import previewCandyStore from "@/assets/preview-candy-store-new.png";
 import previewLesson from "@/assets/preview-lesson.jpg";
 import previewFreeCourse from "@/assets/preview-free-course.jpg";
 import previewYoutube from "@/assets/preview-youtube.jpg";
