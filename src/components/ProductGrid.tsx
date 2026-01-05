@@ -14,9 +14,18 @@ interface Product {
   is_on_sale?: boolean;
 }
 
+const tabs = [
+  { id: "all", label: "All" },
+  { id: "free", label: "Free" },
+  { id: "project-files", label: "Project Files" },
+  { id: "sample-packs", label: "Sample Packs" },
+  { id: "devices-racks", label: "Devices & Racks" },
+];
+
 export const ProductGrid = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("all");
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -57,6 +66,29 @@ export const ProductGrid = () => {
     fetchProducts();
   }, []);
 
+  const filterProducts = (products: Product[]) => {
+    if (activeTab === "all") return products;
+    
+    return products.filter((product) => {
+      const price = parseFloat(product.price);
+      const isFree = isNaN(price) || price === 0;
+      const categoryLower = product.category.toLowerCase();
+      
+      switch (activeTab) {
+        case "free":
+          return isFree;
+        case "project-files":
+          return categoryLower.includes("project") || categoryLower.includes("template");
+        case "sample-packs":
+          return categoryLower.includes("sample") || categoryLower.includes("midi");
+        case "devices-racks":
+          return categoryLower.includes("rack") || categoryLower.includes("device") || categoryLower.includes("max");
+        default:
+          return true;
+      }
+    });
+  };
+
   if (loading) {
     return (
       <section className="py-16 px-4">
@@ -67,7 +99,7 @@ export const ProductGrid = () => {
     );
   }
 
-  const displayProducts = products.map((p) => ({
+  const displayProducts = filterProducts(products).map((p) => ({
     id: p.id,
     title: p.title,
     price: p.price,
@@ -93,17 +125,34 @@ export const ProductGrid = () => {
           </p>
         </div>
 
+        {/* Category Tabs */}
+        <div className="flex flex-wrap justify-center gap-2 mb-10">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-6 py-2 rounded-full font-medium transition-all duration-300 ${
+                activeTab === tab.id
+                  ? "bg-primary text-primary-foreground shadow-glow-primary"
+                  : "bg-card border border-border hover:border-primary/50 text-foreground"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {displayProducts.map((product) => (
             <ProductCard key={product.id} {...product} />
           ))}
         </div>
 
-        <div className="text-center mt-12">
-          <button className="bg-gradient-primary text-primary-foreground hover:opacity-90 shadow-glow-primary inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-lg font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-11 px-8">
-            View All Products
-          </button>
-        </div>
+        {displayProducts.length === 0 && (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground text-lg">No products found in this category.</p>
+          </div>
+        )}
       </div>
     </section>
   );
