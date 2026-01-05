@@ -60,10 +60,8 @@ Bright, energetic colors inspired by the colorful lollipop logo
     --neon-foreground: 0 0% 5%;
     --charcoal: 220 15% 10%;
     --charcoal-light: 220 12% 14%;
-    --obsidian: 0 0% 4%;
-    --true-black: 0 0% 2%;
+    --obsidian: 220 20% 6%;
     --glow-neon: 0 0 30px hsl(75 100% 50% / 0.4);
-    --glow-neon-subtle: 0 0 20px hsl(75 100% 50% / 0.15);
 
     --sidebar-background: 0 0% 98%;
 
