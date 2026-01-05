@@ -73,6 +73,7 @@ export const ProductGrid = () => {
       const price = parseFloat(product.price);
       const isFree = isNaN(price) || price === 0;
       const categoryLower = product.category.toLowerCase();
+      const titleLower = product.title.toLowerCase();
       
       switch (activeTab) {
         case "free":
@@ -80,7 +81,8 @@ export const ProductGrid = () => {
         case "project-files":
           return categoryLower.includes("project") || categoryLower.includes("template");
         case "sample-packs":
-          return categoryLower.includes("sample") || categoryLower.includes("midi");
+          return categoryLower.includes("sample") || categoryLower.includes("midi") || 
+                 titleLower.includes("bohemyth") || titleLower.includes("hip hop");
         case "devices-racks":
           return categoryLower.includes("rack") || categoryLower.includes("device") || categoryLower.includes("max");
         default:
