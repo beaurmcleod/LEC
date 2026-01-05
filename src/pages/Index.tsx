@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { ArrowRight, ExternalLink } from "lucide-react";
 import previewEdmCourse from "@/assets/preview-edm-course-new.jpg";
 import previewCandyStore from "@/assets/preview-candy-store-new.png";
 import previewLesson from "@/assets/preview-lesson.jpg";
@@ -23,164 +24,214 @@ const Index = () => {
     }
   };
 
-  const links = [
-    {
-      title: "Join The Collective",
-      description: "Join our production community & level up",
-      preview: previewSkool,
-      url: "/collective",
-      highlighted: true,
-    },
+  // Primary CTA - most important action
+  const primaryLink = {
+    title: "Join The Collective",
+    description: "Production community for serious producers",
+    preview: previewSkool,
+    url: "/collective",
+    tier: "primary" as const,
+  };
+
+  // Secondary CTAs - important but not the main focus
+  const secondaryLinks = [
     {
       title: "The Candy Store",
-      description: "Premium samples, presets & Ableton racks",
+      description: "Samples, presets & Ableton racks",
       preview: previewCandyStore,
       url: "/shop",
-      highlightBlue: true,
+      tier: "secondary" as const,
     },
     {
-      title: "30 Day EDM Production Course",
-      description: "Master electronic music production in 30 days",
+      title: "30 Day EDM Course",
+      description: "Master production in 30 days",
       preview: previewEdmCourse,
       url: "https://www.30dayedmproducer.com/",
       external: true,
-      highlightRed: true,
+      tier: "secondary" as const,
     },
     {
-      title: "Crux Chords Ableton AI Chord Device",
-      description: "AI-powered chord generation for Ableton",
-      preview: previewCruxChords,
-      url: "https://ableton-ai-ensemble.lovable.app/chords",
-      external: true,
-    },
-    {
-      title: "Book a Private Lesson With me",
-      description: "One-on-one music production coaching",
+      title: "Book a Private Lesson",
+      description: "1-on-1 production coaching",
       preview: previewLesson,
       url: "/lessons",
-    },
-    {
-      title: "Free Ableton Live Course",
-      description: "Start your journey with our free course",
-      preview: previewFreeCourse,
-      url: "https://www.30dayedmproducer.com/free-ableton-course",
-      external: true,
-    },
-    {
-      title: "Low End Candy YouTube",
-      description: "Tutorials, tips & production techniques",
-      preview: previewYoutube,
-      url: "https://www.youtube.com/@lowendcandy",
-      external: true,
-    },
-    {
-      title: "Follow Bohemyth",
-      description: "Connect on Instagram for daily content",
-      preview: previewBohemyth,
-      url: "https://www.instagram.com/_bohemyth_/?hl=en",
-      external: true,
+      tier: "secondary" as const,
     },
   ];
 
+  // Tertiary links - resources and social
+  const tertiaryLinks = [
+    {
+      title: "Crux Chords AI",
+      description: "AI-powered chord generation",
+      preview: previewCruxChords,
+      url: "https://ableton-ai-ensemble.lovable.app/chords",
+      external: true,
+      tier: "tertiary" as const,
+    },
+    {
+      title: "Free Ableton Course",
+      description: "Start your journey free",
+      preview: previewFreeCourse,
+      url: "https://www.30dayedmproducer.com/free-ableton-course",
+      external: true,
+      tier: "tertiary" as const,
+    },
+    {
+      title: "YouTube",
+      description: "Tutorials & techniques",
+      preview: previewYoutube,
+      url: "https://www.youtube.com/@lowendcandy",
+      external: true,
+      tier: "tertiary" as const,
+    },
+    {
+      title: "Instagram",
+      description: "Daily content",
+      preview: previewBohemyth,
+      url: "https://www.instagram.com/_bohemyth_/?hl=en",
+      external: true,
+      tier: "tertiary" as const,
+    },
+  ];
+
+  type LinkTier = "primary" | "secondary" | "tertiary";
+  
+  interface LinkItem {
+    title: string;
+    description: string;
+    preview: string;
+    url: string;
+    tier: LinkTier;
+    external?: boolean;
+  }
+
+  const renderLink = (link: LinkItem, index: number) => {
+    const isPrimary = link.tier === "primary";
+    const isSecondary = link.tier === "secondary";
+    const isTertiary = link.tier === "tertiary";
+
+    const linkContent = (
+      <div className={`flex items-center gap-4 ${isPrimary ? 'gap-5' : ''}`}>
+        <div className={`rounded-xl overflow-hidden flex-shrink-0 transition-transform duration-300 group-hover:scale-105 ${
+          isPrimary ? 'w-20 h-20 shadow-glow-neon-subtle' : isSecondary ? 'w-16 h-16' : 'w-12 h-12'
+        }`}>
+          <img 
+            src={link.preview} 
+            alt={link.title}
+            className="w-full h-full object-cover"
+          />
+        </div>
+        <div className="flex-1 text-left min-w-0">
+          <h3 className={`font-semibold tracking-tight transition-colors duration-200 ${
+            isPrimary 
+              ? 'text-xl text-neon group-hover:text-neon' 
+              : isSecondary 
+              ? 'text-lg text-foreground group-hover:text-neon' 
+              : 'text-base text-muted-foreground group-hover:text-foreground'
+          }`}>
+            {link.title}
+          </h3>
+          <p className={`truncate ${
+            isPrimary 
+              ? 'text-sm text-foreground/70 mt-1' 
+              : 'text-sm text-muted-foreground'
+          }`}>
+            {link.description}
+          </p>
+        </div>
+        {isPrimary ? (
+          <ArrowRight className="w-5 h-5 text-neon transition-transform duration-200 group-hover:translate-x-1" />
+        ) : link.external ? (
+          <ExternalLink className="w-4 h-4 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors duration-200" />
+        ) : (
+          <ArrowRight className="w-4 h-4 text-muted-foreground/50 group-hover:text-muted-foreground transition-all duration-200 group-hover:translate-x-0.5" />
+        )}
+      </div>
+    );
+
+    const baseClasses = "group block rounded-xl transition-all duration-300";
+    
+    const tierClasses = isPrimary
+      ? "p-5 bg-obsidian border-2 border-neon/40 hover:border-neon shadow-glow-neon-subtle hover:shadow-glow-neon"
+      : isSecondary
+      ? "p-4 bg-charcoal/50 border border-border/30 hover:border-neon/30 hover:bg-charcoal"
+      : "p-3 hover:bg-charcoal/30";
+
+    const className = `${baseClasses} ${tierClasses}`;
+
+    return link.external ? (
+      <a
+        key={`${link.tier}-${index}`}
+        href={link.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={className}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          trackClick(link.title, link.url);
+          window.open(link.url, '_blank', 'noopener,noreferrer');
+        }}
+      >
+        {linkContent}
+      </a>
+    ) : (
+      <Link
+        key={`${link.tier}-${index}`}
+        to={link.url}
+        className={className}
+        onClick={() => trackClick(link.title, link.url)}
+      >
+        {linkContent}
+      </Link>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden">
-      {/* Animated background gradients */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-secondary/5" />
-      <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse" />
-      <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-1000" />
-      
-      <div className="relative z-10 container max-w-2xl mx-auto px-4 py-16">
-        {/* Header */}
-        <div className="text-center mb-12 space-y-4">
-          <h1 className="text-5xl md:text-6xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+    <div className="min-h-screen bg-true-black">
+      <div className="container max-w-lg mx-auto px-5 py-16">
+        {/* Above-the-fold identity */}
+        <header className="text-center mb-14">
+          <div className="mb-6 flex justify-center">
+            <img 
+              src="/lovable-uploads/85f899cb-b6ef-4b15-a096-6ca3abdfa412.png" 
+              alt="Low End Candy" 
+              className="h-20 w-20 rounded-2xl"
+            />
+          </div>
+          <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-foreground mb-3">
             Low End Candy
           </h1>
-          <p className="text-lg text-muted-foreground">
-            Listen ⚡️ Learn ⚡️ Party
+          <p className="text-base text-muted-foreground max-w-xs mx-auto leading-relaxed">
+            Tools, education, and systems for producers who want real careers.
           </p>
-        </div>
+        </header>
 
-        {/* Links */}
-        <div className="space-y-4">
-          {links.map((link, index) => {
-            const linkContent = (
-              <div className="flex items-center gap-4">
-                <div className="w-20 h-20 rounded-lg overflow-hidden shadow-lg group-hover:scale-105 transition-transform duration-300 flex-shrink-0">
-                  <img 
-                    src={link.preview} 
-                    alt={link.title}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div className="flex-1 text-left">
-                  <h3 className="text-xl font-semibold text-foreground group-hover:text-primary transition-colors">
-                    {link.title}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {link.description}
-                  </p>
-                </div>
-                <svg
-                  className="w-5 h-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-              </div>
-            );
+        {/* Primary CTA */}
+        <section className="mb-6">
+          {renderLink(primaryLink, 0)}
+        </section>
 
-            const className = `group block p-6 rounded-lg transition-all duration-300 hover:-translate-y-1 ${
-              link.highlighted 
-                ? "bg-primary/10 border-2 border-primary/50 hover:border-primary shadow-glow-primary" 
-                : link.highlightBlue
-                ? "bg-blue-500/10 border-2 border-blue-500/50 hover:border-blue-500 shadow-[0_0_20px_hsl(217_91%_60%/0.3)]"
-                : link.highlightRed
-                ? "bg-red-500/10 border-2 border-red-500/50 hover:border-red-500 shadow-[0_0_20px_hsl(0_84%_60%/0.3)]"
-                : "bg-card border border-border hover:border-primary/50 hover:shadow-glow-primary"
-            }`;
+        {/* Secondary CTAs */}
+        <section className="space-y-3 mb-8">
+          {secondaryLinks.map((link, index) => renderLink(link, index))}
+        </section>
 
-            return link.external ? (
-              <a
-                key={index}
-                href={link.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={className}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  trackClick(link.title, link.url);
-                  window.open(link.url, '_blank', 'noopener,noreferrer');
-                }}
-              >
-                {linkContent}
-              </a>
-            ) : (
-              <Link
-                key={index}
-                to={link.url}
-                className={className}
-                onClick={() => trackClick(link.title, link.url)}
-              >
-                {linkContent}
-              </Link>
-            );
-          })}
-        </div>
+        {/* Divider */}
+        <div className="border-t border-border/20 my-8" />
+
+        {/* Tertiary Links */}
+        <section className="space-y-1">
+          {tertiaryLinks.map((link, index) => renderLink(link, index))}
+        </section>
 
         {/* Footer */}
-        <div className="mt-16 text-center">
-          <p className="text-sm text-muted-foreground">
-            © 2024 Low End Candy. All rights reserved.
+        <footer className="mt-16 text-center">
+          <p className="text-xs text-muted-foreground/50">
+            © 2024 Low End Candy
           </p>
-        </div>
+        </footer>
       </div>
     </div>
   );

@@ -68,7 +68,8 @@ export default {
 					DEFAULT: 'hsl(var(--charcoal))',
 					light: 'hsl(var(--charcoal-light))'
 				},
-				obsidian: 'hsl(var(--obsidian))'
+				obsidian: 'hsl(var(--obsidian))',
+				'true-black': 'hsl(var(--true-black))'
 			},
 			backgroundImage: {
 				'gradient-primary': 'var(--gradient-primary)',
@@ -79,7 +80,8 @@ export default {
 				'glow-primary': 'var(--glow-primary)',
 				'glow-accent': 'var(--glow-accent)',
 				'glow-neon': 'var(--glow-neon)',
-				'glow-neon-lg': '0 0 50px hsl(75 100% 50% / 0.3)'
+				'glow-neon-lg': '0 0 50px hsl(75 100% 50% / 0.3)',
+				'glow-neon-subtle': 'var(--glow-neon-subtle)'
 			},
 			borderRadius: {
 				lg: 'var(--radius)',
