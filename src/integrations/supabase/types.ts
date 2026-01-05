@@ -505,6 +505,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_own_profile: { Args: { profile_id: string }; Returns: boolean }
     }
     Enums: {
       app_role: "admin" | "user"
