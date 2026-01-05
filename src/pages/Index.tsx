@@ -32,6 +32,13 @@ const Index = () => {
       highlighted: true,
     },
     {
+      title: "The Candy Store",
+      description: "Premium samples, presets & Ableton racks",
+      preview: previewCandyStore,
+      url: "/shop",
+      highlightBlue: true,
+    },
+    {
       title: "Crux Chords Ableton AI Chord Device",
       description: "AI-powered chord generation for Ableton",
       preview: previewCruxChords,
@@ -44,12 +51,6 @@ const Index = () => {
       preview: previewEdmCourse,
       url: "https://www.30dayedmproducer.com/",
       external: true,
-    },
-    {
-      title: "The Candy Store",
-      description: "Premium samples, presets & Ableton racks",
-      preview: previewCandyStore,
-      url: "/shop",
     },
     {
       title: "Book a Private Lesson With me",
@@ -137,6 +138,8 @@ const Index = () => {
             const className = `group block p-6 rounded-lg transition-all duration-300 hover:-translate-y-1 ${
               link.highlighted 
                 ? "bg-primary/10 border-2 border-primary/50 hover:border-primary shadow-glow-primary" 
+                : link.highlightBlue
+                ? "bg-blue-500/10 border-2 border-blue-500/50 hover:border-blue-500 shadow-[0_0_20px_hsl(217_91%_60%/0.3)]"
                 : "bg-card border border-border hover:border-primary/50 hover:shadow-glow-primary"
             }`;
 
