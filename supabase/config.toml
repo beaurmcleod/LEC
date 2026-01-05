@@ -83,3 +83,6 @@ verify_jwt = false
 
 [functions.generate-session-images]
 verify_jwt = false
+
+[functions.update-product-descriptions]
+verify_jwt = false
