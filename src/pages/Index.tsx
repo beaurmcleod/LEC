@@ -39,17 +39,18 @@ const Index = () => {
       highlightBlue: true,
     },
     {
-      title: "Crux Chords Ableton AI Chord Device",
-      description: "AI-powered chord generation for Ableton",
-      preview: previewCruxChords,
-      url: "https://ableton-ai-ensemble.lovable.app/chords",
-      external: true,
-    },
-    {
       title: "30 Day EDM Production Course",
       description: "Master electronic music production in 30 days",
       preview: previewEdmCourse,
       url: "https://www.30dayedmproducer.com/",
+      external: true,
+      highlightRed: true,
+    },
+    {
+      title: "Crux Chords Ableton AI Chord Device",
+      description: "AI-powered chord generation for Ableton",
+      preview: previewCruxChords,
+      url: "https://ableton-ai-ensemble.lovable.app/chords",
       external: true,
     },
     {
@@ -140,6 +141,8 @@ const Index = () => {
                 ? "bg-primary/10 border-2 border-primary/50 hover:border-primary shadow-glow-primary" 
                 : link.highlightBlue
                 ? "bg-blue-500/10 border-2 border-blue-500/50 hover:border-blue-500 shadow-[0_0_20px_hsl(217_91%_60%/0.3)]"
+                : link.highlightRed
+                ? "bg-red-500/10 border-2 border-red-500/50 hover:border-red-500 shadow-[0_0_20px_hsl(0_84%_60%/0.3)]"
                 : "bg-card border border-border hover:border-primary/50 hover:shadow-glow-primary"
             }`;
 
