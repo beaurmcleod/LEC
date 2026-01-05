@@ -5,7 +5,7 @@ import previewCandyStore from "@/assets/preview-candy-store-new.png";
 import previewLesson from "@/assets/preview-lesson.jpg";
 import previewFreeCourse from "@/assets/preview-free-course.jpg";
 import previewYoutube from "@/assets/preview-youtube.jpg";
-import previewInstagram from "@/assets/preview-instagram.jpg";
+import previewBohemyth from "@/assets/preview-bohemyth.png";
 import previewCruxChords from "@/assets/preview-crux-chords-new.png";
 import previewSkool from "@/assets/preview-skool.png";
 
@@ -74,7 +74,7 @@ const Index = () => {
     {
       title: "Follow Bohemyth",
       description: "Connect on Instagram for daily content",
-      preview: previewInstagram,
+      preview: previewBohemyth,
       url: "https://www.instagram.com/_bohemyth_/?hl=en",
       external: true,
     },
