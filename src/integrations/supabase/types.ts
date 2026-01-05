@@ -25,6 +25,7 @@ export type Database = {
           product_id: string
           token: string
           updated_at: string | null
+          user_id: string | null
         }
         Insert: {
           created_at?: string | null
@@ -36,6 +37,7 @@ export type Database = {
           product_id: string
           token: string
           updated_at?: string | null
+          user_id?: string | null
         }
         Update: {
           created_at?: string | null
@@ -47,6 +49,7 @@ export type Database = {
           product_id?: string
           token?: string
           updated_at?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -506,6 +509,7 @@ export type Database = {
         Returns: boolean
       }
       is_own_profile: { Args: { profile_id: string }; Returns: boolean }
+      owns_download_token: { Args: { token_id: string }; Returns: boolean }
     }
     Enums: {
       app_role: "admin" | "user"

@@ -6,7 +6,7 @@ import previewLesson from "@/assets/preview-lesson.jpg";
 import previewFreeCourse from "@/assets/preview-free-course.jpg";
 import previewYoutube from "@/assets/preview-youtube.jpg";
 import previewInstagram from "@/assets/preview-instagram.jpg";
-import previewCruxChords from "@/assets/preview-crux-chords.png";
+import previewCruxChords from "@/assets/preview-crux-chords-new.png";
 import previewSkool from "@/assets/preview-skool.png";
 
 const Index = () => {
