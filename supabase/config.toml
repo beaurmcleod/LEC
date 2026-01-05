@@ -80,3 +80,6 @@ verify_jwt = false
 
 [functions.create-free-cohort-member]
 verify_jwt = false
+
+[functions.generate-session-images]
+verify_jwt = false
