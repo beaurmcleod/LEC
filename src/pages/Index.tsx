@@ -7,6 +7,7 @@ import previewFreeCourse from "@/assets/preview-free-course.jpg";
 import previewYoutube from "@/assets/preview-youtube.jpg";
 import previewInstagram from "@/assets/preview-instagram.jpg";
 import previewCruxChords from "@/assets/preview-crux-chords.png";
+import previewSkool from "@/assets/preview-skool.png";
 
 const Index = () => {
   const trackClick = async (linkTitle: string, linkUrl: string) => {
@@ -26,8 +27,9 @@ const Index = () => {
     {
       title: "Join The Collective",
       description: "Join our production community & level up",
-      preview: previewEdmCourse,
+      preview: previewSkool,
       url: "/collective",
+      highlighted: true,
     },
     {
       title: "Crux Chords Ableton AI Chord Device",
@@ -132,7 +134,11 @@ const Index = () => {
               </div>
             );
 
-            const className = "group block p-6 rounded-lg bg-card border border-border hover:border-primary/50 transition-all duration-300 hover:shadow-glow-primary hover:-translate-y-1";
+            const className = `group block p-6 rounded-lg transition-all duration-300 hover:-translate-y-1 ${
+              link.highlighted 
+                ? "bg-primary/10 border-2 border-primary/50 hover:border-primary shadow-glow-primary" 
+                : "bg-card border border-border hover:border-primary/50 hover:shadow-glow-primary"
+            }`;
 
             return link.external ? (
               <a
