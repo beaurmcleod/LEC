@@ -7,6 +7,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { format, isWeekend } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useCalendarBusyTimes, isTimeSlotBusy } from "@/hooks/useCalendarBusyTimes";
+import zoomLogo from "@/assets/zoom-logo.webp";
 // PST time slots (what Beau works in)
 const pstTimeSlots = [
   { hour: 9, label: "9:00 AM" },
@@ -214,11 +215,14 @@ const Lessons = () => {
             <ArrowLeft className="w-4 h-4" />
             Back to Links
           </Link>
-          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-            Book a Private Lesson
-          </h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+              Book a Private Lesson
+            </h1>
+            <img src={zoomLogo} alt="Via Zoom" className="h-12 w-12 rounded-lg" />
+          </div>
           <p className="mt-4 text-lg text-muted-foreground max-w-2xl">
-            Level up your music production skills with personalized one-on-one coaching. 
+            Level up your music production skills with personalized one-on-one coaching via Zoom. 
             Whether you're just starting out or looking to refine your craft, I'll help you reach your goals.
           </p>
         </div>
