@@ -10,16 +10,24 @@ import previewCruxChords from "@/assets/preview-crux-chords-new.png";
 import previewSkool from "@/assets/preview-skool.png";
 
 const Index = () => {
+  // Track clicks only for authenticated users (RLS requires authentication)
   const trackClick = async (linkTitle: string, linkUrl: string) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      // Only track if user is authenticated (RLS policy requires auth)
+      if (!user) return;
+      
+      // Validate inputs before sending
+      const sanitizedTitle = linkTitle.substring(0, 200);
+      const sanitizedUrl = linkUrl.substring(0, 500);
+      
       await supabase.from('link_clicks').insert({
-        link_title: linkTitle,
-        link_url: linkUrl,
-        user_id: user?.id || null,
+        link_title: sanitizedTitle,
+        link_url: sanitizedUrl,
+        user_id: user.id,
       });
     } catch (error) {
-      console.error('Error tracking click:', error);
+      // Silently fail for tracking - non-critical feature
     }
   };
 
