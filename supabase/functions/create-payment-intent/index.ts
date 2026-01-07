@@ -185,12 +185,12 @@ serve(async (req) => {
       metadata.lesson_time = lessonTime || '';
     }
     
-    // Handle free purchases (e.g., BOHEMYTHTEST coupon)
-    if (priceInCents === 0) {
-      console.log('Free purchase - skipping Stripe, returning free confirmation');
+    // Handle free or below-minimum purchases (Stripe requires minimum $0.50)
+    if (priceInCents < 50) {
+      console.log('Price below Stripe minimum ($0.50) - treating as free purchase');
       return new Response(JSON.stringify({ 
         free: true,
-        amount: 0,
+        amount: priceInCents,
         currency: "usd",
         metadata
       }), {
