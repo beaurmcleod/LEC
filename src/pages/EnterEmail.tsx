@@ -37,89 +37,40 @@ const EnterEmail = () => {
     if (!couponCode.trim()) return;
     
     setValidatingCoupon(true);
-    const code = couponCode.toUpperCase();
-    
-    console.log('Coupon attempt:', { code, isLesson, productTitle, price, productId });
     
     try {
-      // Validate coupon from database
-      const { data: coupon, error } = await supabase
-        .from('coupons')
-        .select('*')
-        .eq('code', code)
-        .eq('is_active', true)
-        .maybeSingle();
+      // Validate coupon via server-side edge function (never expose coupons table to client)
+      const { data, error } = await supabase.functions.invoke('validate-coupon', {
+        body: {
+          couponCode: couponCode.trim(),
+          productId,
+          originalPrice: originalPriceNum
+        }
+      });
 
-      if (error || !coupon) {
+      if (error) {
+        throw error;
+      }
+
+      if (!data.valid) {
         setAppliedCoupon(null);
         setDiscountedPrice(null);
         setDiscountMessage(null);
         toast({
           title: "Invalid Coupon",
-          description: "This coupon code is not valid.",
+          description: data.error || "This coupon code is not valid.",
           variant: "destructive",
         });
         setValidatingCoupon(false);
         return;
       }
 
-      // Check if expired
-      if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
-        toast({
-          title: "Coupon Expired",
-          description: "This coupon has expired.",
-          variant: "destructive",
-        });
-        setValidatingCoupon(false);
-        return;
-      }
-
-      // Check max uses
-      if (coupon.max_uses && coupon.current_uses >= coupon.max_uses) {
-        toast({
-          title: "Coupon Limit Reached",
-          description: "This coupon has reached its usage limit.",
-          variant: "destructive",
-        });
-        setValidatingCoupon(false);
-        return;
-      }
-
-      // Check if applies to this product
-      const appliesToProduct = coupon.applies_to_all || 
-        (coupon.product_ids && coupon.product_ids.includes(productId));
-      
-      if (!appliesToProduct) {
-        toast({
-          title: "Invalid Coupon",
-          description: "This coupon does not apply to this product.",
-          variant: "destructive",
-        });
-        setValidatingCoupon(false);
-        return;
-      }
-
-      // Calculate discounted price
-      let newPrice: number;
-      let message: string;
-      
-      if (coupon.discount_type === 'fixed_price') {
-        newPrice = parseFloat(String(coupon.discount_value));
-        message = `Price reduced to $${newPrice.toFixed(2)}!`;
-      } else if (coupon.discount_type === 'percentage') {
-        newPrice = originalPriceNum * (1 - parseFloat(String(coupon.discount_value)) / 100);
-        message = `${coupon.discount_value}% discount applied!`;
-      } else {
-        newPrice = Math.max(0, originalPriceNum - parseFloat(String(coupon.discount_value)));
-        message = `$${coupon.discount_value} off applied!`;
-      }
-
-      setAppliedCoupon(code);
-      setDiscountedPrice(newPrice.toFixed(2));
-      setDiscountMessage(message);
+      setAppliedCoupon(data.couponCode);
+      setDiscountedPrice(data.discountedPrice);
+      setDiscountMessage(data.message);
       toast({
         title: "Coupon Applied!",
-        description: message,
+        description: data.message,
       });
     } catch (err) {
       console.error('Coupon validation error:', err);
