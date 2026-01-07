@@ -135,12 +135,37 @@ serve(async (req) => {
     });
     
     if (productDownload.download_path) {
-      console.log('Attempting to create signed URL for path:', productDownload.download_path);
+      let downloadPath = productDownload.download_path;
       
-      const { data: signedUrlData, error: signedUrlError } = await supabase
+      // Determine which bucket to use - check if path starts with LEC/ prefix
+      let bucketName = 'product-downloads';
+      if (downloadPath.startsWith('LEC/')) {
+        bucketName = 'LEC';
+        downloadPath = downloadPath.replace('LEC/', ''); // Remove prefix for storage lookup
+      }
+      
+      console.log('Attempting to create signed URL:', { bucket: bucketName, path: downloadPath });
+      
+      // Try the determined bucket first
+      let { data: signedUrlData, error: signedUrlError } = await supabase
         .storage
-        .from('product-downloads')
-        .createSignedUrl(productDownload.download_path, 3600); // 1 hour expiry
+        .from(bucketName)
+        .createSignedUrl(downloadPath, 3600); // 1 hour expiry
+
+      // If failed and we used product-downloads, try LEC bucket as fallback
+      if (signedUrlError && bucketName === 'product-downloads') {
+        console.log('Trying LEC bucket as fallback...');
+        const fallbackResult = await supabase
+          .storage
+          .from('LEC')
+          .createSignedUrl(downloadPath, 3600);
+        
+        if (!fallbackResult.error && fallbackResult.data?.signedUrl) {
+          signedUrlData = fallbackResult.data;
+          signedUrlError = null;
+          console.log('Found file in LEC bucket');
+        }
+      }
 
       if (signedUrlError) {
         console.error('Error generating signed URL:', signedUrlError);
