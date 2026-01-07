@@ -31,17 +31,52 @@ serve(async (req) => {
 
     const { productId, customerEmail, couponCode } = validation.data;
 
-    // Validate coupon code
-    if (couponCode.toLowerCase() !== 'bohemythtest') {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Validate coupon code from database
+    const upperCoupon = couponCode.toUpperCase();
+    const { data: coupon, error: couponError } = await supabase
+      .from('coupons')
+      .select('*')
+      .eq('code', upperCoupon)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (!coupon || couponError) {
       return new Response(
         JSON.stringify({ error: 'Invalid coupon code' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // Check if coupon is expired
+    if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
+      return new Response(
+        JSON.stringify({ error: 'Coupon has expired' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Check if max uses reached
+    if (coupon.max_uses && coupon.current_uses >= coupon.max_uses) {
+      return new Response(
+        JSON.stringify({ error: 'Coupon usage limit reached' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Check if coupon applies to this product
+    const appliesToProduct = coupon.applies_to_all || 
+      (coupon.product_ids && coupon.product_ids.includes(productId));
+    
+    if (!appliesToProduct) {
+      return new Response(
+        JSON.stringify({ error: 'Coupon does not apply to this product' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Get product info
     const { data: product, error: productError } = await supabase
@@ -157,6 +192,12 @@ serve(async (req) => {
       console.error('Failed to send email:', emailError);
       // Don't fail the entire request if email fails
     }
+
+    // Increment coupon usage
+    await supabase
+      .from('coupons')
+      .update({ current_uses: coupon.current_uses + 1 })
+      .eq('id', coupon.id);
 
     console.log('Coupon redeemed successfully:', { productId, customerEmail, couponCode });
 

@@ -296,13 +296,8 @@ const Checkout = () => {
         console.log('Payment intent created successfully, client secret received');
         setClientSecret(data.client_secret);
         setFinalAmount(data.amount);
-        const upperCoupon = couponCode.toUpperCase();
-        if (upperCoupon === 'LOWENDCANDYFAMILY') {
-          setDiscountApplied('25% discount applied!');
-        } else if (upperCoupon === 'LEGACY' && isLesson) {
-          setDiscountApplied('50% discount applied!');
-        } else if (upperCoupon === 'BOHEMYTHTEST' && isLesson) {
-          setDiscountApplied('Free lesson applied!');
+        if (couponCode) {
+          setDiscountApplied('Discount applied!');
         }
         setLoading(false);
       } catch (error: any) {
