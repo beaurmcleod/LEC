@@ -16,13 +16,15 @@ export default function ProductDetail() {
     queryFn: async () => {
       if (!slug) return null;
       
-      // Convert slug back to approximate title for search
-      const searchPattern = slug.replace(/-/g, '%');
+      // Escape SQL wildcards to prevent pattern injection attacks
+      const escapedSlug = slug
+        .replace(/[%_\\]/g, '\\$&')  // Escape SQL wildcards
+        .replace(/-/g, ' ');          // Convert hyphens to spaces for title matching
       
       const { data, error } = await supabase
         .from('products')
         .select('*')
-        .ilike('title', `%${searchPattern}%`)
+        .ilike('title', `%${escapedSlug}%`)
         .maybeSingle();
       
       if (error) throw error;
