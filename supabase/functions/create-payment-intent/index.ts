@@ -118,19 +118,51 @@ serve(async (req) => {
     let discountApplied = '';
     const upperCoupon = couponCode?.toUpperCase() || '';
 
-    // Validate and apply coupon code
-    if (upperCoupon === 'LOWENDCANDYFAMILY') {
-      priceInCents = Math.round(priceInCents * 0.75); // 25% off
-      discountApplied = '25%';
-      console.log('Coupon LOWENDCANDYFAMILY applied, 25% discount');
-    } else if (upperCoupon === 'LEGACY' && isLesson) {
-      priceInCents = Math.round(priceInCents * 0.50); // 50% off for lessons
-      discountApplied = '50%';
-      console.log('Coupon LEGACY applied, 50% discount for lesson');
-    } else if (upperCoupon === 'BOHEMYTHTEST' && isLesson) {
-      priceInCents = 0; // Free for lessons
-      discountApplied = '100%';
-      console.log('Coupon BOHEMYTHTEST applied, free lesson');
+    // Validate and apply coupon code from database
+    if (upperCoupon) {
+      const { data: coupon, error: couponError } = await supabase
+        .from('coupons')
+        .select('*')
+        .eq('code', upperCoupon)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (coupon && !couponError) {
+        // Check if coupon is expired
+        const isExpired = coupon.expires_at && new Date(coupon.expires_at) < new Date();
+        // Check if max uses reached
+        const maxUsesReached = coupon.max_uses && coupon.current_uses >= coupon.max_uses;
+        // Check if coupon applies to this product
+        const appliesToProduct = coupon.applies_to_all || 
+          (coupon.product_ids && coupon.product_ids.includes(product.id));
+
+        if (!isExpired && !maxUsesReached && appliesToProduct) {
+          if (coupon.discount_type === 'fixed_price') {
+            priceInCents = Math.round(coupon.discount_value * 100);
+            discountApplied = `Fixed price: $${coupon.discount_value}`;
+            console.log(`Coupon ${upperCoupon} applied, fixed price: $${coupon.discount_value}`);
+          } else if (coupon.discount_type === 'percentage') {
+            const discountMultiplier = (100 - coupon.discount_value) / 100;
+            priceInCents = Math.round(priceInCents * discountMultiplier);
+            discountApplied = `${coupon.discount_value}%`;
+            console.log(`Coupon ${upperCoupon} applied, ${coupon.discount_value}% discount`);
+          } else if (coupon.discount_type === 'fixed_amount') {
+            priceInCents = Math.max(0, priceInCents - Math.round(coupon.discount_value * 100));
+            discountApplied = `$${coupon.discount_value} off`;
+            console.log(`Coupon ${upperCoupon} applied, $${coupon.discount_value} off`);
+          }
+
+          // Increment coupon usage
+          await supabase
+            .from('coupons')
+            .update({ current_uses: coupon.current_uses + 1 })
+            .eq('id', coupon.id);
+        } else {
+          console.log(`Coupon ${upperCoupon} not valid: expired=${isExpired}, maxUsesReached=${maxUsesReached}, appliesToProduct=${appliesToProduct}`);
+        }
+      } else {
+        console.log(`Coupon ${upperCoupon} not found or inactive`);
+      }
     }
 
     console.log('Creating payment intent for product:', product.title, 'amount:', priceInCents, 'discountApplied:', discountApplied, 'isLesson:', isLesson);

@@ -14,6 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
+      coupons: {
+        Row: {
+          applies_to_all: boolean
+          code: string
+          created_at: string
+          current_uses: number
+          discount_type: string
+          discount_value: number
+          expires_at: string | null
+          id: string
+          is_active: boolean
+          max_uses: number | null
+          product_ids: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          applies_to_all?: boolean
+          code: string
+          created_at?: string
+          current_uses?: number
+          discount_type?: string
+          discount_value: number
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          max_uses?: number | null
+          product_ids?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          applies_to_all?: boolean
+          code?: string
+          created_at?: string
+          current_uses?: number
+          discount_type?: string
+          discount_value?: number
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          max_uses?: number | null
+          product_ids?: string[] | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       download_tokens: {
         Row: {
           created_at: string | null
