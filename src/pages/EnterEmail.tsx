@@ -104,13 +104,13 @@ const EnterEmail = () => {
       let message: string;
       
       if (coupon.discount_type === 'fixed_price') {
-        newPrice = parseFloat(coupon.discount_value);
+        newPrice = parseFloat(String(coupon.discount_value));
         message = `Price reduced to $${newPrice.toFixed(2)}!`;
       } else if (coupon.discount_type === 'percentage') {
-        newPrice = originalPriceNum * (1 - parseFloat(coupon.discount_value) / 100);
+        newPrice = originalPriceNum * (1 - parseFloat(String(coupon.discount_value)) / 100);
         message = `${coupon.discount_value}% discount applied!`;
       } else {
-        newPrice = Math.max(0, originalPriceNum - parseFloat(coupon.discount_value));
+        newPrice = Math.max(0, originalPriceNum - parseFloat(String(coupon.discount_value)));
         message = `$${coupon.discount_value} off applied!`;
       }
 
