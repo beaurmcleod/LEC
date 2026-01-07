@@ -86,3 +86,12 @@ verify_jwt = false
 
 [functions.update-product-descriptions]
 verify_jwt = false
+
+[functions.resend-purchase-email]
+verify_jwt = false
+
+[functions.get-free-download]
+verify_jwt = false
+
+[functions.redeem-coupon]
+verify_jwt = false
