@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 const EnterEmail = () => {
   const [searchParams] = useSearchParams();
@@ -16,6 +17,9 @@ const EnterEmail = () => {
   const [couponCode, setCouponCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
+  const [discountedPrice, setDiscountedPrice] = useState<string | null>(null);
+  const [discountMessage, setDiscountMessage] = useState<string | null>(null);
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
 
   const productTitle = searchParams.get("title") || "";
   const price = searchParams.get("price") || "";
@@ -27,64 +31,106 @@ const EnterEmail = () => {
   const lessonDate = searchParams.get("date") || "";
   const lessonTime = searchParams.get("time") || "";
 
-  // Calculate discounted price based on coupon
   const originalPriceNum = parseFloat(price.replace(/[^0-9.]/g, '')) || 0;
-  
-  const getDiscountedPrice = () => {
-    if (!appliedCoupon) return null;
-    const code = appliedCoupon.toUpperCase();
-    if (code === 'LOWENDCANDYFAMILY') return (originalPriceNum * 0.75).toFixed(2); // 25% off
-    if (code === 'LEGACY' && isLesson) return (originalPriceNum * 0.50).toFixed(2); // 50% off
-    if (code === 'BOHEMYTHTEST' && isLesson) return '0.00'; // Free
-    return null;
-  };
-  
-  const getDiscountMessage = () => {
-    if (!appliedCoupon) return null;
-    const code = appliedCoupon.toUpperCase();
-    if (code === 'LOWENDCANDYFAMILY') return '25% discount applied!';
-    if (code === 'LEGACY' && isLesson) return '50% discount applied!';
-    if (code === 'BOHEMYTHTEST' && isLesson) return 'Free lesson applied!';
-    return null;
-  };
-  
-  const discountedPrice = getDiscountedPrice();
-  const discountMessage = getDiscountMessage();
 
-  const handleApplyCoupon = () => {
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim()) return;
+    
+    setValidatingCoupon(true);
     const code = couponCode.toUpperCase();
     
-    console.log('Coupon attempt:', { code, isLesson, productTitle, price });
+    console.log('Coupon attempt:', { code, isLesson, productTitle, price, productId });
     
-    // Check for valid coupon codes
-    if (code === 'LOWENDCANDYFAMILY') {
+    try {
+      // Validate coupon from database
+      const { data: coupon, error } = await supabase
+        .from('coupons')
+        .select('*')
+        .eq('code', code)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (error || !coupon) {
+        setAppliedCoupon(null);
+        setDiscountedPrice(null);
+        setDiscountMessage(null);
+        toast({
+          title: "Invalid Coupon",
+          description: "This coupon code is not valid.",
+          variant: "destructive",
+        });
+        setValidatingCoupon(false);
+        return;
+      }
+
+      // Check if expired
+      if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
+        toast({
+          title: "Coupon Expired",
+          description: "This coupon has expired.",
+          variant: "destructive",
+        });
+        setValidatingCoupon(false);
+        return;
+      }
+
+      // Check max uses
+      if (coupon.max_uses && coupon.current_uses >= coupon.max_uses) {
+        toast({
+          title: "Coupon Limit Reached",
+          description: "This coupon has reached its usage limit.",
+          variant: "destructive",
+        });
+        setValidatingCoupon(false);
+        return;
+      }
+
+      // Check if applies to this product
+      const appliesToProduct = coupon.applies_to_all || 
+        (coupon.product_ids && coupon.product_ids.includes(productId));
+      
+      if (!appliesToProduct) {
+        toast({
+          title: "Invalid Coupon",
+          description: "This coupon does not apply to this product.",
+          variant: "destructive",
+        });
+        setValidatingCoupon(false);
+        return;
+      }
+
+      // Calculate discounted price
+      let newPrice: number;
+      let message: string;
+      
+      if (coupon.discount_type === 'fixed_price') {
+        newPrice = parseFloat(coupon.discount_value);
+        message = `Price reduced to $${newPrice.toFixed(2)}!`;
+      } else if (coupon.discount_type === 'percentage') {
+        newPrice = originalPriceNum * (1 - parseFloat(coupon.discount_value) / 100);
+        message = `${coupon.discount_value}% discount applied!`;
+      } else {
+        newPrice = Math.max(0, originalPriceNum - parseFloat(coupon.discount_value));
+        message = `$${coupon.discount_value} off applied!`;
+      }
+
       setAppliedCoupon(code);
+      setDiscountedPrice(newPrice.toFixed(2));
+      setDiscountMessage(message);
       toast({
         title: "Coupon Applied!",
-        description: "25% discount has been applied to your order.",
+        description: message,
       });
-    } else if (code === 'LEGACY' && isLesson) {
-      setAppliedCoupon(code);
+    } catch (err) {
+      console.error('Coupon validation error:', err);
       toast({
-        title: "Coupon Applied!",
-        description: "50% discount has been applied to your lesson.",
-      });
-    } else if (code === 'BOHEMYTHTEST' && isLesson) {
-      setAppliedCoupon(code);
-      toast({
-        title: "Coupon Applied!",
-        description: "Your lesson is now free!",
-      });
-    } else if (couponCode.trim()) {
-      setAppliedCoupon(null);
-      toast({
-        title: "Invalid Coupon",
-        description: !isLesson && (code === 'LEGACY' || code === 'BOHEMYTHTEST') 
-          ? "This coupon is only valid for lessons."
-          : "This coupon code is not valid.",
+        title: "Error",
+        description: "Failed to validate coupon. Please try again.",
         variant: "destructive",
       });
     }
+    
+    setValidatingCoupon(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -172,8 +218,8 @@ const EnterEmail = () => {
                   onChange={(e) => setCouponCode(e.target.value)}
                   className="flex-1"
                 />
-                <Button type="button" variant="outline" onClick={handleApplyCoupon}>
-                  Apply
+                <Button type="button" variant="outline" onClick={handleApplyCoupon} disabled={validatingCoupon}>
+                  {validatingCoupon ? "..." : "Apply"}
                 </Button>
               </div>
             </div>
