@@ -20,33 +20,41 @@ const PaymentSuccess = () => {
   const isLesson = !!(lessonDate && lessonTime);
 
   useEffect(() => {
-    // Send lesson notification for free lessons
-    const sendLessonNotification = async () => {
-      if (isLesson && isFree && customerEmail && !notificationSent) {
-        try {
+    const handleFreePurchase = async () => {
+      if (!isFree || !customerEmail || !productId || notificationSent) return;
+
+      try {
+        console.log("Processing free purchase...", { productId, customerEmail, isLesson });
+
+        // Get product info
+        const { data: product } = await supabase
+          .from('products')
+          .select('title, price')
+          .eq('id', productId)
+          .single();
+
+        if (!product) {
+          console.error("Product not found");
+          return;
+        }
+
+        const productTitle = product.title;
+
+        if (isLesson) {
+          // Send lesson notification for free lessons
           console.log("Sending free lesson notification...");
           
-          // Get lesson duration from product
-          const { data: product } = await supabase
-            .from('products')
-            .select('title, price')
-            .eq('id', productId)
-            .single();
-          
-          const lessonTitle = product?.title || "Music Production Lesson";
-          
-          // Determine duration based on title
           let durationMinutes = 60;
-          if (lessonTitle.includes("2 Hour")) {
+          if (productTitle.includes("2 Hour")) {
             durationMinutes = 120;
-          } else if (lessonTitle.includes("4 Lesson")) {
-            durationMinutes = 60; // First session of pack
+          } else if (productTitle.includes("4 Lesson")) {
+            durationMinutes = 60;
           }
 
           const { error } = await supabase.functions.invoke('send-lesson-notification', {
             body: {
               customerEmail,
-              lessonTitle,
+              lessonTitle: productTitle,
               lessonDate,
               lessonTime,
               durationMinutes,
@@ -59,16 +67,34 @@ const PaymentSuccess = () => {
             console.error("Failed to send lesson notification:", error);
           } else {
             console.log("Lesson notification sent successfully");
-            setNotificationSent(true);
           }
-        } catch (err) {
-          console.error("Error sending lesson notification:", err);
+        } else {
+          // Send purchase email with download link for free product purchases
+          console.log("Sending free purchase email with download link...");
+          
+          const { data, error } = await supabase.functions.invoke('redeem-coupon', {
+            body: {
+              productId,
+              customerEmail,
+              couponCode: 'FREE_PURCHASE',
+            },
+          });
+
+          if (error) {
+            console.error("Failed to process free purchase:", error);
+          } else {
+            console.log("Free purchase processed, email sent:", data);
+          }
         }
+
+        setNotificationSent(true);
+      } catch (err) {
+        console.error("Error processing free purchase:", err);
       }
     };
 
-    sendLessonNotification();
-  }, [isLesson, isFree, customerEmail, productId, lessonDate, lessonTime, notificationSent]);
+    handleFreePurchase();
+  }, [isFree, customerEmail, productId, isLesson, lessonDate, lessonTime, notificationSent]);
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
