@@ -6,6 +6,7 @@ import bioStudio from "@/assets/bio-studio.jpg";
 import bioCollab from "@/assets/bio-collab.jpg";
 import bioLibBooth from "@/assets/bio-lib-booth.jpg";
 import bioLibSolo from "@/assets/bio-lib-solo.jpg";
+import bioRemixAlbum from "@/assets/bio-remix-album.jpg";
 
 const Bio = () => {
   return (
@@ -81,6 +82,13 @@ const Bio = () => {
               src={bioLibBooth} 
               alt="Bohemyth at the DJ booth"
               className="w-full h-64 object-cover"
+            />
+          </div>
+          <div className="rounded-lg overflow-hidden shadow-lg md:col-span-2">
+            <img 
+              src={bioRemixAlbum} 
+              alt="Android Porn Remix Album featuring Bohemyth"
+              className="w-full h-72 object-contain bg-black"
             />
           </div>
         </div>
