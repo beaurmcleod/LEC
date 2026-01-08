@@ -153,29 +153,38 @@ const AskProducer = () => {
       {/* Chat Area */}
       <div className="flex-1 container mx-auto px-4 py-6 max-w-3xl">
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full min-h-[60vh] text-center">
-            <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center mb-6">
-              <Sparkles className="h-10 w-10 text-primary" />
+          <div className="flex flex-col items-center justify-center h-full min-h-[60vh] text-center px-4">
+            <div className="h-24 w-24 rounded-full bg-primary/10 flex items-center justify-center mb-8">
+              <Sparkles className="h-12 w-12 text-primary" />
             </div>
-            <h2 className="text-2xl font-bold mb-3">Ask a Producer</h2>
-            <p className="text-muted-foreground mb-8 max-w-lg">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">Ask a Producer</h2>
+            <p className="text-muted-foreground mb-10 max-w-xl text-lg">
               Powered by 10+ years of production notes and curriculum from the nation's top music production schools. Real techniques, real workflows, real answers.
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg">
-              {suggestedQuestions.map((question, i) => (
-                <Button
-                  key={i}
-                  variant="outline"
-                  className="text-left h-auto py-3 px-4 justify-start"
-                  onClick={() => {
-                    setInput(question);
-                    inputRef.current?.focus();
-                  }}
+            <form onSubmit={handleSubmit} className="w-full max-w-2xl">
+              <div className="relative">
+                <Input
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Ask anything about music production..."
+                  disabled={isLoading}
+                  className="w-full h-14 text-lg pl-5 pr-14 rounded-full border-2 border-primary/20 focus:border-primary"
+                />
+                <Button 
+                  type="submit" 
+                  disabled={!input.trim() || isLoading}
+                  size="icon"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full"
                 >
-                  {question}
+                  {isLoading ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Send className="h-5 w-5" />
+                  )}
                 </Button>
-              ))}
-            </div>
+              </div>
+            </form>
           </div>
         ) : (
           <ScrollArea className="h-[calc(100vh-220px)]" ref={scrollAreaRef}>
@@ -211,31 +220,30 @@ const AskProducer = () => {
         )}
       </div>
 
-      {/* Input Area */}
-      <div className="border-t border-border/50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky bottom-0">
-        <div className="container mx-auto px-4 py-4 max-w-3xl">
-          <form onSubmit={handleSubmit} className="flex gap-3">
-            <Input
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask me anything about production..."
-              disabled={isLoading}
-              className="flex-1"
-            />
-            <Button type="submit" disabled={!input.trim() || isLoading}>
-              {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-            </Button>
-          </form>
-          <p className="text-xs text-muted-foreground text-center mt-3">
-            Answers informed by professional production curriculum & industry techniques
-          </p>
+      {/* Input Area - only show when conversation started */}
+      {messages.length > 0 && (
+        <div className="border-t border-border/50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky bottom-0">
+          <div className="container mx-auto px-4 py-4 max-w-3xl">
+            <form onSubmit={handleSubmit} className="flex gap-3">
+              <Input
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Ask a follow-up question..."
+                disabled={isLoading}
+                className="flex-1 h-12"
+              />
+              <Button type="submit" disabled={!input.trim() || isLoading} className="h-12 px-6">
+                {isLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
+            </form>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
