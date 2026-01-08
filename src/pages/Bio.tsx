@@ -7,6 +7,7 @@ import bioCollab from "@/assets/bio-collab.jpg";
 import bioLibBooth from "@/assets/bio-lib-booth.jpg";
 import bioLibSolo from "@/assets/bio-lib-solo.jpg";
 import bioRemixAlbum from "@/assets/bio-remix-album.jpg";
+import bioFestivalGroup from "@/assets/bio-festival-group.png";
 
 const Bio = () => {
   return (
@@ -82,6 +83,13 @@ const Bio = () => {
               src={bioLibBooth} 
               alt="Bohemyth at the DJ booth"
               className="w-full h-64 object-cover"
+            />
+          </div>
+          <div className="rounded-lg overflow-hidden shadow-lg md:col-span-2">
+            <img 
+              src={bioFestivalGroup} 
+              alt="Festival group photo at Lightning in a Bottle"
+              className="w-full h-72 object-cover"
             />
           </div>
           <div className="rounded-lg overflow-hidden shadow-lg md:col-span-2">
