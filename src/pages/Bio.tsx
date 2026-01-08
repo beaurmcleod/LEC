@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
-import previewBohemyth from "@/assets/preview-bohemyth.png";
+import bioDjBooth from "@/assets/bio-dj-booth.jpg";
+import bioLibLineup from "@/assets/bio-lib-lineup.png";
 
 const Bio = () => {
   return (
@@ -24,7 +25,7 @@ const Bio = () => {
         <div className="text-center mb-12 space-y-6">
           <div className="w-32 h-32 mx-auto rounded-full overflow-hidden shadow-lg border-4 border-primary/50">
             <img 
-              src={previewBohemyth} 
+              src={bioDjBooth} 
               alt="Bohemyth"
               className="w-full h-full object-cover"
             />
@@ -35,10 +36,28 @@ const Bio = () => {
         </div>
 
         {/* Bio content */}
-        <div className="bg-card border border-border rounded-lg p-8 shadow-lg">
+        <div className="bg-card border border-border rounded-lg p-8 shadow-lg mb-8">
           <p className="text-lg text-foreground leading-relaxed">
             Bohemyth (Beau McLeod) is a music producer, performing artist, and educator with proven industry and teaching credentials. He's played Lightning in a Bottle twice, worked with Grammy-winning producer Kato On The Track, and released an album that surpassed 100,000 streams. He's formally trained with a degree from Icon Collective, a Music Technology degree from MiraCosta College, and additional study at San Diego State University. As an educator, he's mentored around 100 private students, built an online music production course, runs the Low End Candy YouTube channel, and has taught at 343 Labs—where he also managed their YouTube channel—bringing real-world production experience and clear, results-driven instruction to every student he works with.
           </p>
+        </div>
+
+        {/* Photo Gallery */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-lg overflow-hidden shadow-lg">
+            <img 
+              src={bioDjBooth} 
+              alt="Bohemyth performing at Lightning in a Bottle"
+              className="w-full h-64 object-cover"
+            />
+          </div>
+          <div className="rounded-lg overflow-hidden shadow-lg">
+            <img 
+              src={bioLibLineup} 
+              alt="Lightning in a Bottle 2023 Lineup featuring Bohemyth"
+              className="w-full h-64 object-cover object-top"
+            />
+          </div>
         </div>
 
         {/* Footer */}
