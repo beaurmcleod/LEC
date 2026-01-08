@@ -157,9 +157,9 @@ const AskProducer = () => {
             <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center mb-6">
               <Sparkles className="h-10 w-10 text-primary" />
             </div>
-            <h2 className="text-2xl font-bold mb-2">What's up! I'm Bohemyth.</h2>
-            <p className="text-muted-foreground mb-8 max-w-md">
-              Ask me anything about music production - mixing, sound design, Ableton workflows, whatever you're working on.
+            <h2 className="text-2xl font-bold mb-3">Ask a Producer</h2>
+            <p className="text-muted-foreground mb-8 max-w-lg">
+              Powered by 10+ years of production notes and curriculum from the nation's top music production schools. Real techniques, real workflows, real answers.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg">
               {suggestedQuestions.map((question, i) => (
@@ -232,7 +232,7 @@ const AskProducer = () => {
             </Button>
           </form>
           <p className="text-xs text-muted-foreground text-center mt-3">
-            AI-powered advice based on real production experience
+            Answers informed by professional production curriculum & industry techniques
           </p>
         </div>
       </div>
