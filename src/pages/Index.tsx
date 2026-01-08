@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { HelpCircle } from "lucide-react";
 import previewEdmCourse from "@/assets/preview-edm-course-new.jpg";
 import previewCandyStore from "@/assets/preview-candy-store-new.png";
 import previewLesson from "@/assets/preview-lesson.jpg";
@@ -8,7 +9,6 @@ import previewYoutube from "@/assets/preview-youtube.jpg";
 import previewBohemyth from "@/assets/preview-bohemyth.png";
 import previewCruxChords from "@/assets/preview-crux-chords-new.png";
 import previewSkool from "@/assets/preview-skool.png";
-
 const Index = () => {
   // Track clicks only for authenticated users (RLS requires authentication)
   const trackClick = async (linkTitle: string, linkUrl: string) => {
@@ -70,7 +70,7 @@ const Index = () => {
     {
       title: "Ask a Producer",
       description: "AI powered by 10+ years of professional production curriculum",
-      preview: previewBohemyth,
+      icon: HelpCircle,
       url: "/ask",
     },
     {
@@ -119,12 +119,16 @@ const Index = () => {
           {links.map((link, index) => {
             const linkContent = (
               <div className="flex items-center gap-4">
-                <div className="w-20 h-20 rounded-lg overflow-hidden shadow-lg group-hover:scale-105 transition-transform duration-300 flex-shrink-0">
-                  <img 
-                    src={link.preview} 
-                    alt={link.title}
-                    className="w-full h-full object-cover"
-                  />
+                <div className="w-20 h-20 rounded-lg overflow-hidden shadow-lg group-hover:scale-105 transition-transform duration-300 flex-shrink-0 flex items-center justify-center bg-primary/20">
+                  {link.icon ? (
+                    <link.icon className="w-10 h-10 text-primary" />
+                  ) : (
+                    <img 
+                      src={link.preview} 
+                      alt={link.title}
+                      className="w-full h-full object-cover"
+                    />
+                  )}
                 </div>
                 <div className="flex-1 text-left">
                   <h3 className="text-xl font-semibold text-foreground group-hover:text-primary transition-colors">
