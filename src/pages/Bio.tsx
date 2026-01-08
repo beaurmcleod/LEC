@@ -4,6 +4,7 @@ import bioDjBooth from "@/assets/bio-dj-booth.jpg";
 import bioLibLineup from "@/assets/bio-lib-lineup.png";
 import bioStudio from "@/assets/bio-studio.jpg";
 import bioCollab from "@/assets/bio-collab.jpg";
+import bioLibBooth from "@/assets/bio-lib-booth.jpg";
 
 const Bio = () => {
   return (
@@ -46,10 +47,17 @@ const Bio = () => {
 
         {/* Photo Gallery */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-lg overflow-hidden shadow-lg md:col-span-2">
+            <img 
+              src={bioLibBooth} 
+              alt="Bohemyth performing at Lightning in a Bottle"
+              className="w-full h-72 object-cover"
+            />
+          </div>
           <div className="rounded-lg overflow-hidden shadow-lg">
             <img 
               src={bioDjBooth} 
-              alt="Bohemyth performing at Lightning in a Bottle"
+              alt="Bohemyth at the DJ booth"
               className="w-full h-64 object-cover"
             />
           </div>
