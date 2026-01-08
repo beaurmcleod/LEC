@@ -2,6 +2,8 @@ import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import bioDjBooth from "@/assets/bio-dj-booth.jpg";
 import bioLibLineup from "@/assets/bio-lib-lineup.png";
+import bioStudio from "@/assets/bio-studio.jpg";
+import bioCollab from "@/assets/bio-collab.jpg";
 
 const Bio = () => {
   return (
@@ -56,6 +58,20 @@ const Bio = () => {
               src={bioLibLineup} 
               alt="Lightning in a Bottle 2023 Lineup featuring Bohemyth"
               className="w-full h-64 object-cover object-top"
+            />
+          </div>
+          <div className="rounded-lg overflow-hidden shadow-lg">
+            <img 
+              src={bioStudio} 
+              alt="Bohemyth in the studio"
+              className="w-full h-64 object-cover"
+            />
+          </div>
+          <div className="rounded-lg overflow-hidden shadow-lg">
+            <img 
+              src={bioCollab} 
+              alt="Bohemyth collaborating in the studio"
+              className="w-full h-64 object-cover"
             />
           </div>
         </div>
