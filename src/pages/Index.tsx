@@ -33,11 +33,17 @@ const Index = () => {
 
   const links = [
     {
+      title: "Ask a Producer",
+      description: "AI powered by 10+ years of professional production curriculum",
+      preview: previewBohemyth,
+      url: "/ask",
+      highlighted: true,
+    },
+    {
       title: "Join The Collective",
       description: "Join our production community & level up",
       preview: previewSkool,
       url: "/collective",
-      highlighted: true,
     },
     {
       title: "The Candy Store",
