@@ -31,7 +31,7 @@ const Bio = () => {
         <div className="text-center mb-12 space-y-6">
           <div className="w-32 h-32 mx-auto rounded-full overflow-hidden shadow-lg border-4 border-primary/50">
             <img 
-              src={bioDjBooth} 
+              src={bioLibSolo} 
               alt="Bohemyth"
               className="w-full h-full object-cover"
             />
