@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { HelpCircle } from "lucide-react";
+import { HelpCircle, User } from "lucide-react";
 import previewEdmCourse from "@/assets/preview-edm-course-new.jpg";
 import previewCandyStore from "@/assets/preview-candy-store-new.png";
 import previewLesson from "@/assets/preview-lesson.jpg";
@@ -93,6 +93,12 @@ const Index = () => {
       preview: previewBohemyth,
       url: "https://www.instagram.com/_bohemyth_/?hl=en",
       external: true,
+    },
+    {
+      title: "About Bohemyth",
+      description: "Learn more about my background & credentials",
+      icon: User,
+      url: "/bio",
     },
   ];
 
