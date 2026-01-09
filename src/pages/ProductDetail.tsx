@@ -118,7 +118,7 @@ export default function ProductDetail() {
                     <span className="text-4xl font-bold text-primary">${price}</span>
                     <span className="text-2xl text-muted-foreground line-through">$19.99</span>
                     <span className="bg-destructive text-destructive-foreground text-sm px-2 py-1 rounded-md font-semibold">
-                      BLACK FRIDAY
+                      NEW YEARS SALE
                     </span>
                   </>
                 ) : (
