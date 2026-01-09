@@ -26,6 +26,7 @@ import Collective from "./pages/Collective";
 import JoinChallenge from "./pages/JoinChallenge";
 import CohortSuccess from "./pages/CohortSuccess";
 import Bio from "./pages/Bio";
+import LocalLessons from "./pages/LocalLessons";
 
 const queryClient = new QueryClient();
 
@@ -46,6 +47,7 @@ const App = () => (
           <Route path="/candy-club" element={<CandyClub />} />
           <Route path="/ask" element={<AskProducer />} />
           <Route path="/bio" element={<Bio />} />
+          <Route path="/local-lessons" element={<LocalLessons />} />
           <Route path="/collective" element={<Collective />} />
           <Route path="/collective/join" element={<JoinChallenge />} />
           <Route path="/collective/success" element={<CohortSuccess />} />
