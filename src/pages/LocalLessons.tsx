@@ -52,14 +52,12 @@ const LocalLessons = () => {
             Learn Ableton Live, sound design, and songwriting from an experienced instructor.
           </p>
           
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" asChild className="gap-2">
-              <a href="tel:+17606076541">
-                <Phone className="w-5 h-5" />
-                (760) 607-6541
-              </a>
-            </Button>
-            <Button size="lg" variant="outline" asChild>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+            <a href="tel:+17606076541" className="inline-flex items-center gap-2 text-primary hover:text-primary/80 text-lg font-medium transition-colors">
+              <Phone className="w-5 h-5" />
+              (760) 607-6541
+            </a>
+            <Button size="lg" asChild>
               <a href="/lessons">Book Online</a>
             </Button>
           </div>
