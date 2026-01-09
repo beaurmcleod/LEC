@@ -7,10 +7,58 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Rate limiting configuration
+const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
+const MAX_REQUESTS_PER_WINDOW = 10; // Max 10 requests per minute per IP
+
 // Validate request body
 const requestSchema = z.object({
   productId: z.string().uuid({ message: "Invalid product ID format" }),
 });
+
+// Helper function to get client IP
+function getClientIP(req: Request): string {
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) {
+    return forwarded.split(",")[0].trim();
+  }
+  const realIP = req.headers.get("x-real-ip");
+  if (realIP) {
+    return realIP;
+  }
+  return "unknown";
+}
+
+// Rate limiting check using database
+async function checkRateLimit(supabase: any, ip: string, endpoint: string): Promise<boolean> {
+  const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
+  
+  // Count recent requests from this IP
+  const { count, error } = await supabase
+    .from("rate_limit_log")
+    .select("*", { count: "exact", head: true })
+    .eq("ip_address", ip)
+    .eq("endpoint", endpoint)
+    .gte("created_at", windowStart);
+
+  if (error) {
+    console.error("Rate limit check error:", error);
+    return true; // Allow on error to prevent blocking legitimate users
+  }
+
+  return (count || 0) < MAX_REQUESTS_PER_WINDOW;
+}
+
+// Log rate limit request
+async function logRateLimitRequest(supabase: any, ip: string, endpoint: string): Promise<void> {
+  const { error } = await supabase
+    .from("rate_limit_log")
+    .insert({ ip_address: ip, endpoint });
+  
+  if (error) {
+    console.error("Rate limit log error:", error);
+  }
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -32,12 +80,26 @@ serve(async (req) => {
     }
 
     const { productId } = parsed.data;
-    console.log("Free download request received", { productId });
+    const clientIP = getClientIP(req);
+    console.log("Free download request received", { productId, clientIP });
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Check rate limit
+    const withinLimit = await checkRateLimit(supabase, clientIP, "get-free-download");
+    if (!withinLimit) {
+      console.log("Rate limit exceeded for IP:", clientIP);
+      return new Response(
+        JSON.stringify({ error: "Too many requests. Please try again later." }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Log this request for rate limiting
+    await logRateLimitRequest(supabase, clientIP, "get-free-download");
 
     // Fetch product details
     const { data: product, error: productError } = await supabase

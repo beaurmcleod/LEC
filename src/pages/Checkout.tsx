@@ -8,7 +8,7 @@ import { ArrowLeft, CreditCard } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
-const stripePromise = loadStripe("pk_live_6ocfyYjWzSbr5kSpKUeZHTH9");
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "");
 
 interface CheckoutFormProps {
   clientSecret: string;
