@@ -16,19 +16,24 @@ export default function ProductDetail() {
     queryFn: async () => {
       if (!slug) return null;
       
-      // Escape SQL wildcards to prevent pattern injection attacks
-      const escapedSlug = slug
-        .replace(/[%_\\]/g, '\\$&')  // Escape SQL wildcards
-        .replace(/-/g, ' ');          // Convert hyphens to spaces for title matching
+      // Convert slug to searchable words (e.g., "key-bpm-finder" -> ["key", "bpm", "finder"])
+      const words = slug.toLowerCase().split('-').filter(w => w.length > 0);
       
-      const { data, error } = await supabase
+      // Get all products and find the best match
+      const { data: products, error } = await supabase
         .from('products')
-        .select('*')
-        .ilike('title', `%${escapedSlug}%`)
-        .maybeSingle();
+        .select('*');
       
       if (error) throw error;
-      return data;
+      if (!products || products.length === 0) return null;
+      
+      // Find product where all slug words appear in the title
+      const matchedProduct = products.find(product => {
+        const titleLower = product.title.toLowerCase();
+        return words.every(word => titleLower.includes(word));
+      });
+      
+      return matchedProduct || null;
     },
     enabled: !!slug,
   });
