@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { HelpCircle, User } from "lucide-react";
+import { HelpCircle, User, Rocket } from "lucide-react";
 import previewEdmCourse from "@/assets/preview-edm-course-new.jpg";
 import previewCandyStore from "@/assets/preview-candy-store-new.png";
 import previewLesson from "@/assets/preview-lesson.jpg";
@@ -92,6 +92,13 @@ const Index = () => {
       description: "Connect on Instagram for daily content",
       preview: previewBohemyth,
       url: "https://www.instagram.com/_bohemyth_/?hl=en",
+      external: true,
+    },
+    {
+      title: "Producer Operating System",
+      description: "Learn to monetize your music production skills",
+      icon: Rocket,
+      url: "https://producerframework.com/",
       external: true,
     },
     {
