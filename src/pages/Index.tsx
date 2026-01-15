@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { HelpCircle, User, Rocket } from "lucide-react";
+import { HelpCircle, User } from "lucide-react";
 import previewEdmCourse from "@/assets/preview-edm-course-new.jpg";
 import previewCandyStore from "@/assets/preview-candy-store-new.png";
 import previewLesson from "@/assets/preview-lesson.jpg";
@@ -9,6 +9,7 @@ import previewYoutube from "@/assets/preview-youtube.jpg";
 import previewBohemyth from "@/assets/preview-bohemyth.png";
 import previewCruxChords from "@/assets/preview-crux-chords-new.png";
 import previewSkool from "@/assets/preview-skool.png";
+import previewProducerOS from "@/assets/preview-producer-os.png";
 const Index = () => {
   // Track clicks only for authenticated users (RLS requires authentication)
   const trackClick = async (linkTitle: string, linkUrl: string) => {
@@ -97,7 +98,7 @@ const Index = () => {
     {
       title: "Producer Operating System",
       description: "Learn to monetize your music production skills",
-      icon: Rocket,
+      preview: previewProducerOS,
       url: "https://producerframework.com/",
       external: true,
     },
