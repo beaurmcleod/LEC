@@ -122,7 +122,7 @@ export default function ProductDetail() {
                     </span>
                   </>
                 ) : (
-                  <span className="text-4xl font-bold text-primary">{price}</span>
+                  <span className="text-4xl font-bold text-primary">${price}</span>
                 )}
               </div>
               
