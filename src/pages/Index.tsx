@@ -59,7 +59,7 @@ const Index = () => {
       title: "Crux Chords Ableton AI Chord Device",
       description: "AI-powered chord generation for Ableton",
       preview: previewCruxChords,
-      url: "https://ableton-ai-ensemble.lovable.app/chords",
+      url: "https://promptmidi.shop/",
       external: true,
     },
     {
