@@ -18,6 +18,7 @@ Deno.serve(async (req) => {
     const { data, error } = await supabase
       .from("products")
       .update({
+        price: "7",
         short_description: "Real-time waveform display to visualize compression",
         full_description: "Place Compressor Buddy after any compressor to get a visual display of the waveform and see exactly what the compression is doing to it in real time. Watch your transients get tamed, see the gain reduction in action, and finally understand what all those knobs are actually doing to your sound. Perfect for learning compression or dialing in the perfect settings.",
         features: [
