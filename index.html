@@ -3,6 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- Content Security Policy - Tells Google this is a legitimate site -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://www.youtube.com https://www.google.com;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      font-src 'self' https://fonts.gstatic.com;
+      img-src 'self' data: blob: https: http:;
+      frame-src 'self' https://js.stripe.com https://www.youtube.com https://www.google.com https://maps.google.com;
+      connect-src 'self' https://ocydkbblpnshbvkilngl.supabase.co https://api.stripe.com https://*.supabase.co wss://*.supabase.co;
+      media-src 'self' blob: https:;
+      object-src 'none';
+      base-uri 'self';
+      form-action 'self' https://checkout.stripe.com;
+    ">
+    
+    <!-- Security Headers -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-Frame-Options" content="SAMEORIGIN">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    
     <title>Low End Candy - Premium Music Producer Sample Packs & Presets</title>
     <meta name="description" content="Premium sample packs, presets, and loops for Ableton Live producers. Sweet sounds that make your tracks pop!" />
     <meta name="author" content="Low End Candy" />
