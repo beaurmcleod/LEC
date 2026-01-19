@@ -163,17 +163,21 @@ const AdminDashboard = () => {
         return;
       }
 
-      // Open Google OAuth in a new window
-      const authWindow = window.open(data.authUrl, "_blank", "width=500,height=600");
+      // Use standard anchor navigation (Google Ads compliance)
+      const link = document.createElement('a');
+      link.href = data.authUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
       
       // Poll to check if the connection was successful
       const pollInterval = setInterval(async () => {
         await checkCalendarConnection();
-        if (calendarConnected || !authWindow || authWindow.closed) {
+        if (calendarConnected) {
           clearInterval(pollInterval);
-          if (calendarConnected) {
-            toast.success("Google Calendar connected successfully!");
-          }
+          toast.success("Google Calendar connected successfully!");
         }
       }, 2000);
 

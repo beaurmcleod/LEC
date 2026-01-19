@@ -106,9 +106,15 @@ const MyPurchases = () => {
         return;
       }
 
-      // Open the download URL directly - the edge function handles the redirect
+      // Use standard anchor navigation instead of window.open (Google Ads compliance)
       const downloadUrl = `https://ocydkbblpnshbvkilngl.supabase.co/functions/v1/get-secure-download?token=${encodeURIComponent(tokenData.token)}`;
-      window.open(downloadUrl, '_blank');
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
       toast.success(`Downloading ${title}!`);
     } catch (error) {
       console.error('Download error:', error);
