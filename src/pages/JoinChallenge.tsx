@@ -147,7 +147,7 @@ const JoinChallenge = () => {
             Join the Collective
           </h1>
           <p className="text-muted-foreground text-lg">
-            Choose how you want to join the 30 Day EDM Producer Challenge
+            Choose how you want to join the next cohort
           </p>
         </div>
 
@@ -404,7 +404,7 @@ const JoinChallenge = () => {
             <ul className="space-y-2 text-muted-foreground">
               <li className="flex items-start gap-2">
                 <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
-                <span>Full 30 Day EDM Producer curriculum</span>
+                <span>Full course curriculum (30-day format)</span>
               </li>
               <li className="flex items-start gap-2">
                 <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
@@ -426,7 +426,7 @@ const JoinChallenge = () => {
               </li>
               <li className="flex items-start gap-2">
                 <Check className="w-4 h-4 text-neon mt-0.5 flex-shrink-0" />
-                <span>7-day money back guarantee</span>
+                <span>7-day refund window</span>
               </li>
             </ul>
           </div>

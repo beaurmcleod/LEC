@@ -254,7 +254,7 @@ const Lessons = () => {
                     <div className="text-right">
                       <span className="text-2xl font-bold text-primary">${option.price}</span>
                       {option.title === "4 Lesson Pack" && (
-                        <span className="block text-xs text-accent">Best Value</span>
+                        <span className="block text-xs text-accent">Value Pack</span>
                       )}
                     </div>
                   </div>
