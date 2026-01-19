@@ -44,7 +44,7 @@ const Bio = () => {
         {/* Bio content */}
         <div className="bg-card border border-border rounded-lg p-8 shadow-lg mb-8">
           <p className="text-lg text-foreground leading-relaxed">
-            Bohemyth (Beau McLeod) is a music producer, performing artist, and educator with proven industry and teaching credentials. He's played Lightning in a Bottle twice, worked with Grammy-winning producer Kato On The Track, and released an album that surpassed 100,000 streams. He's formally trained with a degree from Icon Collective, a Music Technology degree from MiraCosta College, and additional study at San Diego State University. As an educator, he's mentored around 100 private students, built an online music production course, runs the Low End Candy YouTube channel, and has taught at 343 Labs—where he also managed their YouTube channel—bringing real-world production experience and clear, results-driven instruction to every student he works with.
+            Bohemyth (Beau McLeod) is a music producer, performing artist, and educator with established industry and teaching experience. He's played Lightning in a Bottle twice, worked with Grammy-winning producer Kato On The Track, and released an album that surpassed 100,000 streams. He's formally trained with a degree from Icon Collective, a Music Technology degree from MiraCosta College, and additional study at San Diego State University. As an educator, he's mentored around 100 private students, built an online music production course, runs the Low End Candy YouTube channel, and has taught at 343 Labs—where he also managed their YouTube channel—bringing real-world production experience and clear, practical instruction to every student he works with.
           </p>
         </div>
 

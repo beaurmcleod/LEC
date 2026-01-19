@@ -47,7 +47,7 @@ export default function CohortSuccess() {
             </li>
             <li className="flex gap-3">
               <span className="flex-shrink-0 w-6 h-6 bg-neon/20 text-neon rounded-full flex items-center justify-center text-sm font-bold">3</span>
-              <span>Once inside, head to the Classroom to access the 30 Day EDM Producer curriculum.</span>
+              <span>Once inside, head to the Classroom to access the course curriculum.</span>
             </li>
           </ol>
         </div>

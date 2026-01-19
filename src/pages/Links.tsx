@@ -6,7 +6,7 @@ const Links = () => {
   const links = [
     {
       title: "30 Day EDM Production Course",
-      description: "Master electronic music production in 30 days",
+      description: "A structured curriculum for electronic music production",
       icon: GraduationCap,
       url: "https://www.30dayedmproducer.com/",
       gradient: "from-secondary to-secondary/80",

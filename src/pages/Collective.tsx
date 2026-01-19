@@ -69,17 +69,17 @@ export default function Collective() {
               </div>
 
               <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold leading-tight tracking-tight text-foreground">
-                2026: The year you finally
+                2026: The year you commit to
                 <br />
-                <span className="text-neon">finish tracks & build your artist career.</span>
+                <span className="text-neon">finishing tracks & developing your artist craft.</span>
               </h1>
               
               <p className="text-lg md:text-xl text-muted-foreground leading-relaxed max-w-xl">
-                Stop collecting loops. Start releasing music. A proven 30-day system to finish professional tracks and launch your artist journey.
+                Stop collecting loops. Start finishing and releasing music with a structured workflow and weekly feedback.
               </p>
 
               <ul className="space-y-3 py-2">
-                {["Finish your first release-ready track in 30 days", "Weekly live sessions: mixdowns, feedback & career strategy", "Build your release catalog and artist brand for 2026"].map((item, i) => <li key={i} className="flex items-start gap-3 text-muted-foreground">
+                {["Build a complete track with a 30-day workflow", "Weekly live sessions: mixdowns, feedback & release planning", "Build momentum toward your 2026 release schedule"].map((item, i) => <li key={i} className="flex items-start gap-3 text-muted-foreground">
                     <Check className="w-5 h-5 text-neon mt-0.5 flex-shrink-0" />
                     <span>{item}</span>
                   </li>)}
@@ -171,7 +171,11 @@ export default function Collective() {
       <section className="py-12 bg-charcoal border-y border-charcoal-light">
         <div className="container max-w-5xl mx-auto px-4">
           <div className="grid md:grid-cols-3 gap-6">
-            {["You've got talent and ideas.", "But no finished tracks to show for it.", "2026 is the year that changes."].map((text, i) => <div key={i} className="text-center md:text-left p-4 rounded-lg border border-charcoal-light bg-charcoal-light/30">
+            {[
+              "You've got talent and ideas.",
+              "But no finished tracks to show for it.",
+              "Make 2026 the year you change that."
+            ].map((text, i) => <div key={i} className="text-center md:text-left p-4 rounded-lg border border-charcoal-light bg-charcoal-light/30">
                 <p className="text-foreground font-medium">{text}</p>
               </div>)}
           </div>
@@ -332,8 +336,8 @@ export default function Collective() {
           {/* Guarantee */}
           <div className="p-6 rounded-xl bg-obsidian border border-neon/20 max-w-xl mx-auto">
             <p className="text-foreground">
-              <strong className="text-neon">7-day money back guarantee.</strong>{" "}
-              If the Collective isn&apos;t right for you within your first week, email us for a full refund. No questions, no hassle.
+              <strong className="text-neon">7-day refund window.</strong>{" "}
+              If the Collective isn&apos;t right for you in your first week, email us for a full refund.
             </p>
           </div>
         </div>
@@ -343,10 +347,10 @@ export default function Collective() {
       <section className="py-20 bg-obsidian">
         <div className="container max-w-5xl mx-auto px-4">
           <h2 className="text-2xl md:text-3xl font-bold text-center mb-4">
-            Your 30-Day Track Finishing Roadmap
+            A 30-Day Track Finishing Roadmap
           </h2>
           <p className="text-muted-foreground text-center mb-12 max-w-2xl mx-auto">
-            The exact system to go from idea to release-ready track—so you can start building your 2026 catalog.
+            A step-by-step workflow to go from idea to a finished track—so you can start building your 2026 catalog.
           </p>
 
           <div className="grid md:grid-cols-4 gap-4">

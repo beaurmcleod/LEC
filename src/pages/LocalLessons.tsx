@@ -203,7 +203,7 @@ const LocalLessons = () => {
         <div className="max-w-3xl mx-auto text-center">
           <h2 className="text-3xl font-bold mb-4 text-foreground">Ready to Start Your Music Production Journey?</h2>
           <p className="text-muted-foreground mb-8 text-lg">
-            Book your first lesson today and take the first step towards creating professional-quality music.
+            Book your first lesson today and take the next step toward more polished mixes and stronger tracks.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button size="lg" asChild>
