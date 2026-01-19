@@ -49,7 +49,7 @@ const Index = () => {
     },
     {
       title: "30 Day EDM Production Course",
-      description: "Master electronic music production in 30 days",
+      description: "A structured curriculum for electronic music production",
       preview: previewEdmCourse,
       url: "https://www.30dayedmproducer.com/",
       external: true,
@@ -97,7 +97,7 @@ const Index = () => {
     },
     {
       title: "Producer Operating System",
-      description: "Learn to monetize your music production skills",
+      description: "Resources for building a music production career",
       url: "https://producerframework.com/",
       external: true,
     },
