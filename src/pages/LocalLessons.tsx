@@ -216,50 +216,50 @@ const LocalLessons = () => {
         </div>
       </section>
 
-      {/* Schema.org LocalBusiness Markup */}
+      {/* Schema.org LocalBusiness Markup - using Helmet would be cleaner but this is safe */}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "LocalBusiness",
-            "name": "Music Production Lessons & Courses",
-            "alternateName": "Low End Candy",
-            "description": "Professional 1-on-1 music production lessons in Ableton Live for beginners to advanced producers in Carlsbad and San Diego area.",
-            "url": "https://www.lowendcandy.com",
-            "telephone": "+1-760-607-6541",
-            "address": {
-              "@type": "PostalAddress",
-              "streetAddress": "2015 Linda Ln",
-              "addressLocality": "Carlsbad",
-              "addressRegion": "CA",
-              "postalCode": "92008",
-              "addressCountry": "US"
-            },
-            "geo": {
-              "@type": "GeoCoordinates",
-              "latitude": 33.13,
-              "longitude": -117.35
-            },
-            "aggregateRating": {
-              "@type": "AggregateRating",
-              "ratingValue": "5.0",
-              "reviewCount": "3"
-            },
-            "openingHoursSpecification": [
-              {
-                "@type": "OpeningHoursSpecification",
-                "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
-                "opens": "09:00",
-                "closes": "18:00"
-              }
-            ],
-            "sameAs": [
-              "https://www.youtube.com/@lowendcandy",
-              "https://www.instagram.com/lowendcandy/"
-            ],
-            "priceRange": "$$"
-          })
+          __html: `{
+  "@context": "https://schema.org",
+  "@type": "LocalBusiness",
+  "name": "Music Production Lessons & Courses",
+  "alternateName": "Low End Candy",
+  "description": "Professional 1-on-1 music production lessons in Ableton Live for beginners to advanced producers in Carlsbad and San Diego area.",
+  "url": "https://www.lowendcandy.com",
+  "telephone": "+1-760-607-6541",
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "2015 Linda Ln",
+    "addressLocality": "Carlsbad",
+    "addressRegion": "CA",
+    "postalCode": "92008",
+    "addressCountry": "US"
+  },
+  "geo": {
+    "@type": "GeoCoordinates",
+    "latitude": 33.13,
+    "longitude": -117.35
+  },
+  "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "5.0",
+    "reviewCount": "3"
+  },
+  "openingHoursSpecification": [
+    {
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+      "opens": "09:00",
+      "closes": "18:00"
+    }
+  ],
+  "sameAs": [
+    "https://www.youtube.com/@lowendcandy",
+    "https://www.instagram.com/lowendcandy/"
+  ],
+  "priceRange": "$$"
+}`
         }}
       />
     </div>

@@ -37,8 +37,8 @@ export default function Collective() {
     });
   };
   return <div className="min-h-screen bg-obsidian text-foreground font-sans">
-      {/* Subtle texture overlay */}
-      <div className="fixed inset-0 opacity-[0.015] pointer-events-none bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iMzAwIj48ZmlsdGVyIGlkPSJhIiB4PSIwIiB5PSIwIj48ZmVUdXJidWxlbmNlIGJhc2VGcmVxdWVuY3k9Ii43NSIgc3RpdGNoVGlsZXM9InN0aXRjaCIgdHlwZT0iZnJhY3RhbE5vaXNlIi8+PC9maWx0ZXI+PHJlY3Qgd2lkdGg9IjMwMCIgaGVpZ2h0PSIzMDAiIGZpbHRlcj0idXJsKCNhKSIgb3BhY2l0eT0iMC4xNSIvPjwvc3ZnPg==')]" />
+      {/* Subtle noise texture using CSS gradient - no base64 */}
+      <div className="fixed inset-0 opacity-[0.02] pointer-events-none bg-gradient-to-br from-white/5 via-transparent to-white/5" />
 
       {/* Hero Section */}
       <section className="relative min-h-screen flex items-center py-12 lg:py-0">
