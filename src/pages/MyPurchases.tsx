@@ -106,10 +106,25 @@ const MyPurchases = () => {
         return;
       }
 
-      // Use standard anchor navigation instead of window.open (Google Ads compliance)
-      const downloadUrl = `https://ocydkbblpnshbvkilngl.supabase.co/functions/v1/get-secure-download?token=${encodeURIComponent(tokenData.token)}`;
+      // Fetch download URL from edge function (returns JSON instead of redirect for security compliance)
+      const response = await fetch(
+        `https://ocydkbblpnshbvkilngl.supabase.co/functions/v1/get-secure-download?token=${encodeURIComponent(tokenData.token)}`
+      );
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to get download link');
+      }
+      
+      const data = await response.json();
+      
+      if (!data.downloadUrl) {
+        throw new Error('No download URL received');
+      }
+      
+      // Use standard anchor navigation (Google Ads compliance)
       const link = document.createElement('a');
-      link.href = downloadUrl;
+      link.href = data.downloadUrl;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       document.body.appendChild(link);
