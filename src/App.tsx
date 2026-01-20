@@ -27,6 +27,7 @@ import JoinChallenge from "./pages/JoinChallenge";
 import CohortSuccess from "./pages/CohortSuccess";
 import Bio from "./pages/Bio";
 import LocalLessons from "./pages/LocalLessons";
+import DJServices from "./pages/DJServices";
 
 const queryClient = new QueryClient();
 
@@ -48,6 +49,7 @@ const App = () => (
           <Route path="/ask" element={<AskProducer />} />
           <Route path="/bio" element={<Bio />} />
           <Route path="/local-lessons" element={<LocalLessons />} />
+          <Route path="/dj" element={<DJServices />} />
           <Route path="/collective" element={<Collective />} />
           <Route path="/collective/join" element={<JoinChallenge />} />
           <Route path="/collective/success" element={<CohortSuccess />} />
