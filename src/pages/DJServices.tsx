@@ -1,10 +1,63 @@
-import { Phone, MapPin, Star, Music, Headphones, Users, Youtube, Instagram, Calendar, Disc3 } from "lucide-react";
+import { useState } from "react";
+import { Phone, MapPin, Star, Music, Headphones, Users, Youtube, Instagram, Disc3, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import djHero from "@/assets/dj-hero.jpg";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import djWeddingHero from "@/assets/dj-wedding-hero.webp";
 import djBooth from "@/assets/dj-booth.jpg";
 
 const DJServices = () => {
+  const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    eventDate: "",
+    eventType: "",
+    message: ""
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    try {
+      const { error } = await supabase.functions.invoke('send-dj-inquiry', {
+        body: formData
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Inquiry Sent!",
+        description: "Thanks for reaching out. We'll get back to you soon!",
+      });
+      
+      setFormData({
+        name: "",
+        email: "",
+        phone: "",
+        eventDate: "",
+        eventType: "",
+        message: ""
+      });
+    } catch (error) {
+      console.error('Error sending inquiry:', error);
+      toast({
+        title: "Error",
+        description: "There was a problem sending your inquiry. Please try again or email us directly.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const services = [
     {
       icon: Music,
@@ -34,7 +87,7 @@ const DJServices = () => {
       <section className="relative h-[70vh] min-h-[500px] overflow-hidden">
         <div 
           className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(${djHero})` }}
+          style={{ backgroundImage: `url(${djWeddingHero})` }}
         />
         <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/40 to-background" />
         
@@ -56,18 +109,10 @@ const DJServices = () => {
               From festivals to private parties, let's create an unforgettable experience.
             </p>
             
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <Button size="lg" asChild>
-                <a href="mailto:booking@lowendcandy.com">
-                  <Calendar className="w-5 h-5 mr-2" />
-                  Book Now
-                </a>
-              </Button>
-              <a href="tel:+17606076541" className="inline-flex items-center gap-2 text-primary hover:text-primary/80 text-lg font-medium transition-colors">
-                <Phone className="w-5 h-5" />
-                (760) 607-6541
-              </a>
-            </div>
+            <a href="tel:+17606076541" className="inline-flex items-center gap-2 text-primary hover:text-primary/80 text-lg font-medium transition-colors">
+              <Phone className="w-5 h-5" />
+              (760) 607-6541
+            </a>
           </div>
         </div>
       </section>
@@ -143,8 +188,97 @@ const DJServices = () => {
         </div>
       </section>
 
-      {/* Contact Section */}
-      <section className="py-16 px-4 bg-muted/30">
+      {/* Contact Form Section */}
+      <section className="py-16 px-4 bg-primary/10">
+        <div className="max-w-2xl mx-auto">
+          <h2 className="text-3xl font-bold text-center mb-4 text-foreground">Tell Us About Your Event</h2>
+          <p className="text-muted-foreground text-center mb-8">
+            Fill out the form below and we'll get back to you to discuss your event.
+          </p>
+          
+          <Card className="bg-card border-border">
+            <CardContent className="p-6 md:p-8">
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Your Name *</Label>
+                    <Input
+                      id="name"
+                      placeholder="John Doe"
+                      required
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email *</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="john@example.com"
+                      required
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Phone Number</Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="(555) 123-4567"
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="eventDate">Event Date</Label>
+                    <Input
+                      id="eventDate"
+                      type="date"
+                      value={formData.eventDate}
+                      onChange={(e) => setFormData({ ...formData, eventDate: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="eventType">Type of Event</Label>
+                  <Input
+                    id="eventType"
+                    placeholder="Wedding, Birthday, Corporate Event, etc."
+                    value={formData.eventType}
+                    onChange={(e) => setFormData({ ...formData, eventType: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="message">Tell Us About Your Event *</Label>
+                  <Textarea
+                    id="message"
+                    placeholder="Share details about your event - venue, number of guests, music preferences, and anything else you'd like us to know..."
+                    rows={5}
+                    required
+                    value={formData.message}
+                    onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                  />
+                </div>
+
+                <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>
+                  <Send className="w-5 h-5 mr-2" />
+                  {isSubmitting ? "Sending..." : "Send Inquiry"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
+      {/* Contact Info Section */}
+      <section className="py-16 px-4">
         <div className="max-w-3xl mx-auto">
           <h2 className="text-3xl font-bold text-center mb-12 text-foreground">Get in Touch</h2>
           
@@ -195,24 +329,6 @@ const DJServices = () => {
               </div>
             </CardContent>
           </Card>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-16 px-4 bg-primary/10">
-        <div className="max-w-3xl mx-auto text-center">
-          <h2 className="text-3xl font-bold mb-4 text-foreground">Ready to Book Your Event?</h2>
-          <p className="text-muted-foreground mb-8 text-lg">
-            Let's discuss your event and create an unforgettable musical experience together.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" asChild>
-              <a href="mailto:booking@lowendcandy.com">Request a Quote</a>
-            </Button>
-            <Button size="lg" variant="outline" asChild>
-              <a href="tel:+17606076541">Call Now</a>
-            </Button>
-          </div>
         </div>
       </section>
 
