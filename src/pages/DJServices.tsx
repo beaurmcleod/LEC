@@ -117,77 +117,6 @@ const DJServices = () => {
         </div>
       </section>
 
-      {/* Services Section */}
-      <section className="py-16 px-4">
-        <div className="max-w-5xl mx-auto">
-          <h2 className="text-3xl font-bold text-center mb-12 text-foreground">DJ Services</h2>
-          
-          <div className="grid md:grid-cols-3 gap-6">
-            {services.map((service, index) => (
-              <Card key={index} className="bg-card border-border">
-                <CardContent className="p-6 text-center">
-                  <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                    <service.icon className="w-7 h-7 text-primary" />
-                  </div>
-                  <h3 className="text-xl font-semibold mb-2 text-foreground">{service.title}</h3>
-                  <p className="text-muted-foreground">{service.description}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Featured Image Section */}
-      <section className="py-16 px-4 bg-muted/30">
-        <div className="max-w-5xl mx-auto">
-          <div className="grid md:grid-cols-2 gap-8 items-center">
-            <div className="rounded-xl overflow-hidden">
-              <img 
-                src={djBooth} 
-                alt="DJ booth at festival" 
-                className="w-full h-auto object-cover"
-              />
-            </div>
-            <div>
-              <h2 className="text-3xl font-bold mb-4 text-foreground">Experience That Matters</h2>
-              <p className="text-muted-foreground text-lg leading-relaxed mb-6">
-                With years of experience performing at festivals and venues across California, 
-                LEC DJ Services brings technical expertise and musical knowledge to every event. 
-                From reading the crowd to seamless mixing, every set is crafted to elevate 
-                your event's atmosphere.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {genres.map((genre, index) => (
-                  <span 
-                    key={index}
-                    className="px-3 py-1 bg-primary/10 text-primary rounded-full text-sm font-medium"
-                  >
-                    {genre}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* About Section */}
-      <section className="py-16 px-4">
-        <div className="max-w-4xl mx-auto text-center">
-          <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
-            <Disc3 className="w-10 h-10 text-primary" />
-          </div>
-          <h2 className="text-3xl font-bold mb-6 text-foreground">About Low End Candy</h2>
-          <p className="text-muted-foreground text-lg leading-relaxed max-w-3xl mx-auto">
-            Low End Candy is a San Diego-based music project and DJ brand known for deep, 
-            driving grooves and infectious energy. Whether it's a sunset festival set or 
-            a late-night club session, LEC delivers curated sounds that keep the dancefloor 
-            moving from start to finish.
-          </p>
-        </div>
-      </section>
-
       {/* Contact Form Section */}
       <section className="py-16 px-4 bg-primary/10">
         <div className="max-w-2xl mx-auto">
@@ -277,8 +206,79 @@ const DJServices = () => {
         </div>
       </section>
 
-      {/* Contact Info Section */}
+      {/* Services Section */}
       <section className="py-16 px-4">
+        <div className="max-w-5xl mx-auto">
+          <h2 className="text-3xl font-bold text-center mb-12 text-foreground">DJ Services</h2>
+          
+          <div className="grid md:grid-cols-3 gap-6">
+            {services.map((service, index) => (
+              <Card key={index} className="bg-card border-border">
+                <CardContent className="p-6 text-center">
+                  <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                    <service.icon className="w-7 h-7 text-primary" />
+                  </div>
+                  <h3 className="text-xl font-semibold mb-2 text-foreground">{service.title}</h3>
+                  <p className="text-muted-foreground">{service.description}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Featured Image Section */}
+      <section className="py-16 px-4 bg-muted/30">
+        <div className="max-w-5xl mx-auto">
+          <div className="grid md:grid-cols-2 gap-8 items-center">
+            <div className="rounded-xl overflow-hidden">
+              <img 
+                src={djBooth} 
+                alt="DJ booth at festival" 
+                className="w-full h-auto object-cover"
+              />
+            </div>
+            <div>
+              <h2 className="text-3xl font-bold mb-4 text-foreground">Experience That Matters</h2>
+              <p className="text-muted-foreground text-lg leading-relaxed mb-6">
+                With years of experience performing at festivals and venues across California, 
+                LEC DJ Services brings technical expertise and musical knowledge to every event. 
+                From reading the crowd to seamless mixing, every set is crafted to elevate 
+                your event's atmosphere.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {genres.map((genre, index) => (
+                  <span 
+                    key={index}
+                    className="px-3 py-1 bg-primary/10 text-primary rounded-full text-sm font-medium"
+                  >
+                    {genre}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* About Section */}
+      <section className="py-16 px-4">
+        <div className="max-w-4xl mx-auto text-center">
+          <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
+            <Disc3 className="w-10 h-10 text-primary" />
+          </div>
+          <h2 className="text-3xl font-bold mb-6 text-foreground">About Low End Candy</h2>
+          <p className="text-muted-foreground text-lg leading-relaxed max-w-3xl mx-auto">
+            Low End Candy is a San Diego-based music project and DJ brand known for deep, 
+            driving grooves and infectious energy. Whether it's a sunset festival set or 
+            a late-night club session, LEC delivers curated sounds that keep the dancefloor 
+            moving from start to finish.
+          </p>
+        </div>
+      </section>
+
+      {/* Contact Info Section */}
+      <section className="py-16 px-4 bg-muted/30">
         <div className="max-w-3xl mx-auto">
           <h2 className="text-3xl font-bold text-center mb-12 text-foreground">Get in Touch</h2>
           
