@@ -18,9 +18,16 @@ serve(async (req) => {
   }
 
   try {
-    // Get token from query parameter
-    const url = new URL(req.url);
-    const token = url.searchParams.get('token');
+    let token: string | null = null;
+    
+    // Support both POST body and GET query parameter
+    if (req.method === 'POST') {
+      const body = await req.json();
+      token = body.token;
+    } else {
+      const url = new URL(req.url);
+      token = url.searchParams.get('token');
+    }
     
     if (!token) {
       return new Response(

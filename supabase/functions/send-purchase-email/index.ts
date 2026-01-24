@@ -53,9 +53,9 @@ serve(async (req) => {
 
     console.log("Sending purchase email to:", to);
 
-    // Build secure download URL with token - use the full Supabase URL directly
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const downloadUrl = `${supabaseUrl}/functions/v1/get-secure-download?token=${downloadToken}`;
+    // Build secure download URL with token - link to frontend download page
+    const siteUrl = "https://low-end-beats-boutique.lovable.app";
+    const downloadUrl = `${siteUrl}/download?token=${downloadToken}`;
 
     const emailHtml = `
       <!DOCTYPE html>

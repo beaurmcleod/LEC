@@ -16,6 +16,7 @@ import Free from "./pages/Free";
 import Racks from "./pages/Racks";
 import Auth from "./pages/Auth";
 import MyPurchases from "./pages/MyPurchases";
+import Download from "./pages/Download";
 import Links from "./pages/Links";
 import Lessons from "./pages/Lessons";
 import CandyClub from "./pages/CandyClub";
@@ -60,6 +61,7 @@ const App = () => (
           <Route path="/payment-canceled" element={<PaymentCanceled />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/my-purchases" element={<MyPurchases />} />
+          <Route path="/download" element={<Download />} />
           <Route path="/admin/setup" element={<AdminSetup />} />
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
