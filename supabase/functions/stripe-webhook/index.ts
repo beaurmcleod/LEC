@@ -131,49 +131,54 @@ serve(async (req) => {
           paymentId: paymentIntent.id,
         });
 
-        // Generate secure download token (7-day expiry, 5 downloads max)
-        const downloadToken = crypto.randomUUID() + '-' + Date.now().toString(36);
-        const expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + 7); // 7 days from now
+        // Check if this is a lesson booking
+        const isLesson = paymentIntent.metadata?.is_lesson === 'true';
 
-        const { error: tokenError } = await supabase
-          .from('download_tokens')
-          .insert({
-            token: downloadToken,
-            product_id: productId,
-            customer_email: email,
-            expires_at: expiresAt.toISOString(),
-            max_downloads: 5
+        // Only send download email for non-lesson products
+        if (!isLesson) {
+          // Generate secure download token (7-day expiry, 5 downloads max)
+          const downloadToken = crypto.randomUUID() + '-' + Date.now().toString(36);
+          const expiresAt = new Date();
+          expiresAt.setDate(expiresAt.getDate() + 7); // 7 days from now
+
+          const { error: tokenError } = await supabase
+            .from('download_tokens')
+            .insert({
+              token: downloadToken,
+              product_id: productId,
+              customer_email: email,
+              expires_at: expiresAt.toISOString(),
+              max_downloads: 5
+            });
+
+          if (tokenError) {
+            console.error("Error creating download token:", tokenError);
+          } else {
+            console.log("Download token created successfully, expires:", expiresAt.toISOString());
+          }
+
+          console.log("Sending purchase email to:", email);
+
+          // Call the send-purchase-email function with secure download token
+          const { error: emailError } = await supabase.functions.invoke("send-purchase-email", {
+            body: {
+              to: email,
+              productTitle: productTitle,
+              amount: amount,
+              paymentIntentId: paymentIntent.id,
+              productId: productId,
+              downloadToken: downloadToken,
+            },
           });
 
-        if (tokenError) {
-          console.error("Error creating download token:", tokenError);
-          // Continue anyway to send email with fallback
-        } else {
-          console.log("Download token created successfully, expires:", expiresAt.toISOString());
+          if (emailError) {
+            console.error("Error sending purchase email:", emailError);
+          } else {
+            console.log("Purchase email sent successfully");
+          }
         }
 
-        console.log("Sending email to:", email);
-
-        // Call the send-purchase-email function with secure download token
-        const { error: emailError } = await supabase.functions.invoke("send-purchase-email", {
-          body: {
-            to: email,
-            productTitle: productTitle,
-            amount: amount,
-            paymentIntentId: paymentIntent.id,
-            productId: productId,
-            downloadToken: downloadToken,
-          },
-        });
-
-        if (emailError) {
-          console.error("Error sending email:", emailError);
-        } else {
-          console.log("Purchase email sent successfully");
-        }
-
-        // Check if this is a lesson booking and send notification to instructor
+        // Send lesson notification for lesson bookings
         const isLesson = paymentIntent.metadata?.is_lesson === 'true';
         if (isLesson) {
           const lessonDate = paymentIntent.metadata?.lesson_date;
