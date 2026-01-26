@@ -32,6 +32,7 @@ const requestSchema = z.object({
   durationMinutes: z.number(),
   amountPaid: z.number(),
   isFree: z.boolean().optional(),
+  cancellationToken: z.string().optional(),
 });
 
 function generateICSFile(
@@ -232,7 +233,10 @@ function generateCustomerEmailHTML(data: {
   displayDate: string;
   lessonTime: string;
   durationMinutes: number;
+  cancellationToken?: string;
 }): string {
+  const siteUrl = "https://low-end-beats-boutique.lovable.app";
+  const cancelUrl = data.cancellationToken ? `${siteUrl}/cancel-lesson?token=${data.cancellationToken}` : null;
   return `
     <!DOCTYPE html>
     <html>
@@ -327,6 +331,26 @@ function generateCustomerEmailHTML(data: {
                 </td>
               </tr>
               
+              <!-- Cancellation Notice -->
+              ${cancelUrl ? `
+              <tr>
+                <td style="padding: 0 40px 24px 40px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: rgba(239, 68, 68, 0.1); border-radius: 12px; border: 1px solid rgba(239, 68, 68, 0.2);">
+                    <tr>
+                      <td style="padding: 16px; text-align: center;">
+                        <p style="margin: 0 0 8px 0; color: ${LEC_COLORS.textMuted}; font-size: 12px;">
+                          Need to cancel? You can cancel up to 24 hours before your lesson.
+                        </p>
+                        <a href="${cancelUrl}" style="color: #EF4444; font-size: 12px; text-decoration: underline;">
+                          Cancel this lesson
+                        </a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              ` : ''}
+              
               <!-- Footer -->
               <tr>
                 <td style="padding: 24px; text-align: center; border-top: 1px solid rgba(139, 92, 246, 0.2);">
@@ -365,7 +389,7 @@ serve(async (req) => {
       );
     }
 
-    const { customerEmail, lessonTitle, lessonDate, lessonTime, durationMinutes, amountPaid, isFree } = validation.data;
+    const { customerEmail, lessonTitle, lessonDate, lessonTime, durationMinutes, amountPaid, isFree, cancellationToken } = validation.data;
 
     // Parse the date and time
     const startDate = parseTimeToDate(lessonDate, lessonTime);
@@ -423,6 +447,7 @@ serve(async (req) => {
       displayDate,
       lessonTime,
       durationMinutes,
+      cancellationToken,
     });
 
     console.log("Sending lesson notification emails...");
