@@ -20,8 +20,8 @@ export function slugToTitle(slug: string): string {
 }
 
 /**
- * Formats a price value uniformly: no trailing .00, single $ sign
- * Examples: "29.99" -> "$29.99", "$29.00" -> "$29", "0" -> "Free"
+ * Formats a price value uniformly: single $ sign, always 2 decimal places
+ * Examples: "29" -> "$29.00", "14.99" -> "$14.99", "0" -> "Free"
  */
 export function formatPrice(price: string | number): string {
   // Remove any existing $ signs
@@ -35,10 +35,6 @@ export function formatPrice(price: string | number): string {
     return 'Free';
   }
   
-  // Format: remove .00 but keep other decimals like .99
-  const formatted = numPrice % 1 === 0 
-    ? numPrice.toFixed(0) 
-    : numPrice.toFixed(2);
-  
-  return `$${formatted}`;
+  // Always show 2 decimal places
+  return `$${numPrice.toFixed(2)}`;
 }
