@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ShoppingCart, ArrowLeft, Download } from "lucide-react";
+import { ShoppingCart, ArrowLeft, Play } from "lucide-react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { useQuery } from "@tanstack/react-query";
@@ -42,8 +42,8 @@ export default function ProductDetail() {
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <Header />
-        <main className="flex-1 container mx-auto px-4 py-8">
-          <p>Loading...</p>
+        <main className="flex-1 container mx-auto px-4 py-8 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
         </main>
         <Footer />
       </div>
@@ -55,7 +55,7 @@ export default function ProductDetail() {
       <div className="min-h-screen bg-background flex flex-col">
         <Header />
         <main className="flex-1 container mx-auto px-4 py-8">
-          <p>Product not found</p>
+          <p className="text-muted-foreground">Product not found</p>
         </main>
         <Footer />
       </div>
@@ -63,6 +63,7 @@ export default function ProductDetail() {
   }
 
   const { title, price, image, category, bpm, key, short_description, full_description, features } = product;
+  const isFree = parseFloat(price) === 0 || price?.toLowerCase() === 'free';
 
   // Use database fields with fallbacks
   const description = {
@@ -71,110 +72,133 @@ export default function ProductDetail() {
     features: features || ["Instant download", "Lifetime updates", "Professional quality"],
     videoUrl: title === "Key & BPM Finder" ? "https://www.youtube.com/embed/SOjierLwIew" : undefined
   };
+
   const handlePurchase = () => {
-    navigate(`/checkout?title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&id=${encodeURIComponent(product.id)}`);
+    navigate(`/enter-email?title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}&id=${encodeURIComponent(product.id)}`);
   };
-  return <div className="min-h-screen bg-background flex flex-col">
+
+  return (
+    <div className="min-h-screen bg-background flex flex-col">
       <Header />
       
       <main className="flex-1 container mx-auto px-4 py-8">
-        <Button variant="ghost" onClick={() => navigate(-1)} className="mb-6">
+        <Button variant="ghost" onClick={() => navigate(-1)} className="mb-6 hover:text-primary">
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back
         </Button>
         
-        <div className="grid md:grid-cols-2 gap-8 mb-12">
-          {/* Product Image */}
-          <div className="relative aspect-square rounded-lg overflow-hidden bg-card border border-border">
+        <div className="grid md:grid-cols-2 gap-8 lg:gap-12 mb-12">
+          {/* Product Image with Play Overlay */}
+          <div className="relative aspect-square rounded-lg overflow-hidden bg-card border border-border group">
             <img src={image} alt={title} className="w-full h-full object-cover" />
+            
+            {/* Play overlay */}
+            <div className="absolute inset-0 bg-background/60 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center">
+              <button className="w-24 h-24 rounded-full bg-accent text-accent-foreground flex items-center justify-center shadow-glow-accent transform scale-90 group-hover:scale-100 transition-transform">
+                <Play className="h-12 w-12 ml-1" fill="currentColor" />
+              </button>
+            </div>
           </div>
           
           {/* Product Info */}
           <div className="space-y-6">
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-xs bg-primary/20 text-primary px-3 py-1 rounded-full">
-                  {category}
+            {/* Category & Technical Data */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs bg-primary/15 text-primary px-3 py-1 rounded-full font-medium">
+                {category}
+              </span>
+              {bpm && (
+                <span className="text-xs bg-muted text-muted-foreground px-3 py-1 rounded-full font-mono">
+                  {bpm} BPM
                 </span>
-                {bpm && <span className="text-xs bg-secondary/20 text-secondary px-3 py-1 rounded-full">
-                    {bpm} BPM
-                  </span>}
-                {key && <span className="text-xs bg-accent/20 text-accent px-3 py-1 rounded-full">
-                    {key}
-                  </span>}
-              </div>
-              
-              <h1 className="text-3xl md:text-4xl font-bold mb-4">
-                {title}
-              </h1>
-              
-              <p className="text-lg text-muted-foreground mb-6">
-                {description.short}
-              </p>
-              
-              <div className="flex items-baseline gap-4 mb-2">
+              )}
+              {key && (
+                <span className="text-xs bg-muted text-muted-foreground px-3 py-1 rounded-full font-mono">
+                  {key}
+                </span>
+              )}
+            </div>
+            
+            {/* Title */}
+            <h1 className="font-display text-3xl md:text-4xl lg:text-5xl font-bold leading-tight">
+              {title}
+            </h1>
+            
+            {/* Short Description */}
+            <p className="text-lg text-muted-foreground">
+              {description.short}
+            </p>
+            
+            {/* Price Section */}
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-baseline gap-3">
                 {title === "Key & BPM Finder" ? (
                   <>
-                    <span className="text-4xl font-bold text-primary">${price}</span>
-                    <span className="text-2xl text-muted-foreground line-through">$19.99</span>
-                    <span className="bg-destructive text-destructive-foreground text-sm px-2 py-1 rounded-md font-semibold">
-                      NEW YEARS SALE
+                    <span className="text-4xl md:text-5xl font-bold text-accent">${price}</span>
+                    <span className="text-2xl text-muted-foreground line-through font-mono">$19.99</span>
+                    <span className="bg-destructive text-destructive-foreground text-xs px-2 py-1 rounded font-bold uppercase tracking-wide">
+                      Sale
                     </span>
                   </>
                 ) : (
-                  <span className="text-4xl font-bold text-primary">{price === "Free" ? "Free" : `$${price}`}</span>
+                  <span className="text-4xl md:text-5xl font-bold text-accent">
+                    {isFree ? 'Free' : `$${price}`}
+                  </span>
                 )}
-                <span className="text-sm font-medium text-primary bg-primary/10 px-2 py-1 rounded">
+                <span className="text-sm font-medium text-primary bg-primary/10 px-3 py-1 rounded-full">
                   100% Royalty-Free
                 </span>
               </div>
               
-              {/* Trust signals */}
-              <div className="flex flex-wrap items-center gap-3 mb-4 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1">📧 Instant email delivery</span>
-                <span>•</span>
-                <span className="flex items-center gap-1">♾️ Lifetime Access + Free Updates</span>
+              {/* Trust Signals */}
+              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                <span>📧 Instant email delivery</span>
+                <span className="text-border">•</span>
+                <span>♾️ Lifetime Access + Free Updates</span>
               </div>
-              
-              <div className="mb-8">
-                <p className="text-muted-foreground leading-relaxed">
-                  {description.full}
-                </p>
-              </div>
-
-              {description.videoUrl && (
-                <div className="mb-8">
-                  <div className="aspect-video rounded-lg overflow-hidden border border-border">
-                    <iframe
-                      width="100%"
-                      height="100%"
-                      src={description.videoUrl}
-                      title="Product demonstration"
-                      frameBorder="0"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    ></iframe>
-                  </div>
-                </div>
-              )}
             </div>
             
-            <div className="flex gap-3">
-              <Button size="lg" className="flex-1" onClick={handlePurchase}>
-                <ShoppingCart className="h-5 w-5 mr-2" />
-                {price === "Free" ? "Download Now" : "Buy Now"}
-              </Button>
+            {/* Full Description */}
+            <div className="py-4 border-t border-border/50">
+              <p className="text-muted-foreground leading-relaxed">
+                {description.full}
+              </p>
             </div>
+
+            {/* Video Preview */}
+            {description.videoUrl && (
+              <div className="aspect-video rounded-lg overflow-hidden border border-border">
+                <iframe
+                  width="100%"
+                  height="100%"
+                  src={description.videoUrl}
+                  title="Product demonstration"
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                ></iframe>
+              </div>
+            )}
+            
+            {/* CTA Button - High Contrast */}
+            <Button 
+              size="lg" 
+              onClick={handlePurchase}
+              className="w-full md:w-auto min-w-[200px] h-14 text-lg font-semibold bg-accent text-accent-foreground hover:bg-accent/90 shadow-glow-accent"
+            >
+              <ShoppingCart className="h-5 w-5 mr-2" />
+              {isFree ? 'Get Free Download' : `Buy Now — $${price}`}
+            </Button>
             
             {/* Features list */}
             {description.features && description.features.length > 0 && (
-              <div className="mt-6 p-4 bg-muted/50 rounded-lg">
-                <h3 className="font-semibold mb-3">What's Included:</h3>
-                <ul className="space-y-2">
+              <div className="p-5 bg-card rounded-lg border border-border">
+                <h3 className="font-display font-semibold text-lg mb-4">What's Included:</h3>
+                <ul className="space-y-3">
                   {description.features.map((feature, index) => (
-                    <li key={index} className="flex items-center gap-2 text-sm">
-                      <span className="text-primary">✓</span>
-                      {feature}
+                    <li key={index} className="flex items-start gap-3 text-sm">
+                      <span className="text-accent mt-0.5">✓</span>
+                      <span className="text-muted-foreground">{feature}</span>
                     </li>
                   ))}
                 </ul>
@@ -187,5 +211,6 @@ export default function ProductDetail() {
       </main>
       
       <Footer />
-    </div>;
+    </div>
+  );
 }
