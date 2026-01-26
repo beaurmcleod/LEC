@@ -133,6 +133,8 @@ serve(async (req) => {
 
         // Check if this is a lesson booking
         const isLesson = paymentIntent.metadata?.is_lesson === 'true';
+        const lessonDate = paymentIntent.metadata?.lesson_date;
+        const lessonTime = paymentIntent.metadata?.lesson_time;
 
         // Only send download email for non-lesson products
         if (!isLesson) {
@@ -179,17 +181,40 @@ serve(async (req) => {
         }
 
         // Send lesson notification for lesson bookings
-        const isLesson = paymentIntent.metadata?.is_lesson === 'true';
-        if (isLesson) {
-          const lessonDate = paymentIntent.metadata?.lesson_date;
-          const lessonTime = paymentIntent.metadata?.lesson_time;
-          
+        if (isLesson && lessonDate && lessonTime) {
           // Calculate duration from product title
           let durationMinutes = 60; // default
           if (productTitle.includes('2 Hour')) {
             durationMinutes = 120;
           } else if (productTitle.includes('4 Lesson')) {
             durationMinutes = 60; // First session is 1 hour
+          }
+          
+          // Generate cancellation token for the lesson
+          const cancellationToken = crypto.randomUUID() + '-' + Date.now().toString(36);
+          
+          // Record the lesson booking
+          const { error: bookingError } = await supabase
+            .from('lesson_bookings')
+            .insert({
+              customer_email: email,
+              customer_first_name: customerFirstName || null,
+              customer_last_name: customerLastName || null,
+              product_id: productId,
+              product_title: productTitle,
+              lesson_date: lessonDate,
+              lesson_time: lessonTime,
+              duration_minutes: durationMinutes,
+              amount_paid: paymentIntent.amount,
+              stripe_payment_id: paymentIntent.id,
+              cancellation_token: cancellationToken,
+              status: 'confirmed',
+            });
+
+          if (bookingError) {
+            console.error("Error recording lesson booking:", bookingError);
+          } else {
+            console.log("Lesson booking recorded successfully");
           }
           
           console.log("Sending lesson notification for:", { productTitle, lessonDate, lessonTime });
@@ -202,6 +227,7 @@ serve(async (req) => {
               lessonTime: lessonTime,
               durationMinutes: durationMinutes,
               amountPaid: amount,
+              cancellationToken: cancellationToken,
             },
           });
 

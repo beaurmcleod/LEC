@@ -154,6 +154,78 @@ export type Database = {
           },
         ]
       }
+      lesson_bookings: {
+        Row: {
+          amount_paid: number
+          cancellation_token: string
+          cancelled_at: string | null
+          created_at: string
+          customer_email: string
+          customer_first_name: string | null
+          customer_last_name: string | null
+          duration_minutes: number
+          id: string
+          lesson_date: string
+          lesson_time: string
+          product_id: string | null
+          product_title: string
+          status: string
+          stripe_payment_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount_paid?: number
+          cancellation_token: string
+          cancelled_at?: string | null
+          created_at?: string
+          customer_email: string
+          customer_first_name?: string | null
+          customer_last_name?: string | null
+          duration_minutes?: number
+          id?: string
+          lesson_date: string
+          lesson_time: string
+          product_id?: string | null
+          product_title: string
+          status?: string
+          stripe_payment_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount_paid?: number
+          cancellation_token?: string
+          cancelled_at?: string | null
+          created_at?: string
+          customer_email?: string
+          customer_first_name?: string | null
+          customer_last_name?: string | null
+          duration_minutes?: number
+          id?: string
+          lesson_date?: string
+          lesson_time?: string
+          product_id?: string | null
+          product_title?: string
+          status?: string
+          stripe_payment_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lesson_bookings_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lesson_bookings_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lesson_reminders: {
         Row: {
           created_at: string
