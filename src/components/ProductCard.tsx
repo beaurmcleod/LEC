@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Play, ShoppingCart } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { titleToSlug } from "@/lib/utils";
+import { titleToSlug, formatPrice } from "@/lib/utils";
 import { useCartStore } from "@/lib/cartStore";
 import { toast } from "@/hooks/use-toast";
 
@@ -62,7 +62,7 @@ export const ProductCard = ({
     navigate(`/product/${titleToSlug(title)}`);
   };
 
-  const isFree = parseFloat(price) === 0 || price.toLowerCase() === 'free';
+  const isFree = parseFloat(String(price).replace(/\$/g, '')) === 0 || price.toLowerCase() === 'free';
 
   return (
     <Card 
@@ -135,11 +135,11 @@ export const ProductCard = ({
           <div className="flex flex-col">
             <div className="flex items-baseline gap-2">
               <span className="text-2xl font-bold text-accent">
-                {isFree ? 'Free' : `$${price}`}
+                {formatPrice(price)}
               </span>
-              {originalPrice && parseFloat(originalPrice) > 0 && !isFree && (
+              {originalPrice && parseFloat(String(originalPrice).replace(/\$/g, '')) > 0 && !isFree && (
                 <span className="text-sm text-muted-foreground line-through">
-                  ${originalPrice}
+                  {formatPrice(originalPrice)}
                 </span>
               )}
             </div>
