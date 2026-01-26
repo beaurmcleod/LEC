@@ -112,7 +112,7 @@ export default function ProductDetail() {
                 {description.short}
               </p>
               
-              <div className="flex items-baseline gap-4 mb-4">
+              <div className="flex items-baseline gap-4 mb-2">
                 {title === "Key & BPM Finder" ? (
                   <>
                     <span className="text-4xl font-bold text-primary">${price}</span>
@@ -122,8 +122,18 @@ export default function ProductDetail() {
                     </span>
                   </>
                 ) : (
-                  <span className="text-4xl font-bold text-primary">${price}</span>
+                  <span className="text-4xl font-bold text-primary">{price === "Free" ? "Free" : `$${price}`}</span>
                 )}
+                <span className="text-sm font-medium text-primary bg-primary/10 px-2 py-1 rounded">
+                  100% Royalty-Free
+                </span>
+              </div>
+              
+              {/* Trust signals */}
+              <div className="flex flex-wrap items-center gap-3 mb-4 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1">📧 Instant email delivery</span>
+                <span>•</span>
+                <span className="flex items-center gap-1">♾️ Lifetime Access + Free Updates</span>
               </div>
               
               <div className="mb-8">
@@ -154,12 +164,22 @@ export default function ProductDetail() {
                 <ShoppingCart className="h-5 w-5 mr-2" />
                 {price === "Free" ? "Download Now" : "Buy Now"}
               </Button>
-              <Button variant="outline" size="lg">
-                <Download className="h-5 w-5" />
-              </Button>
             </div>
             
-            {/* Features */}
+            {/* Features list */}
+            {description.features && description.features.length > 0 && (
+              <div className="mt-6 p-4 bg-muted/50 rounded-lg">
+                <h3 className="font-semibold mb-3">What's Included:</h3>
+                <ul className="space-y-2">
+                  {description.features.map((feature, index) => (
+                    <li key={index} className="flex items-center gap-2 text-sm">
+                      <span className="text-primary">✓</span>
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             
           </div>
         </div>

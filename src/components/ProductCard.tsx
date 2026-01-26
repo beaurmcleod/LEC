@@ -106,16 +106,26 @@ export const ProductCard = ({
           {title}
         </h3>
 
+        {/* Trust signals */}
+        <div className="flex items-center gap-2 mb-3 text-xs text-muted-foreground">
+          <span>✓ Royalty-Free</span>
+          <span>•</span>
+          <span>♾️ Lifetime Access</span>
+        </div>
+
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl font-bold text-primary">
-              {parseFloat(price) > 0 ? `$${price}` : 'Free'}
-            </span>
-            {originalPrice && parseFloat(originalPrice) > 0 && (
-              <span className="text-sm text-muted-foreground line-through">
-                ${originalPrice}
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold text-primary">
+                {parseFloat(price) > 0 ? `$${price}` : 'Free'}
               </span>
-            )}
+              {originalPrice && parseFloat(originalPrice) > 0 && (
+                <span className="text-sm text-muted-foreground line-through">
+                  ${originalPrice}
+                </span>
+              )}
+            </div>
+            <span className="text-xs text-muted-foreground">📧 Instant email delivery</span>
           </div>
 
           <div className="flex gap-2">
