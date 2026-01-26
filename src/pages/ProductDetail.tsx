@@ -5,7 +5,7 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { slugToTitle } from "@/lib/utils";
+import { slugToTitle, formatPrice } from "@/lib/utils";
 
 export default function ProductDetail() {
   const { id: slug } = useParams();
@@ -63,7 +63,7 @@ export default function ProductDetail() {
   }
 
   const { title, price, image, category, bpm, key, short_description, full_description, features } = product;
-  const isFree = parseFloat(price) === 0 || price?.toLowerCase() === 'free';
+  const isFree = parseFloat(String(price).replace(/\$/g, '')) === 0 || price?.toLowerCase() === 'free';
 
   // Use database fields with fallbacks
   const description = {
@@ -134,15 +134,15 @@ export default function ProductDetail() {
               <div className="flex flex-wrap items-baseline gap-3">
                 {title === "Key & BPM Finder" ? (
                   <>
-                    <span className="text-4xl md:text-5xl font-bold text-accent">${price}</span>
-                    <span className="text-2xl text-muted-foreground line-through font-mono">$19.99</span>
+                    <span className="text-4xl md:text-5xl font-bold text-accent">{formatPrice(price)}</span>
+                    <span className="text-2xl text-muted-foreground line-through font-mono">{formatPrice('19.99')}</span>
                     <span className="bg-destructive text-destructive-foreground text-xs px-2 py-1 rounded font-bold uppercase tracking-wide">
                       Sale
                     </span>
                   </>
                 ) : (
                   <span className="text-4xl md:text-5xl font-bold text-accent">
-                    {isFree ? 'Free' : `$${price}`}
+                    {formatPrice(price)}
                   </span>
                 )}
                 <span className="text-sm font-medium text-primary bg-primary/10 px-3 py-1 rounded-full">
@@ -187,7 +187,7 @@ export default function ProductDetail() {
               className="w-full md:w-auto min-w-[200px] h-14 text-lg font-semibold bg-accent text-accent-foreground hover:bg-accent/90 shadow-glow-accent"
             >
               <ShoppingCart className="h-5 w-5 mr-2" />
-              {isFree ? 'Get Free Download' : `Buy Now — $${price}`}
+              {isFree ? 'Get Free Download' : `Buy Now — ${formatPrice(price)}`}
             </Button>
             
             {/* Features list */}

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Loader2, Calendar, CheckCircle, XCircle } from "lucide-react";
+import { ArrowLeft, Loader2, Calendar, CheckCircle, XCircle, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -22,6 +22,14 @@ interface TimeSeriesData {
   clicks: number;
 }
 
+interface UserProfile {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string;
+  created_at: string;
+}
+
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -31,6 +39,7 @@ const AdminDashboard = () => {
   const [totalClicks, setTotalClicks] = useState(0);
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [connectingCalendar, setConnectingCalendar] = useState(false);
+  const [userProfiles, setUserProfiles] = useState<UserProfile[]>([]);
 
   useEffect(() => {
     checkAdminAccess();
@@ -61,7 +70,7 @@ const AdminDashboard = () => {
       }
 
       setIsAdmin(true);
-      await Promise.all([fetchAnalytics(), checkCalendarConnection()]);
+      await Promise.all([fetchAnalytics(), checkCalendarConnection(), fetchUserProfiles()]);
     } catch (error) {
       console.error('Error checking admin access:', error);
       toast.error("Failed to verify access");
@@ -129,6 +138,20 @@ const AdminDashboard = () => {
       toast.error("Failed to load analytics data");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchUserProfiles = async () => {
+    try {
+      const { data: profiles, error } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, email, created_at')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setUserProfiles(profiles || []);
+    } catch (error) {
+      console.error('Error fetching user profiles:', error);
     }
   };
 
@@ -247,8 +270,8 @@ const AdminDashboard = () => {
               <div className="flex items-center gap-3">
                 {calendarConnected ? (
                   <>
-                    <CheckCircle className="h-5 w-5 text-green-500" />
-                    <span className="text-green-500 font-medium">Calendar Connected</span>
+                    <CheckCircle className="h-5 w-5 text-accent" />
+                    <span className="text-accent font-medium">Calendar Connected</span>
                   </>
                 ) : (
                   <>
@@ -344,13 +367,13 @@ const AdminDashboard = () => {
         </Card>
 
         {/* Daily Breakdown Table */}
-        <Card>
+        <Card className="mb-8">
           <CardHeader>
             <CardTitle>Daily Click Breakdown</CardTitle>
             <CardDescription>Detailed view of clicks by day</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border">
+            <div className="rounded-md border border-border">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -370,6 +393,55 @@ const AdminDashboard = () => {
                       <TableRow key={index}>
                         <TableCell className="font-medium">{day.date}</TableCell>
                         <TableCell className="text-right">{day.clicks}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* User Signups Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              User Signups
+            </CardTitle>
+            <CardDescription>All registered users with their contact information ({userProfiles.length} total)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-md border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>First Name</TableHead>
+                    <TableHead>Last Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead className="text-right">Signed Up</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {userProfiles.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-muted-foreground">
+                        No user signups yet
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    userProfiles.map((user) => (
+                      <TableRow key={user.id}>
+                        <TableCell className="font-medium">{user.first_name || '—'}</TableCell>
+                        <TableCell>{user.last_name || '—'}</TableCell>
+                        <TableCell className="text-primary">{user.email}</TableCell>
+                        <TableCell className="text-right text-muted-foreground">
+                          {new Date(user.created_at).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric'
+                          })}
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
