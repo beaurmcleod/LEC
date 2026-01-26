@@ -117,8 +117,8 @@ export const ProductGrid = () => {
     <section className="py-16 px-4">
       <div className="container mx-auto">
         <div className="text-center mb-12">
-          <h2 className="text-4xl md:text-5xl font-bold mb-4">
-            <span className="bg-gradient-primary bg-clip-text text-transparent">
+          <h2 className="font-display text-4xl md:text-5xl font-bold mb-4">
+            <span className="bg-gradient-primary bg-clip-text text-transparent text-glow-primary">
               Featured Products
             </span>
           </h2>
@@ -127,16 +127,16 @@ export const ProductGrid = () => {
           </p>
         </div>
 
-        {/* Category Tabs */}
+        {/* Horizontal Filter Bar - Clean Navigation */}
         <div className="flex flex-wrap justify-center gap-2 mb-10">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-6 py-2 rounded-full font-medium transition-all duration-300 ${
+              className={`px-5 py-2 rounded-full font-medium text-sm transition-all duration-300 ${
                 activeTab === tab.id
                   ? "bg-primary text-primary-foreground shadow-glow-primary"
-                  : "bg-card border border-border hover:border-primary/50 text-foreground"
+                  : "bg-card border border-border hover:border-primary/50 text-foreground hover:text-primary"
               }`}
             >
               {tab.label}
@@ -144,6 +144,7 @@ export const ProductGrid = () => {
           ))}
         </div>
 
+        {/* Product Grid - Single column on mobile, multi on desktop */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {displayProducts.map((product) => (
             <ProductCard key={product.id} {...product} />
