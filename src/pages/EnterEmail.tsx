@@ -130,9 +130,9 @@ const EnterEmail = () => {
             Back to Store
           </Button>
           
-          <h1 className="text-3xl font-bold mb-2">Your Details</h1>
+          <h1 className="text-3xl font-bold mb-2">Quick Checkout</h1>
           <p className="text-muted-foreground">
-            Enter your information to complete your purchase
+            Just your email — we'll send your download link instantly
           </p>
         </div>
 
@@ -154,7 +154,7 @@ const EnterEmail = () => {
                 </div>
               </div>
               {discountMessage && (
-                <p className="text-sm text-green-600 mt-2">{discountMessage}</p>
+                <p className="text-sm text-primary mt-2">{discountMessage}</p>
               )}
             </div>
 
@@ -223,8 +223,10 @@ const EnterEmail = () => {
           </form>
         </Card>
 
-        <div className="mt-6 text-center text-sm text-muted-foreground">
-          <p>🔒 Your email is safe and will only be used for purchase confirmation</p>
+        <div className="mt-6 space-y-2 text-center text-sm text-muted-foreground">
+          <p>🔒 Secure checkout — no shipping address required</p>
+          <p>📧 Instant download link emailed immediately</p>
+          <p>♾️ Lifetime access + free updates included</p>
         </div>
       </div>
     </div>
