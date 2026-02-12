@@ -11,6 +11,38 @@ const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const MAKE_WEBHOOK_URL = "https://hook.us2.make.com/9568sygekt6l2vvyjbtvamhd1ptuim46";
+const ADMIN_EMAIL = Deno.env.get("ADMIN_NOTIFICATION_EMAIL") || "beau@lowendcandy.com";
+
+// Send alert email to admin when delivery fails
+async function sendAdminAlert(subject: string, details: string) {
+  try {
+    const resendKey = Deno.env.get("RESEND_API_KEY");
+    if (!resendKey) {
+      console.error("RESEND_API_KEY not set, cannot send admin alert");
+      return;
+    }
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${resendKey}`,
+      },
+      body: JSON.stringify({
+        from: "Low End Candy Alerts <beau@lowendcandy.com>",
+        to: [ADMIN_EMAIL],
+        subject: `🚨 ${subject}`,
+        html: `<h2>⚠️ Delivery Alert</h2><p>${details}</p><p>Check the <a href="https://supabase.com/dashboard/project/ocydkbblpnshbvkilngl/functions/stripe-webhook/logs">webhook logs</a> and <a href="https://supabase.com/dashboard/project/ocydkbblpnshbvkilngl/functions/send-purchase-email/logs">email logs</a> for details.</p><p>You can resend the email from the admin dashboard or by calling the resend-purchase-email edge function.</p>`,
+      }),
+    });
+    if (res.ok) {
+      console.log("Admin alert sent:", subject);
+    } else {
+      console.error("Failed to send admin alert:", await res.text());
+    }
+  } catch (e) {
+    console.error("Admin alert error:", e);
+  }
+}
 
 // Send purchase data to Make.com
 async function sendToMake(purchaseData: {
@@ -92,7 +124,15 @@ serve(async (req) => {
       const customerLastName = paymentIntent.metadata?.customer_last_name || "";
       const amount = paymentIntent.amount / 100;
 
-      console.log("Recording purchase for:", email);
+      console.log("Recording purchase for:", email, "Amount:", amount);
+
+      if (!email || !productId) {
+        console.error("Missing email or productId!", { email, productId, paymentIntentId: paymentIntent.id });
+        await sendAdminAlert(
+          "Payment Missing Email or Product ID",
+          `A payment of $${amount} succeeded (${paymentIntent.id}) but ${!email ? 'customer email' : 'product ID'} is missing. Product: ${productTitle}. This customer will NOT receive their download. Check Stripe dashboard for details.`
+        );
+      }
 
       // SECURITY: Record purchase in database for verification
       if (productId && email) {
@@ -155,6 +195,10 @@ serve(async (req) => {
 
           if (tokenError) {
             console.error("Error creating download token:", tokenError);
+            await sendAdminAlert(
+              "Download Token Creation Failed",
+              `Failed to create download token for <strong>${email}</strong> who purchased <strong>${productTitle}</strong> ($${amount}). Payment ID: ${paymentIntent.id}. Error: ${JSON.stringify(tokenError)}`
+            );
           } else {
             console.log("Download token created successfully, expires:", expiresAt.toISOString());
           }
@@ -175,6 +219,10 @@ serve(async (req) => {
 
           if (emailError) {
             console.error("Error sending purchase email:", emailError);
+            await sendAdminAlert(
+              "Purchase Email Delivery Failed",
+              `Failed to send purchase email to <strong>${email}</strong> for <strong>${productTitle}</strong> ($${amount}). Payment ID: ${paymentIntent.id}. Error: ${emailError.message || JSON.stringify(emailError)}. The customer paid but did NOT receive their download link. Use the resend-purchase-email function to manually deliver.`
+            );
           } else {
             console.log("Purchase email sent successfully");
           }
@@ -246,6 +294,11 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("Webhook error:", error.message);
+    // Alert admin on complete webhook failure
+    await sendAdminAlert(
+      "Stripe Webhook CRASHED",
+      `The webhook handler threw an unhandled error: <strong>${error.message}</strong>. This means a payment may have been received but NOT processed at all. Check logs immediately.`
+    );
     return new Response(
       JSON.stringify({ error: 'Webhook processing failed' }), 
       {
