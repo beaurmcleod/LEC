@@ -38,33 +38,33 @@ const TikTok = () => {
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-secondary/5" />
-      <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse" />
-      <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-1000" />
+      <div className="absolute top-1/4 left-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl animate-pulse" />
+      <div className="absolute bottom-1/4 right-0 w-64 h-64 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-1000" />
 
-      <div className="relative z-10 container max-w-2xl mx-auto px-4 py-16">
+      <div className="relative z-10 px-4 py-10 max-w-md mx-auto">
         {/* Header */}
-        <div className="text-center mb-12 space-y-4">
-          <div className="flex justify-center mb-6">
+        <div className="text-center mb-8 space-y-3">
+          <div className="flex justify-center mb-4">
             <img
               src="/lovable-uploads/85f899cb-b6ef-4b15-a096-6ca3abdfa412.png"
               alt="Low End Candy"
-              className="h-24 w-24 rounded-2xl shadow-glow-primary"
+              className="h-20 w-20 rounded-2xl shadow-glow-primary"
             />
           </div>
-          <h1 className="text-5xl md:text-6xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+          <h1 className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">
             Low End Candy
           </h1>
-          <p className="text-lg text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Tools & courses for music producers 🎧
           </p>
         </div>
 
         {/* Links */}
-        <div className="space-y-4">
+        <div className="space-y-3">
           {links.map((link, index) => {
             const linkContent = (
-              <div className="flex items-center gap-4">
-                <div className="w-20 h-20 rounded-lg overflow-hidden shadow-lg group-hover:scale-105 transition-transform duration-300 flex-shrink-0 flex items-center justify-center bg-primary/20">
+              <div className="flex items-center gap-3">
+                <div className="w-16 h-16 rounded-lg overflow-hidden shadow-lg flex-shrink-0 flex items-center justify-center bg-primary/20">
                   {link.preview ? (
                     <img
                       src={link.preview}
@@ -72,19 +72,19 @@ const TikTok = () => {
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <Headphones className="w-10 h-10 text-primary" />
+                    <Headphones className="w-8 h-8 text-primary" />
                   )}
                 </div>
-                <div className="flex-1 text-left">
-                  <h3 className="text-xl font-semibold text-foreground group-hover:text-primary transition-colors">
+                <div className="flex-1 text-left min-w-0">
+                  <h3 className="text-base font-semibold text-foreground leading-tight">
                     {link.title}
                   </h3>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
                     {link.description}
                   </p>
                 </div>
                 <svg
-                  className="w-5 h-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all"
+                  className="w-4 h-4 text-muted-foreground flex-shrink-0"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -99,10 +99,10 @@ const TikTok = () => {
               </div>
             );
 
-            const className = `group block p-6 rounded-lg transition-all duration-300 hover:-translate-y-1 ${
+            const cls = `group block p-4 rounded-lg active:scale-[0.98] transition-transform duration-150 ${
               link.highlighted
-                ? "bg-primary/10 border-2 border-primary/50 hover:border-primary shadow-glow-primary"
-                : "bg-card border border-border hover:border-primary/50 hover:shadow-glow-primary"
+                ? "bg-primary/10 border-2 border-primary/50 shadow-glow-primary"
+                : "bg-card border border-border"
             }`;
 
             return link.external ? (
@@ -111,12 +111,12 @@ const TikTok = () => {
                 href={link.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={className}
+                className={cls}
               >
                 {linkContent}
               </a>
             ) : (
-              <Link key={index} to={link.url} className={className}>
+              <Link key={index} to={link.url} className={cls}>
                 {linkContent}
               </Link>
             );
@@ -124,9 +124,9 @@ const TikTok = () => {
         </div>
 
         {/* Footer */}
-        <div className="mt-16 text-center">
-          <p className="text-sm text-muted-foreground">
-            © 2024 Low End Candy. All rights reserved.
+        <div className="mt-10 text-center">
+          <p className="text-xs text-muted-foreground">
+            © 2025 Low End Candy. All rights reserved.
           </p>
         </div>
       </div>
