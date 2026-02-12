@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CheckCircle, Home, Mail, Calendar } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { ttqTrack } from "@/lib/tiktokPixel";
 
 const PaymentSuccess = () => {
   const [searchParams] = useSearchParams();
@@ -18,6 +19,23 @@ const PaymentSuccess = () => {
   
   // Determine if this is a lesson booking
   const isLesson = !!(lessonDate && lessonTime);
+
+  // TikTok Purchase event
+  useEffect(() => {
+    if (productId) {
+      const fetchAndTrack = async () => {
+        const { data: product } = await supabase
+          .from('products')
+          .select('title, price')
+          .eq('id', productId)
+          .maybeSingle();
+        if (product) {
+          ttqTrack.purchase({ id: productId, title: product.title, price: product.price });
+        }
+      };
+      fetchAndTrack();
+    }
+  }, [productId]);
 
   useEffect(() => {
     const handleFreePurchase = async () => {
