@@ -5,10 +5,36 @@ import { getBlogPostBySlug } from "@/lib/blogPosts";
 import { Calendar, Clock, ArrowLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 const BlogPost = () => {
   const { slug } = useParams<{ slug: string }>();
-  const post = slug ? getBlogPostBySlug(slug) : undefined;
+  
+  // Try static first
+  const staticPost = slug ? getBlogPostBySlug(slug) : undefined;
+
+  // Try DB if not static
+  const { data: dbPost } = useQuery({
+    queryKey: ["blog-post", slug],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("blog_posts")
+        .select("*")
+        .eq("slug", slug!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !staticPost && !!slug,
+  });
+
+  // Normalize to a common shape
+  const post = staticPost
+    ? { title: staticPost.title, excerpt: staticPost.excerpt, content: staticPost.content, date: staticPost.date, readTime: staticPost.readTime, tags: staticPost.tags, metaDescription: staticPost.metaDescription }
+    : dbPost
+    ? { title: dbPost.title, excerpt: dbPost.excerpt, content: dbPost.content, date: dbPost.published_at, readTime: dbPost.read_time, tags: dbPost.tags, metaDescription: dbPost.meta_description }
+    : undefined;
 
   useEffect(() => {
     window.scrollTo(0, 0);

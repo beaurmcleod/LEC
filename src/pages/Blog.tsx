@@ -4,8 +4,56 @@ import { Footer } from "@/components/Footer";
 import { blogPosts } from "@/lib/blogPosts";
 import { Calendar, Clock, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+
+interface DbBlogPost {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt: string;
+  content: string;
+  meta_description: string;
+  tags: string[];
+  read_time: string;
+  published_at: string;
+}
 
 const Blog = () => {
+  const { data: dbPosts } = useQuery({
+    queryKey: ["blog-posts"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("blog_posts")
+        .select("*")
+        .order("published_at", { ascending: false });
+      if (error) throw error;
+      return data as DbBlogPost[];
+    },
+  });
+
+  // Merge static + DB posts, sorted by date descending
+  const allPosts = [
+    ...(dbPosts || []).map((p) => ({
+      slug: p.slug,
+      title: p.title,
+      excerpt: p.excerpt,
+      date: p.published_at,
+      readTime: p.read_time,
+      tags: p.tags,
+      source: "db" as const,
+    })),
+    ...blogPosts.map((p) => ({
+      slug: p.slug,
+      title: p.title,
+      excerpt: p.excerpt,
+      date: p.date,
+      readTime: p.readTime,
+      tags: p.tags,
+      source: "static" as const,
+    })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -21,7 +69,7 @@ const Blog = () => {
           </header>
 
           <div className="space-y-8">
-            {blogPosts.map((post) => (
+            {allPosts.map((post) => (
               <Link
                 key={post.slug}
                 to={`/blog/${post.slug}`}
