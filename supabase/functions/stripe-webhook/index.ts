@@ -189,6 +189,7 @@ serve(async (req) => {
               token: downloadToken,
               product_id: productId,
               customer_email: email,
+              user_id: profile?.id || null,
               expires_at: expiresAt.toISOString(),
               max_downloads: 5
             });
