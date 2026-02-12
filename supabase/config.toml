@@ -98,3 +98,6 @@ verify_jwt = false
 
 [functions.cancel-lesson]
 verify_jwt = false
+
+[functions.generate-blog-post]
+verify_jwt = false

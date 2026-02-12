@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      blog_posts: {
+        Row: {
+          content: string
+          created_at: string
+          excerpt: string
+          id: string
+          meta_description: string
+          published_at: string
+          read_time: string
+          slug: string
+          tags: string[]
+          title: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          excerpt: string
+          id?: string
+          meta_description: string
+          published_at?: string
+          read_time?: string
+          slug: string
+          tags?: string[]
+          title: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          excerpt?: string
+          id?: string
+          meta_description?: string
+          published_at?: string
+          read_time?: string
+          slug?: string
+          tags?: string[]
+          title?: string
+        }
+        Relationships: []
+      }
       coupons: {
         Row: {
           applies_to_all: boolean
