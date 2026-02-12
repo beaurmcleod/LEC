@@ -31,6 +31,8 @@ import LocalLessons from "./pages/LocalLessons";
 import DJServices from "./pages/DJServices";
 import CancelLesson from "./pages/CancelLesson";
 import TikTok from "./pages/TikTok";
+import Blog from "./pages/Blog";
+import BlogPost from "./pages/BlogPost";
 
 const queryClient = new QueryClient();
 
@@ -66,6 +68,8 @@ const App = () => (
           <Route path="/download" element={<Download />} />
           <Route path="/cancel-lesson" element={<CancelLesson />} />
           <Route path="/tiktok" element={<TikTok />} />
+          <Route path="/blog" element={<Blog />} />
+          <Route path="/blog/:slug" element={<BlogPost />} />
           <Route path="/admin/setup" element={<AdminSetup />} />
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
