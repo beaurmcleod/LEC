@@ -18,10 +18,8 @@ export default function ProductDetail() {
     queryFn: async () => {
       if (!slug) return null;
       
-      // Convert slug to searchable words (e.g., "key-bpm-finder" -> ["key", "bpm", "finder"])
       const words = slug.toLowerCase().split('-').filter(w => w.length > 0);
       
-      // Get all products and find the best match
       const { data: products, error } = await supabase
         .from('products')
         .select('*');
@@ -29,7 +27,6 @@ export default function ProductDetail() {
       if (error) throw error;
       if (!products || products.length === 0) return null;
       
-      // Find product where all slug words appear in the title
       const matchedProduct = products.find(product => {
         const titleLower = product.title.toLowerCase();
         return words.every(word => titleLower.includes(word));
@@ -39,6 +36,13 @@ export default function ProductDetail() {
     },
     enabled: !!slug,
   });
+
+  // TikTok ViewContent event - must be before any early returns
+  useEffect(() => {
+    if (product) {
+      ttqTrack.viewContent({ id: product.id, title: product.title, price: product.price });
+    }
+  }, [product]);
 
   if (isLoading) {
     return (
@@ -66,13 +70,6 @@ export default function ProductDetail() {
 
   const { title, price, image, category, bpm, key, short_description, full_description, features } = product;
   const isFree = parseFloat(String(price).replace(/\$/g, '')) === 0 || price?.toLowerCase() === 'free';
-
-  // TikTok ViewContent event
-  useEffect(() => {
-    if (product) {
-      ttqTrack.viewContent({ id: product.id, title: product.title, price: product.price });
-    }
-  }, [product]);
 
   // Use database fields with fallbacks
   const description = {
