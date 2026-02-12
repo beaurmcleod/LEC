@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { ShoppingCart, ArrowLeft, Play } from "lucide-react";
 import { Header } from "@/components/Header";
@@ -6,6 +7,7 @@ import { Footer } from "@/components/Footer";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { slugToTitle, formatPrice } from "@/lib/utils";
+import { ttqTrack } from "@/lib/tiktokPixel";
 
 export default function ProductDetail() {
   const { id: slug } = useParams();
@@ -64,6 +66,13 @@ export default function ProductDetail() {
 
   const { title, price, image, category, bpm, key, short_description, full_description, features } = product;
   const isFree = parseFloat(String(price).replace(/\$/g, '')) === 0 || price?.toLowerCase() === 'free';
+
+  // TikTok ViewContent event
+  useEffect(() => {
+    if (product) {
+      ttqTrack.viewContent({ id: product.id, title: product.title, price: product.price });
+    }
+  }, [product]);
 
   // Use database fields with fallbacks
   const description = {

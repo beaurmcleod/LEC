@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { ttqTrack } from '@/lib/tiktokPixel';
 
 export interface CartItem {
   id: string;
@@ -25,6 +26,7 @@ export const useCartStore = create<CartStore>()(
         const exists = items.find(i => i.id === item.id);
         if (!exists) {
           set({ items: [...items, item] });
+          ttqTrack.addToCart({ id: item.id, title: item.title, price: item.price });
         }
       },
       removeItem: (id) => set((state) => ({

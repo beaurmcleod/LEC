@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { ArrowLeft, CreditCard } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { ttqTrack } from "@/lib/tiktokPixel";
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "");
 
@@ -184,7 +185,13 @@ const Checkout = () => {
   const lessonTime = searchParams.get("time") || "";
   
   console.log("Checkout params:", { productTitle, price, productId, customerEmail, customerFirstName, customerLastName, isLesson, lessonDate, lessonTime });
-  
+
+  // TikTok InitiateCheckout event
+  useEffect(() => {
+    if (productTitle && productId && price) {
+      ttqTrack.initiateCheckout({ id: productId, title: productTitle, price });
+    }
+  }, [productTitle, productId, price]);
   // Add toast notification to help with debugging
   if (productTitle && price) {
     toast({
