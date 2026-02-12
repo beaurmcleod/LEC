@@ -49,7 +49,12 @@ const MyPurchases = () => {
 
   const fetchPurchases = async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      // Get user email to also find purchases made before account was linked
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const userEmail = currentUser?.email;
+
+      // Query by user_id OR email to catch pre-account purchases
+      let query = supabase
         .from('purchases')
         .select(`
           id,
@@ -62,8 +67,15 @@ const MyPurchases = () => {
             image
           )
         `)
-        .eq('user_id', userId)
         .order('purchased_at', { ascending: false });
+
+      if (userEmail) {
+        query = query.or(`user_id.eq.${userId},customer_email.eq.${userEmail}`);
+      } else {
+        query = query.eq('user_id', userId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
