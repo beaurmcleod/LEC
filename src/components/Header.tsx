@@ -53,6 +53,7 @@ export const Header = () => {
     { to: "/#products", label: "Sample Packs" },
     { to: "/racks", label: "Racks" },
     { to: "/lessons", label: "Lessons" },
+    { to: "/blog", label: "Blog" },
   ];
 
   return (
