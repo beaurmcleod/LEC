@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { HelpCircle, User } from "lucide-react";
+import { HelpCircle, User, BookOpen, ShoppingBag, GraduationCap, Music, Video, Calendar, Instagram, Youtube, ExternalLink } from "lucide-react";
 import previewEdmCourse from "@/assets/preview-edm-course-new.jpg";
 import previewCandyStore from "@/assets/preview-candy-store-new.png";
 import previewLesson from "@/assets/preview-lesson.jpg";
@@ -72,6 +72,7 @@ const Index = () => {
       title: "Ask a Producer",
       description: "AI powered by 10+ years of professional production curriculum",
       icon: HelpCircle,
+      iconGradient: "from-accent to-accent/70",
       url: "/ask",
     },
     {
@@ -98,6 +99,8 @@ const Index = () => {
     {
       title: "Producer Operating System",
       description: "Resources for building a music production career",
+      icon: BookOpen,
+      iconGradient: "from-samples to-samples/70",
       url: "https://producerframework.com/",
       external: true,
     },
@@ -105,6 +108,7 @@ const Index = () => {
       title: "About Bohemyth",
       description: "Learn more about my background & credentials",
       icon: User,
+      iconGradient: "from-secondary to-secondary/70",
       url: "/bio",
     },
   ];
@@ -132,16 +136,18 @@ const Index = () => {
           {links.map((link, index) => {
             const linkContent = (
               <div className="flex items-center gap-4">
-                <div className="w-20 h-20 rounded-lg overflow-hidden shadow-lg group-hover:scale-105 transition-transform duration-300 flex-shrink-0 flex items-center justify-center bg-primary/20">
+                <div className={`w-20 h-20 rounded-lg overflow-hidden shadow-lg group-hover:scale-105 transition-transform duration-300 flex-shrink-0 flex items-center justify-center ${
+                  link.icon ? `bg-gradient-to-br ${link.iconGradient || 'from-primary to-primary/70'}` : 'bg-muted'
+                }`}>
                   {link.icon ? (
-                    <link.icon className="w-10 h-10 text-primary" />
-                  ) : (
+                    <link.icon className="w-9 h-9 text-foreground" />
+                  ) : link.preview ? (
                     <img 
                       src={link.preview} 
                       alt={link.title}
                       className="w-full h-full object-cover"
                     />
-                  )}
+                  ) : null}
                 </div>
                 <div className="flex-1 text-left">
                   <h3 className="text-xl font-semibold text-foreground group-hover:text-primary transition-colors">
