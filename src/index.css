@@ -174,11 +174,11 @@
 
 /* Print styles for PDF export */
 @media print {
-  * {
+  body {
     background: white !important;
     color: black !important;
-    border-color: #ccc !important;
-    box-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
   
   header, footer, button, .no-print {
@@ -186,7 +186,7 @@
   }
 
   .recharts-wrapper {
-    display: none !important;
+    page-break-inside: avoid;
   }
 
   [class*="Card"] {
