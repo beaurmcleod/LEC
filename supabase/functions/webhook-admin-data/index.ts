@@ -25,13 +25,12 @@ Deno.serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const { data: { user }, error: userError } = await authClient.auth.getUser();
+    if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
     }
 
-    const userId = claimsData.claims.sub;
+    const userId = user.id;
 
     // Use service role to bypass RLS for admin data fetching
     const supabase = createClient(
@@ -104,6 +103,29 @@ Deno.serve(async (req) => {
       };
     });
 
+    // Aggregate clicks per link
+    const linkClickMap = new Map<string, { link_title: string; link_url: string; total_clicks: number; clicks_today: number; clicks_this_week: number }>();
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay()).toISOString();
+
+    (clicksRes.data || []).forEach((click: any) => {
+      const key = click.link_url;
+      const existing = linkClickMap.get(key) || {
+        link_title: click.link_title,
+        link_url: click.link_url,
+        total_clicks: 0,
+        clicks_today: 0,
+        clicks_this_week: 0,
+      };
+      existing.total_clicks += 1;
+      if (click.clicked_at >= todayStart) existing.clicks_today += 1;
+      if (click.clicked_at >= weekStart) existing.clicks_this_week += 1;
+      linkClickMap.set(key, existing);
+    });
+
+    const linkClickSummary = Array.from(linkClickMap.values()).sort((a, b) => b.total_clicks - a.total_clicks);
+
     // Purchase events with customer info
     const purchaseEvents = (purchasesRes.data || []).map((p: any) => {
       const profile = p.user_id ? profileMap.get(p.user_id) : emailProfileMap.get(p.customer_email);
@@ -137,6 +159,7 @@ Deno.serve(async (req) => {
         total_purchases: purchaseEvents.length,
         total_signups: signups.length,
       },
+      link_click_summary: linkClickSummary,
       link_click_events: clickEvents,
       purchase_events: purchaseEvents,
       user_signups: signups,
