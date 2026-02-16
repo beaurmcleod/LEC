@@ -33,6 +33,7 @@ import CancelLesson from "./pages/CancelLesson";
 import TikTok from "./pages/TikTok";
 import Blog from "./pages/Blog";
 import BlogPost from "./pages/BlogPost";
+import SkoolRedirect from "./pages/SkoolRedirect";
 
 const queryClient = new QueryClient();
 
@@ -70,6 +71,7 @@ const App = () => (
           <Route path="/tiktok" element={<TikTok />} />
           <Route path="/blog" element={<Blog />} />
           <Route path="/blog/:slug" element={<BlogPost />} />
+          <Route path="/skool" element={<SkoolRedirect />} />
           <Route path="/admin/setup" element={<AdminSetup />} />
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
