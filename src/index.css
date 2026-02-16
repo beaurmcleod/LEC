@@ -174,11 +174,11 @@
 
 /* Print styles for PDF export */
 @media print {
-  body {
+  * {
     background: white !important;
     color: black !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+    border-color: #ccc !important;
+    box-shadow: none !important;
   }
   
   header, footer, button, .no-print {
