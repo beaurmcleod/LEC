@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Loader2, Calendar, CheckCircle, XCircle, Users, Download } from "lucide-react";
+import { ArrowLeft, Loader2, Calendar, CheckCircle, XCircle, Users, Download, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -40,6 +40,7 @@ const AdminDashboard = () => {
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [connectingCalendar, setConnectingCalendar] = useState(false);
   const [userProfiles, setUserProfiles] = useState<UserProfile[]>([]);
+  const [sendingWebhook, setSendingWebhook] = useState(false);
 
   useEffect(() => {
     checkAdminAccess();
@@ -256,6 +257,30 @@ const AdminDashboard = () => {
             >
               <Download className="mr-2 h-4 w-4" />
               Download PDF
+            </Button>
+            <Button
+              variant="default"
+              onClick={async () => {
+                setSendingWebhook(true);
+                try {
+                  const { data: { session } } = await supabase.auth.getSession();
+                  if (!session) { toast.error("Please sign in first"); return; }
+                  const { data, error } = await supabase.functions.invoke("webhook-admin-data", {
+                    headers: { Authorization: `Bearer ${session.access_token}` },
+                  });
+                  if (error) throw error;
+                  toast.success(`Sent ${data.signups_sent} signups & ${data.clicks_sent} clicks to Make.com`);
+                } catch (err: any) {
+                  console.error("Webhook error:", err);
+                  toast.error("Failed to send data to Make.com");
+                } finally {
+                  setSendingWebhook(false);
+                }
+              }}
+              disabled={sendingWebhook}
+            >
+              {sendingWebhook ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+              Send to Make.com
             </Button>
           </div>
           <h1 className="text-4xl font-bold mb-2">Admin Dashboard</h1>
