@@ -171,3 +171,28 @@
     @apply fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border p-3;
   }
 }
+
+/* Print styles for PDF export */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  header, footer, button, .no-print {
+    display: none !important;
+  }
+
+  .recharts-wrapper {
+    page-break-inside: avoid;
+  }
+
+  [class*="Card"] {
+    border: 1px solid #ddd !important;
+    background: white !important;
+    page-break-inside: avoid;
+    margin-bottom: 1rem;
+  }
+}
