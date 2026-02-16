@@ -24,7 +24,6 @@ Deno.serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    // Verify admin
     const token = authHeader.replace('Bearer ', '');
     const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
     if (claimsError || !claimsData?.claims) {
@@ -33,7 +32,6 @@ Deno.serve(async (req) => {
 
     const userId = claimsData.claims.sub;
 
-    // Check admin role
     const { data: roleData } = await supabase
       .from('user_roles')
       .select('role')
@@ -53,7 +51,7 @@ Deno.serve(async (req) => {
 
     if (profilesError) throw profilesError;
 
-    // Fetch link clicks aggregated
+    // Fetch all link clicks
     const { data: clicks, error: clicksError } = await supabase
       .from('link_clicks')
       .select('link_title, link_url, clicked_at')
@@ -61,7 +59,7 @@ Deno.serve(async (req) => {
 
     if (clicksError) throw clicksError;
 
-    // Aggregate clicks by link
+    // Aggregate clicks by link (top 10)
     const linkMap = new Map<string, { link_title: string; link_url: string; click_count: number }>();
     (clicks || []).forEach((click: any) => {
       const key = click.link_url;
@@ -71,22 +69,33 @@ Deno.serve(async (req) => {
         linkMap.set(key, { link_title: click.link_title, link_url: click.link_url, click_count: 1 });
       }
     });
+    const topLinks = Array.from(linkMap.values()).sort((a, b) => b.click_count - a.click_count).slice(0, 10);
+
+    // Daily click breakdown (last 14 days)
+    const dateMap = new Map<string, number>();
+    (clicks || []).forEach((click: any) => {
+      const date = new Date(click.clicked_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      dateMap.set(date, (dateMap.get(date) || 0) + 1);
+    });
+    const dailyBreakdown = Array.from(dateMap.entries())
+      .map(([date, count]) => ({ date, clicks: count }))
+      .slice(-14);
 
     const payload = {
       type: "admin_dashboard_export",
       exported_at: new Date().toISOString(),
+      total_clicks: (clicks || []).length,
+      top_links: topLinks,
+      daily_click_breakdown: dailyBreakdown,
+      total_signups: (profiles || []).length,
       user_signups: (profiles || []).map((p: any) => ({
         first_name: p.first_name,
         last_name: p.last_name,
         email: p.email,
         signed_up: p.created_at,
       })),
-      total_signups: (profiles || []).length,
-      link_clicks: Array.from(linkMap.values()).sort((a, b) => b.click_count - a.click_count),
-      total_clicks: (clicks || []).length,
     };
 
-    // Send to Make.com
     const webhookResponse = await fetch(MAKE_WEBHOOK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
