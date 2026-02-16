@@ -75,9 +75,19 @@ Deno.serve(async (req) => {
     // Individual click events enriched with user info
     const clickEvents = (clicksRes.data || []).map((click: any) => {
       const profile = click.user_id ? profileMap.get(click.user_id) : null;
+      // Parse the URL to extract domain and path
+      let domain = "lowendcandy.com";
+      let page = click.link_url;
+      try {
+        const url = new URL(click.link_url);
+        domain = url.hostname;
+        page = url.pathname + url.search + url.hash;
+      } catch {
+        // If not a full URL, treat as relative path
+      }
       return {
-        website: "lowendcandy.com",
-        page: click.link_url,
+        website: domain,
+        page: page,
         link_clicked: click.link_title,
         clicked_at: click.clicked_at,
         user_first_name: profile?.first_name || null,
@@ -112,7 +122,6 @@ Deno.serve(async (req) => {
     }));
 
     const payload = {
-      type: "admin_dashboard_full_export",
       website: "lowendcandy.com",
       exported_at: new Date().toISOString(),
       summary: {
