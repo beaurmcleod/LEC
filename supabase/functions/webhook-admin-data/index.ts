@@ -31,7 +31,6 @@ Deno.serve(async (req) => {
     }
 
     const userId = claimsData.claims.sub;
-
     const { data: roleData } = await supabase
       .from('user_roles')
       .select('role')
@@ -43,57 +42,87 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Admin access required' }), { status: 403, headers: corsHeaders });
     }
 
-    // Fetch profiles
-    const { data: profiles, error: profilesError } = await supabase
-      .from('profiles')
-      .select('first_name, last_name, email, created_at')
-      .order('created_at', { ascending: false });
+    // Fetch all data in parallel
+    const [clicksRes, profilesRes, purchasesRes, productsRes] = await Promise.all([
+      supabase.from('link_clicks').select('link_title, link_url, clicked_at, user_id').order('clicked_at', { ascending: false }),
+      supabase.from('profiles').select('id, first_name, last_name, email, created_at').order('created_at', { ascending: false }),
+      supabase.from('purchases').select('customer_email, product_id, amount_paid, stripe_payment_id, purchased_at, user_id').order('purchased_at', { ascending: false }),
+      supabase.from('products').select('id, title, price'),
+    ]);
 
-    if (profilesError) throw profilesError;
+    if (clicksRes.error) throw clicksRes.error;
+    if (profilesRes.error) throw profilesRes.error;
+    if (purchasesRes.error) throw purchasesRes.error;
+    if (productsRes.error) throw productsRes.error;
 
-    // Fetch all link clicks
-    const { data: clicks, error: clicksError } = await supabase
-      .from('link_clicks')
-      .select('link_title, link_url, clicked_at')
-      .order('clicked_at', { ascending: false });
-
-    if (clicksError) throw clicksError;
-
-    // Aggregate clicks by link (top 10)
-    const linkMap = new Map<string, { link_title: string; link_url: string; click_count: number }>();
-    (clicks || []).forEach((click: any) => {
-      const key = click.link_url;
-      if (linkMap.has(key)) {
-        linkMap.get(key)!.click_count += 1;
-      } else {
-        linkMap.set(key, { link_title: click.link_title, link_url: click.link_url, click_count: 1 });
-      }
+    // Build lookup maps
+    const profileMap = new Map<string, any>();
+    (profilesRes.data || []).forEach((p: any) => {
+      profileMap.set(p.id, p);
     });
-    const topLinks = Array.from(linkMap.values()).sort((a, b) => b.click_count - a.click_count).slice(0, 10);
 
-    // Daily click breakdown (last 14 days)
-    const dateMap = new Map<string, number>();
-    (clicks || []).forEach((click: any) => {
-      const date = new Date(click.clicked_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      dateMap.set(date, (dateMap.get(date) || 0) + 1);
+    const productMap = new Map<string, any>();
+    (productsRes.data || []).forEach((p: any) => {
+      productMap.set(p.id, p);
     });
-    const dailyBreakdown = Array.from(dateMap.entries())
-      .map(([date, count]) => ({ date, clicks: count }))
-      .slice(-14);
+
+    // Build email-to-profile lookup for matching purchases to profiles
+    const emailProfileMap = new Map<string, any>();
+    (profilesRes.data || []).forEach((p: any) => {
+      emailProfileMap.set(p.email, p);
+    });
+
+    // Individual click events enriched with user info
+    const clickEvents = (clicksRes.data || []).map((click: any) => {
+      const profile = click.user_id ? profileMap.get(click.user_id) : null;
+      return {
+        website: "lowendcandy.com",
+        page: click.link_url,
+        link_clicked: click.link_title,
+        clicked_at: click.clicked_at,
+        user_first_name: profile?.first_name || null,
+        user_last_name: profile?.last_name || null,
+        user_email: profile?.email || null,
+      };
+    });
+
+    // Purchase events with customer info
+    const purchaseEvents = (purchasesRes.data || []).map((p: any) => {
+      const profile = p.user_id ? profileMap.get(p.user_id) : emailProfileMap.get(p.customer_email);
+      const product = productMap.get(p.product_id);
+      return {
+        event_type: "purchase",
+        product_title: product?.title || "Unknown",
+        product_price: product?.price || null,
+        amount_paid: p.amount_paid,
+        purchased_at: p.purchased_at,
+        stripe_payment_id: p.stripe_payment_id,
+        customer_email: p.customer_email,
+        customer_first_name: profile?.first_name || null,
+        customer_last_name: profile?.last_name || null,
+      };
+    });
+
+    // User signups
+    const signups = (profilesRes.data || []).map((p: any) => ({
+      first_name: p.first_name,
+      last_name: p.last_name,
+      email: p.email,
+      signed_up: p.created_at,
+    }));
 
     const payload = {
-      type: "admin_dashboard_export",
+      type: "admin_dashboard_full_export",
+      website: "lowendcandy.com",
       exported_at: new Date().toISOString(),
-      total_clicks: (clicks || []).length,
-      top_links: topLinks,
-      daily_click_breakdown: dailyBreakdown,
-      total_signups: (profiles || []).length,
-      user_signups: (profiles || []).map((p: any) => ({
-        first_name: p.first_name,
-        last_name: p.last_name,
-        email: p.email,
-        signed_up: p.created_at,
-      })),
+      summary: {
+        total_clicks: clickEvents.length,
+        total_purchases: purchaseEvents.length,
+        total_signups: signups.length,
+      },
+      link_click_events: clickEvents,
+      purchase_events: purchaseEvents,
+      user_signups: signups,
     };
 
     const webhookResponse = await fetch(MAKE_WEBHOOK_URL, {
@@ -109,7 +138,12 @@ Deno.serve(async (req) => {
 
     await webhookResponse.text();
 
-    return new Response(JSON.stringify({ success: true, signups_sent: payload.total_signups, clicks_sent: payload.total_clicks }), {
+    return new Response(JSON.stringify({
+      success: true,
+      clicks_sent: clickEvents.length,
+      purchases_sent: purchaseEvents.length,
+      signups_sent: signups.length,
+    }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
