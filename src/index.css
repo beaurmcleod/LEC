@@ -186,7 +186,7 @@
   }
 
   .recharts-wrapper {
-    page-break-inside: avoid;
+    display: none !important;
   }
 
   [class*="Card"] {
