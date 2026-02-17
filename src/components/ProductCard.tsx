@@ -63,6 +63,7 @@ export const ProductCard = ({
   };
 
   const isFree = parseFloat(String(price).replace(/\$/g, '')) === 0 || price.toLowerCase() === 'free';
+  const isLesson = category.toLowerCase() === 'lessons';
 
   return (
     <Card 
@@ -77,26 +78,38 @@ export const ProductCard = ({
           </span>
         )}
         
-        <div className="aspect-square relative overflow-hidden">
-          <img 
-            src={image} 
-            alt={title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          />
-          
-          {/* Large Play Button Overlay - Always visible on hover */}
-          <div 
-            className="absolute inset-0 bg-background/70 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center"
-            onClick={handlePlayClick}
-          >
-            <button 
-              className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-accent text-accent-foreground flex items-center justify-center shadow-glow-accent transform scale-90 group-hover:scale-100 transition-all duration-300 hover:bg-accent/90"
-              aria-label="Preview audio"
-            >
-              <Play className="h-10 w-10 md:h-12 md:w-12 ml-1" fill="currentColor" />
-            </button>
+        {isLesson ? (
+          <div className="aspect-square relative overflow-hidden bg-gradient-to-br from-primary/20 via-card to-secondary/20 flex flex-col items-center justify-center p-6 text-center">
+            <span className="text-5xl font-bold bg-gradient-primary bg-clip-text text-transparent font-display leading-tight">
+              {title.includes("4") ? "4×" : title.includes("2") ? "2h" : "1h"}
+            </span>
+            <span className="text-sm font-medium text-muted-foreground mt-2 uppercase tracking-widest">
+              {title.includes("4") ? "Lesson Pack" : "Session"}
+            </span>
+            <div className="mt-3 w-12 h-px bg-gradient-to-r from-primary to-secondary" />
           </div>
-        </div>
+        ) : (
+          <div className="aspect-square relative overflow-hidden">
+            <img 
+              src={image} 
+              alt={title}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            />
+            
+            {/* Large Play Button Overlay - Always visible on hover */}
+            <div 
+              className="absolute inset-0 bg-background/70 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center"
+              onClick={handlePlayClick}
+            >
+              <button 
+                className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-accent text-accent-foreground flex items-center justify-center shadow-glow-accent transform scale-90 group-hover:scale-100 transition-all duration-300 hover:bg-accent/90"
+                aria-label="Preview audio"
+              >
+                <Play className="h-10 w-10 md:h-12 md:w-12 ml-1" fill="currentColor" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Content - F-Pattern Layout */}
