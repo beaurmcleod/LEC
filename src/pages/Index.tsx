@@ -9,6 +9,7 @@ import previewYoutube from "@/assets/preview-youtube.jpg";
 import previewBohemyth from "@/assets/preview-bohemyth.png";
 import previewCruxChords from "@/assets/preview-crux-chords-new.png";
 import previewSkool from "@/assets/preview-skool.png";
+import { ReviewsSection } from "@/components/ReviewsSection";
 
 const Index = () => {
   // Track clicks only for authenticated users (RLS requires authentication)
@@ -206,6 +207,9 @@ const Index = () => {
             );
           })}
         </div>
+
+        {/* Reviews */}
+        <ReviewsSection />
 
         {/* Footer */}
         <div className="mt-16 text-center">
