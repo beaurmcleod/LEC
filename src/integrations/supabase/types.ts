@@ -304,6 +304,62 @@ export type Database = {
         }
         Relationships: []
       }
+      licenses: {
+        Row: {
+          created_at: string | null
+          daily_limit: number | null
+          expires_at: string | null
+          id: string
+          last_reset_date: string | null
+          last_used_at: string | null
+          license_key: string
+          product: string | null
+          requests_today: number | null
+          status: string | null
+          subscription_id: string | null
+          total_requests: number | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          daily_limit?: number | null
+          expires_at?: string | null
+          id?: string
+          last_reset_date?: string | null
+          last_used_at?: string | null
+          license_key: string
+          product?: string | null
+          requests_today?: number | null
+          status?: string | null
+          subscription_id?: string | null
+          total_requests?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          daily_limit?: number | null
+          expires_at?: string | null
+          id?: string
+          last_reset_date?: string | null
+          last_used_at?: string | null
+          license_key?: string
+          product?: string | null
+          requests_today?: number | null
+          status?: string | null
+          subscription_id?: string | null
+          total_requests?: number | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "licenses_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       link_clicks: {
         Row: {
           clicked_at: string
@@ -705,6 +761,7 @@ export type Database = {
     }
     Functions: {
       cleanup_old_rate_limits: { Args: never; Returns: undefined }
+      generate_license_key: { Args: never; Returns: string }
       get_download_url: { Args: { product_id: string }; Returns: string }
       has_role: {
         Args: {
@@ -715,6 +772,7 @@ export type Database = {
       }
       is_own_profile: { Args: { profile_id: string }; Returns: boolean }
       owns_download_token: { Args: { token_id: string }; Returns: boolean }
+      reset_daily_counts: { Args: never; Returns: undefined }
     }
     Enums: {
       app_role: "admin" | "user"
