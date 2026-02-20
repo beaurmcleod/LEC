@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
+import { TrackCatalogue } from "@/components/TrackCatalogue";
 import bioDjBooth from "@/assets/bio-dj-booth.jpg";
 import bioLibLineup from "@/assets/bio-lib-lineup.png";
 import bioStudio from "@/assets/bio-studio.jpg";
@@ -100,6 +101,9 @@ const Bio = () => {
             />
           </div>
         </div>
+
+        {/* Track Catalogue */}
+        <TrackCatalogue />
 
         {/* Footer */}
         <div className="mt-16 text-center">
