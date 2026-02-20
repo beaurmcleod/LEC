@@ -34,6 +34,7 @@ import TikTok from "./pages/TikTok";
 import Blog from "./pages/Blog";
 import BlogPost from "./pages/BlogPost";
 import SkoolRedirect from "./pages/SkoolRedirect";
+import FreeConsultation from "./pages/FreeConsultation";
 
 const queryClient = new QueryClient();
 
@@ -51,6 +52,7 @@ const App = () => (
           <Route path="/racks" element={<Racks />} />
           <Route path="/links" element={<Links />} />
           <Route path="/lessons" element={<Lessons />} />
+          <Route path="/free-consultation" element={<FreeConsultation />} />
           <Route path="/candy-club" element={<CandyClub />} />
           <Route path="/ask" element={<AskProducer />} />
           <Route path="/bio" element={<Bio />} />
