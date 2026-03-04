@@ -2,13 +2,24 @@ import { useEffect, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { CheckCircle, Home, Mail, Calendar } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { CheckCircle, Home, Mail, Calendar, Download, UserPlus, Eye, EyeOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ttqTrack } from "@/lib/tiktokPixel";
+import { toast } from "@/hooks/use-toast";
 
 const PaymentSuccess = () => {
   const [searchParams] = useSearchParams();
   const [notificationSent, setNotificationSent] = useState(false);
+  const [downloadToken, setDownloadToken] = useState<string | null>(null);
+  
+  // Account creation state
+  const [showAccountCreate, setShowAccountCreate] = useState(false);
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [creatingAccount, setCreatingAccount] = useState(false);
+  const [accountCreated, setAccountCreated] = useState(false);
   
   const sessionId = searchParams.get("session_id");
   const productId = searchParams.get("product_id");
@@ -19,6 +30,17 @@ const PaymentSuccess = () => {
   
   // Determine if this is a lesson booking
   const isLesson = !!(lessonDate && lessonTime);
+
+  // Check if user is already logged in
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setAccountCreated(true);
+      }
+    };
+    checkAuth();
+  }, []);
 
   // TikTok Purchase event
   useEffect(() => {
@@ -37,6 +59,34 @@ const PaymentSuccess = () => {
     }
   }, [productId]);
 
+  // Fetch download token for non-lesson products
+  useEffect(() => {
+    const fetchDownloadToken = async () => {
+      if (!customerEmail || !productId || isLesson) return;
+      
+      try {
+        // Look for the most recent download token for this purchase
+        const { data: tokens } = await supabase
+          .from('download_tokens')
+          .select('token')
+          .eq('product_id', productId)
+          .eq('customer_email', customerEmail)
+          .order('created_at', { ascending: false })
+          .limit(1);
+        
+        if (tokens && tokens.length > 0) {
+          setDownloadToken(tokens[0].token);
+        }
+      } catch (err) {
+        console.error("Error fetching download token:", err);
+      }
+    };
+
+    // Small delay to allow webhook to process
+    const timer = setTimeout(fetchDownloadToken, 3000);
+    return () => clearTimeout(timer);
+  }, [customerEmail, productId, isLesson]);
+
   useEffect(() => {
     const handleFreePurchase = async () => {
       if (!isFree || !customerEmail || !productId || notificationSent) return;
@@ -44,7 +94,6 @@ const PaymentSuccess = () => {
       try {
         console.log("Processing free purchase...", { productId, customerEmail, isLesson });
 
-        // Get product info
         const { data: product } = await supabase
           .from('products')
           .select('title, price')
@@ -59,7 +108,6 @@ const PaymentSuccess = () => {
         const productTitle = product.title;
 
         if (isLesson) {
-          // Send lesson notification for free lessons
           console.log("Sending free lesson notification...");
           
           let durationMinutes = 60;
@@ -83,11 +131,8 @@ const PaymentSuccess = () => {
 
           if (error) {
             console.error("Failed to send lesson notification:", error);
-          } else {
-            console.log("Lesson notification sent successfully");
           }
         } else {
-          // Send purchase email with download link for free product purchases
           console.log("Sending free purchase email with download link...");
           
           const { data, error } = await supabase.functions.invoke('redeem-coupon', {
@@ -101,7 +146,7 @@ const PaymentSuccess = () => {
           if (error) {
             console.error("Failed to process free purchase:", error);
           } else {
-            console.log("Free purchase processed, email sent:", data);
+            console.log("Free purchase processed:", data);
           }
         }
 
@@ -114,21 +159,100 @@ const PaymentSuccess = () => {
     handleFreePurchase();
   }, [isFree, customerEmail, productId, isLesson, lessonDate, lessonTime, notificationSent]);
 
+  const handleCreateAccount = async () => {
+    if (!password || password.length < 6) {
+      toast({
+        title: "Password too short",
+        description: "Password must be at least 6 characters",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!customerEmail) return;
+
+    setCreatingAccount(true);
+
+    try {
+      const { error } = await supabase.auth.signUp({
+        email: customerEmail,
+        password,
+        options: {
+          data: {
+            full_name: customerEmail,
+          },
+          emailRedirectTo: `${window.location.origin}/my-purchases`,
+        },
+      });
+
+      if (error) {
+        if (error.message.includes("already registered")) {
+          toast({
+            title: "Account Already Exists",
+            description: "You already have an account! Sign in at the top of the site to access your downloads.",
+          });
+          setAccountCreated(true);
+        } else {
+          toast({
+            title: "Error",
+            description: error.message,
+            variant: "destructive",
+          });
+        }
+      } else {
+        setAccountCreated(true);
+        toast({
+          title: "Account Created! 🎉",
+          description: "You can now access all your downloads from My Purchases anytime.",
+        });
+      }
+    } catch (err) {
+      console.error("Account creation error:", err);
+      toast({
+        title: "Error",
+        description: "Something went wrong. Please try again.",
+        variant: "destructive",
+      });
+    }
+
+    setCreatingAccount(false);
+  };
+
+  const downloadUrl = downloadToken 
+    ? `${window.location.origin}/download?token=${downloadToken}` 
+    : null;
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <Card className="max-w-md w-full p-8 text-center">
         <div className="mb-6">
-          <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
+          <CheckCircle className="h-16 w-16 text-primary mx-auto mb-4" />
           <h1 className="text-2xl font-bold mb-2">
             {isLesson ? "Lesson Booked!" : "Payment Successful!"}
           </h1>
           <p className="text-muted-foreground">
             {isLesson 
               ? "Your lesson has been confirmed. Check your email for details and a calendar invite!"
-              : "Thank you for your purchase. Your download link has been sent to your email."
+              : "Thank you for your purchase! Your download link has been sent to your email."
             }
           </p>
         </div>
+
+        {/* Download Button for non-lesson products */}
+        {!isLesson && downloadUrl && (
+          <div className="mb-6 p-4 bg-primary/10 rounded-lg space-y-3">
+            <div className="flex items-center justify-center gap-2 text-primary">
+              <Download className="h-5 w-5" />
+              <span className="font-medium">Your Download is Ready</span>
+            </div>
+            <Button asChild className="w-full" size="lg">
+              <a href={downloadUrl}>
+                <Download className="h-4 w-4 mr-2" />
+                Download Now
+              </a>
+            </Button>
+          </div>
+        )}
 
         {isLesson && lessonDate && lessonTime && (
           <div className="mb-6 p-4 bg-primary/10 rounded-lg space-y-2">
@@ -158,16 +282,91 @@ const PaymentSuccess = () => {
           <p className="text-sm text-muted-foreground">
             {isLesson 
               ? "You'll receive a confirmation email with a calendar invite (.ics file) that you can add to your Apple Calendar."
-              : "Please also check your spam/junk folder if you don't see the email right away."
+              : "We've also emailed your download link. Check your spam/junk folder if you don't see it."
             }
           </p>
           <p className="text-sm text-muted-foreground">
-            If you haven't received your email within <strong>10 minutes</strong>, please contact us at{' '}
+            If you experience any issues, please contact us at{' '}
             <a href="mailto:beau@lowendcandy.com" className="text-primary hover:text-primary/80 font-medium">
               beau@lowendcandy.com
             </a>
           </p>
         </div>
+
+        {/* Account creation prompt */}
+        {!isLesson && !accountCreated && customerEmail && (
+          <div className="mb-6 p-4 bg-accent/30 rounded-lg space-y-3 border border-accent">
+            <div className="flex items-center justify-center gap-2 text-primary">
+              <UserPlus className="h-5 w-5" />
+              <span className="font-medium">Create an Account (Optional)</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Create a free account to access all your downloads anytime from{' '}
+              <strong>My Purchases</strong> — no digging through email required!
+            </p>
+            
+            {!showAccountCreate ? (
+              <Button 
+                variant="outline" 
+                className="w-full" 
+                onClick={() => setShowAccountCreate(true)}
+              >
+                <UserPlus className="h-4 w-4 mr-2" />
+                Set Up Account
+              </Button>
+            ) : (
+              <div className="space-y-3">
+                <div className="text-left space-y-1">
+                  <Label htmlFor="account-email" className="text-xs text-muted-foreground">Email</Label>
+                  <Input 
+                    id="account-email"
+                    value={customerEmail} 
+                    disabled 
+                    className="bg-muted"
+                  />
+                </div>
+                <div className="text-left space-y-1">
+                  <Label htmlFor="account-password">Set a Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="account-password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="At least 6 characters"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      minLength={6}
+                      maxLength={100}
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+                <Button 
+                  className="w-full" 
+                  onClick={handleCreateAccount}
+                  disabled={creatingAccount}
+                >
+                  {creatingAccount ? "Creating..." : "Create Account"}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {accountCreated && !isLesson && (
+          <div className="mb-6 p-3 bg-primary/10 rounded-lg">
+            <p className="text-sm text-primary">
+              ✅ Account set up! Access your downloads anytime from{' '}
+              <Link to="/my-purchases" className="font-medium underline">My Purchases</Link>
+            </p>
+          </div>
+        )}
 
         <Button asChild variant="outline" className="w-full">
           <Link to="/">
