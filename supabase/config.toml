@@ -104,3 +104,6 @@ verify_jwt = false
 
 [functions.webhook-admin-data]
 verify_jwt = false
+
+[functions.daily-health-check]
+verify_jwt = false
