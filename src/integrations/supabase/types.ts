@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      affirmations: {
+        Row: {
+          artwork_url: string | null
+          audio_data: string | null
+          audio_url: string | null
+          created_at: string
+          id: string
+          site: string
+          title: string | null
+          user_id: string | null
+        }
+        Insert: {
+          artwork_url?: string | null
+          audio_data?: string | null
+          audio_url?: string | null
+          created_at?: string
+          id?: string
+          site?: string
+          title?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          artwork_url?: string | null
+          audio_data?: string | null
+          audio_url?: string | null
+          created_at?: string
+          id?: string
+          site?: string
+          title?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       blog_posts: {
         Row: {
           content: string
@@ -304,10 +337,49 @@ export type Database = {
         }
         Relationships: []
       }
+      license_dashboard: {
+        Row: {
+          customer_email: string | null
+          customer_name: string | null
+          daily_limit: number | null
+          last_used_at: string | null
+          license_key: string | null
+          requests_today: number | null
+          site: string
+          status: string | null
+          total_requests: number | null
+        }
+        Insert: {
+          customer_email?: string | null
+          customer_name?: string | null
+          daily_limit?: number | null
+          last_used_at?: string | null
+          license_key?: string | null
+          requests_today?: number | null
+          site?: string
+          status?: string | null
+          total_requests?: number | null
+        }
+        Update: {
+          customer_email?: string | null
+          customer_name?: string | null
+          daily_limit?: number | null
+          last_used_at?: string | null
+          license_key?: string | null
+          requests_today?: number | null
+          site?: string
+          status?: string | null
+          total_requests?: number | null
+        }
+        Relationships: []
+      }
       licenses: {
         Row: {
           created_at: string | null
+          customer_email: string | null
+          customer_name: string | null
           daily_limit: number | null
+          device_id: string | null
           expires_at: string | null
           id: string
           last_reset_date: string | null
@@ -315,6 +387,7 @@ export type Database = {
           license_key: string
           product: string | null
           requests_today: number | null
+          site: string
           status: string | null
           subscription_id: string | null
           total_requests: number | null
@@ -322,7 +395,10 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          customer_email?: string | null
+          customer_name?: string | null
           daily_limit?: number | null
+          device_id?: string | null
           expires_at?: string | null
           id?: string
           last_reset_date?: string | null
@@ -330,6 +406,7 @@ export type Database = {
           license_key: string
           product?: string | null
           requests_today?: number | null
+          site?: string
           status?: string | null
           subscription_id?: string | null
           total_requests?: number | null
@@ -337,7 +414,10 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          customer_email?: string | null
+          customer_name?: string | null
           daily_limit?: number | null
+          device_id?: string | null
           expires_at?: string | null
           id?: string
           last_reset_date?: string | null
@@ -345,6 +425,7 @@ export type Database = {
           license_key?: string
           product?: string | null
           requests_today?: number | null
+          site?: string
           status?: string | null
           subscription_id?: string | null
           total_requests?: number | null
@@ -359,6 +440,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      link_analytics: {
+        Row: {
+          clicked_at: string
+          id: string
+          ip_address: string | null
+          link_name: string
+          link_url: string | null
+          page_url: string | null
+          referrer: string | null
+          session_id: string | null
+          site: string
+          user_agent: string | null
+        }
+        Insert: {
+          clicked_at?: string
+          id?: string
+          ip_address?: string | null
+          link_name: string
+          link_url?: string | null
+          page_url?: string | null
+          referrer?: string | null
+          session_id?: string | null
+          site?: string
+          user_agent?: string | null
+        }
+        Update: {
+          clicked_at?: string
+          id?: string
+          ip_address?: string | null
+          link_name?: string
+          link_url?: string | null
+          page_url?: string | null
+          referrer?: string | null
+          session_id?: string | null
+          site?: string
+          user_agent?: string | null
+        }
+        Relationships: []
       }
       link_clicks: {
         Row: {
@@ -384,6 +504,45 @@ export type Database = {
           link_title?: string
           link_url?: string
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      pos_products: {
+        Row: {
+          billing_period: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          price_cents: number
+          site: string
+          slug: string
+          stripe_price_id: string | null
+        }
+        Insert: {
+          billing_period?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          price_cents: number
+          site?: string
+          slug: string
+          stripe_price_id?: string | null
+        }
+        Update: {
+          billing_period?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          price_cents?: number
+          site?: string
+          slug?: string
+          stripe_price_id?: string | null
         }
         Relationships: []
       }
@@ -440,6 +599,7 @@ export type Database = {
           original_price: string | null
           price: string
           short_description: string | null
+          site: string
           title: string
           updated_at: string | null
         }
@@ -456,6 +616,7 @@ export type Database = {
           original_price?: string | null
           price: string
           short_description?: string | null
+          site?: string
           title: string
           updated_at?: string | null
         }
@@ -472,6 +633,7 @@ export type Database = {
           original_price?: string | null
           price?: string
           short_description?: string | null
+          site?: string
           title?: string
           updated_at?: string | null
         }
@@ -485,6 +647,7 @@ export type Database = {
           full_name: string | null
           id: string
           last_name: string | null
+          site: string
           updated_at: string
         }
         Insert: {
@@ -494,6 +657,7 @@ export type Database = {
           full_name?: string | null
           id: string
           last_name?: string | null
+          site?: string
           updated_at?: string
         }
         Update: {
@@ -503,6 +667,7 @@ export type Database = {
           full_name?: string | null
           id?: string
           last_name?: string | null
+          site?: string
           updated_at?: string
         }
         Relationships: []
@@ -515,6 +680,8 @@ export type Database = {
           id: string
           product_id: string
           purchased_at: string | null
+          site: string
+          site_product_slug: string | null
           stripe_payment_id: string
           user_id: string | null
         }
@@ -525,6 +692,8 @@ export type Database = {
           id?: string
           product_id: string
           purchased_at?: string | null
+          site?: string
+          site_product_slug?: string | null
           stripe_payment_id: string
           user_id?: string | null
         }
@@ -535,6 +704,8 @@ export type Database = {
           id?: string
           product_id?: string
           purchased_at?: string | null
+          site?: string
+          site_product_slug?: string | null
           stripe_payment_id?: string
           user_id?: string | null
         }
@@ -552,6 +723,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "products_public"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchases_site_product_slug_fkey"
+            columns: ["site_product_slug"]
+            isOneToOne: false
+            referencedRelation: "site_products"
+            referencedColumns: ["slug"]
           },
           {
             foreignKeyName: "purchases_user_id_fkey"
@@ -634,6 +812,87 @@ export type Database = {
         }
         Relationships: []
       }
+      site_products: {
+        Row: {
+          billing_period: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          price_cents: number
+          site: string
+          slug: string
+        }
+        Insert: {
+          billing_period?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          price_cents: number
+          site: string
+          slug: string
+        }
+        Update: {
+          billing_period?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          price_cents?: number
+          site?: string
+          slug?: string
+        }
+        Relationships: []
+      }
+      subscribers: {
+        Row: {
+          created_at: string | null
+          email: string | null
+          free_credits: number | null
+          id: string
+          paid_credits: number | null
+          site: string
+          stripe_customer_id: string | null
+          subscribed: boolean | null
+          subscription_end: string | null
+          subscription_tier: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email?: string | null
+          free_credits?: number | null
+          id?: string
+          paid_credits?: number | null
+          site?: string
+          stripe_customer_id?: string | null
+          subscribed?: boolean | null
+          subscription_end?: string | null
+          subscription_tier?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string | null
+          free_credits?: number | null
+          id?: string
+          paid_credits?: number | null
+          site?: string
+          stripe_customer_id?: string | null
+          subscribed?: boolean | null
+          subscription_end?: string | null
+          subscription_tier?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       subscriptions: {
         Row: {
           cancel_at_period_end: boolean
@@ -641,6 +900,9 @@ export type Database = {
           current_period_end: string
           current_period_start: string
           id: string
+          product_slug: string | null
+          site: string
+          site_product_slug: string | null
           status: string
           stripe_customer_id: string
           stripe_price_id: string
@@ -654,6 +916,9 @@ export type Database = {
           current_period_end: string
           current_period_start: string
           id?: string
+          product_slug?: string | null
+          site?: string
+          site_product_slug?: string | null
           status: string
           stripe_customer_id: string
           stripe_price_id: string
@@ -667,6 +932,9 @@ export type Database = {
           current_period_end?: string
           current_period_start?: string
           id?: string
+          product_slug?: string | null
+          site?: string
+          site_product_slug?: string | null
           status?: string
           stripe_customer_id?: string
           stripe_price_id?: string
@@ -675,6 +943,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "subscriptions_site_product_slug_fkey"
+            columns: ["site_product_slug"]
+            isOneToOne: false
+            referencedRelation: "site_products"
+            referencedColumns: ["slug"]
+          },
           {
             foreignKeyName: "subscriptions_user_id_fkey"
             columns: ["user_id"]
@@ -728,18 +1003,21 @@ export type Database = {
           created_at: string | null
           id: string
           role: Database["public"]["Enums"]["app_role"]
+          site: string
           user_id: string
         }
         Insert: {
           created_at?: string | null
           id?: string
           role: Database["public"]["Enums"]["app_role"]
+          site?: string
           user_id: string
         }
         Update: {
           created_at?: string | null
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
+          site?: string
           user_id?: string
         }
         Relationships: []
