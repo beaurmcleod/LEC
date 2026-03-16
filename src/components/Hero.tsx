@@ -24,7 +24,7 @@ export const Hero = () => {
         </div>
 
         <h1 className="font-display text-5xl md:text-7xl lg:text-8xl font-bold mb-6 tracking-tight">
-          <span className="bg-gradient-hero bg-clip-text text-transparent text-glow-primary">
+          <span className="bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
             Low End Candy
           </span>
         </h1>
