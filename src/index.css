@@ -9,75 +9,75 @@
 
 @layer base {
   :root {
-    /* Deep charcoal base - easy on eyes in studio lighting */
-    --background: 0 0% 7%;
-    --foreground: 0 0% 98%;
+    /* Deep charcoal base - candy store at night */
+    --background: 270 15% 6%;
+    --foreground: 45 100% 96%;
 
     /* Card backgrounds - slightly lifted from base */
-    --card: 0 0% 10%;
-    --card-foreground: 0 0% 98%;
+    --card: 270 12% 10%;
+    --card-foreground: 45 100% 96%;
 
-    --popover: 0 0% 10%;
-    --popover-foreground: 0 0% 98%;
+    --popover: 270 12% 10%;
+    --popover-foreground: 45 100% 96%;
 
-    /* Electric Purple - main candy accent */
-    --primary: 280 85% 60%;
-    --primary-foreground: 0 0% 98%;
+    /* Candy Yellow - main accent */
+    --primary: 48 100% 55%;
+    --primary-foreground: 270 30% 8%;
 
-    /* Hot Pink - secondary candy accent */
-    --secondary: 330 85% 60%;
+    /* Bubblegum Pink - secondary candy accent */
+    --secondary: 340 82% 62%;
     --secondary-foreground: 0 0% 98%;
 
     /* Muted dark tones */
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 65%;
+    --muted: 270 10% 15%;
+    --muted-foreground: 45 20% 65%;
 
-    /* Neon Cyan - HIGH CONTRAST BUY BUTTON */
+    /* Candy Cyan - HIGH CONTRAST BUY BUTTON */
     --accent: 175 100% 50%;
     --accent-foreground: 0 0% 5%;
 
     --destructive: 0 75% 55%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 0 0% 18%;
-    --input: 0 0% 12%;
-    --ring: 280 85% 60%;
+    --border: 270 10% 18%;
+    --input: 270 10% 12%;
+    --ring: 48 100% 55%;
 
     --radius: 0.75rem;
 
     /* Candy gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(280 85% 60%), hsl(330 85% 60%));
-    --gradient-accent: linear-gradient(135deg, hsl(175 100% 50%), hsl(200 100% 60%));
-    --gradient-hero: linear-gradient(135deg, hsl(280 85% 55%) 0%, hsl(330 85% 55%) 50%, hsl(175 100% 50%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(48 100% 55%), hsl(35 100% 60%));
+    --gradient-accent: linear-gradient(135deg, hsl(340 82% 62%), hsl(310 80% 60%));
+    --gradient-hero: linear-gradient(135deg, hsl(48 100% 55%) 0%, hsl(340 82% 62%) 50%, hsl(175 100% 50%) 100%);
     
-    /* Neon glows */
-    --glow-primary: 0 0 30px hsl(280 85% 60% / 0.5);
-    --glow-accent: 0 0 25px hsl(175 100% 50% / 0.5);
-    --glow-secondary: 0 0 25px hsl(330 85% 60% / 0.5);
+    /* Candy glows */
+    --glow-primary: 0 0 30px hsl(48 100% 55% / 0.4);
+    --glow-accent: 0 0 25px hsl(175 100% 50% / 0.4);
+    --glow-secondary: 0 0 25px hsl(340 82% 62% / 0.4);
     
     /* Extended candy palette */
     --studio-warm: 35 95% 65%;
     --studio-cool: 200 85% 60%;
-    --beats-purple: 280 85% 65%;
+    --beats-purple: 280 70% 65%;
     --samples-orange: 25 100% 65%;
     
     /* Neon volt green for special CTAs */
-    --neon: 120 100% 50%;
-    --neon-foreground: 0 0% 5%;
-    --charcoal: 0 0% 10%;
-    --charcoal-light: 0 0% 14%;
-    --obsidian: 0 0% 6%;
-    --glow-neon: 0 0 30px hsl(120 100% 50% / 0.4);
+    --neon: 48 100% 60%;
+    --neon-foreground: 270 30% 8%;
+    --charcoal: 270 12% 10%;
+    --charcoal-light: 270 10% 14%;
+    --obsidian: 270 15% 5%;
+    --glow-neon: 0 0 30px hsl(48 100% 55% / 0.4);
 
     /* Sidebar */
-    --sidebar-background: 0 0% 8%;
-    --sidebar-foreground: 0 0% 85%;
-    --sidebar-primary: 280 85% 60%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 0 0% 12%;
-    --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 0 0% 15%;
-    --sidebar-ring: 280 85% 60%;
+    --sidebar-background: 270 12% 8%;
+    --sidebar-foreground: 45 20% 85%;
+    --sidebar-primary: 48 100% 55%;
+    --sidebar-primary-foreground: 270 30% 8%;
+    --sidebar-accent: 270 10% 12%;
+    --sidebar-accent-foreground: 45 100% 96%;
+    --sidebar-border: 270 10% 15%;
+    --sidebar-ring: 48 100% 55%;
   }
 
   .light {
