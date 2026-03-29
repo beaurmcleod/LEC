@@ -1225,6 +1225,7 @@ export type Database = {
           id: string
           last_name: string | null
           site: string
+          stripe_customer_id: string | null
           updated_at: string
         }
         Insert: {
@@ -1235,6 +1236,7 @@ export type Database = {
           id: string
           last_name?: string | null
           site?: string
+          stripe_customer_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -1245,6 +1247,7 @@ export type Database = {
           id?: string
           last_name?: string | null
           site?: string
+          stripe_customer_id?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -1425,6 +1428,102 @@ export type Database = {
         }
         Relationships: []
       }
+      stripe_connect_accounts: {
+        Row: {
+          charges_enabled: boolean
+          created_at: string
+          creator_id: string
+          id: string
+          onboarding_complete: boolean
+          payouts_enabled: boolean
+          stripe_account_id: string
+          updated_at: string
+        }
+        Insert: {
+          charges_enabled?: boolean
+          created_at?: string
+          creator_id: string
+          id?: string
+          onboarding_complete?: boolean
+          payouts_enabled?: boolean
+          stripe_account_id: string
+          updated_at?: string
+        }
+        Update: {
+          charges_enabled?: boolean
+          created_at?: string
+          creator_id?: string
+          id?: string
+          onboarding_complete?: boolean
+          payouts_enabled?: boolean
+          stripe_account_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stripe_connect_accounts_creator_id_fkey"
+            columns: ["creator_id"]
+            isOneToOne: true
+            referencedRelation: "creator_earnings"
+            referencedColumns: ["creator_id"]
+          },
+          {
+            foreignKeyName: "stripe_connect_accounts_creator_id_fkey"
+            columns: ["creator_id"]
+            isOneToOne: true
+            referencedRelation: "creators"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stripe_customers: {
+        Row: {
+          created_at: string
+          id: string
+          stripe_customer_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          stripe_customer_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          stripe_customer_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      stripe_events: {
+        Row: {
+          created_at: string
+          data: Json | null
+          event_type: string
+          id: string
+          processed: boolean
+          processed_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          data?: Json | null
+          event_type: string
+          id: string
+          processed?: boolean
+          processed_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          data?: Json | null
+          event_type?: string
+          id?: string
+          processed?: boolean
+          processed_at?: string | null
+        }
+        Relationships: []
+      }
       subscribers: {
         Row: {
           created_at: string | null
@@ -1483,6 +1582,7 @@ export type Database = {
           price_cents: number
           sort_order: number
           stripe_price_id: string | null
+          stripe_product_id: string | null
           updated_at: string
         }
         Insert: {
@@ -1497,6 +1597,7 @@ export type Database = {
           price_cents?: number
           sort_order?: number
           stripe_price_id?: string | null
+          stripe_product_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -1511,6 +1612,7 @@ export type Database = {
           price_cents?: number
           sort_order?: number
           stripe_price_id?: string | null
+          stripe_product_id?: string | null
           updated_at?: string
         }
         Relationships: [
