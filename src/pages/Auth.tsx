@@ -198,7 +198,36 @@ const Auth = () => {
             </Button>
           </form>
 
-          <div className="mt-6 text-center">
+          {isLogin && (
+            <div className="mt-4 text-center">
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!email.trim()) {
+                    toast.error("Please enter your email first");
+                    return;
+                  }
+                  try {
+                    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+                      redirectTo: `${window.location.origin}/reset-password`,
+                    });
+                    if (error) {
+                      toast.error(error.message);
+                    } else {
+                      toast.success("Password reset link sent! Check your email.");
+                    }
+                  } catch {
+                    toast.error("Failed to send reset email");
+                  }
+                }}
+                className="text-sm text-muted-foreground hover:text-primary hover:underline"
+              >
+                Forgot your password?
+              </button>
+            </div>
+          )}
+
+          <div className="mt-4 text-center">
             <button
               type="button"
               onClick={() => setIsLogin(!isLogin)}

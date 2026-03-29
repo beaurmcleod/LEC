@@ -15,6 +15,7 @@ import ProductDetail from "./pages/ProductDetail";
 import Free from "./pages/Free";
 import Racks from "./pages/Racks";
 import Auth from "./pages/Auth";
+import ResetPassword from "./pages/ResetPassword";
 import MyPurchases from "./pages/MyPurchases";
 import Download from "./pages/Download";
 import Links from "./pages/Links";
@@ -67,6 +68,7 @@ const App = () => (
           <Route path="/payment-success" element={<PaymentSuccess />} />
           <Route path="/payment-canceled" element={<PaymentCanceled />} />
           <Route path="/auth" element={<Auth />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/my-purchases" element={<MyPurchases />} />
           <Route path="/download" element={<Download />} />
           <Route path="/cancel-lesson" element={<CancelLesson />} />
