@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { logTransaction } from "../_shared/email-helper.ts";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
   apiVersion: "2023-10-16",
@@ -15,7 +16,6 @@ const ADMIN_EMAIL = Deno.env.get("ADMIN_NOTIFICATION_EMAIL") || "beau@lowendcand
 const EXPECTED_SOURCE_APP = "lowendcandy_store";
 const EXPECTED_SITE = "lowendcandy";
 
-// Send alert email to admin when delivery fails
 async function sendAdminAlert(subject: string, details: string) {
   try {
     const resendKey = Deno.env.get("RESEND_API_KEY");
@@ -46,37 +46,20 @@ async function sendAdminAlert(subject: string, details: string) {
   }
 }
 
-// Send purchase data to Make.com
 async function sendToMake(purchaseData: {
-  email: string;
-  firstName?: string;
-  lastName?: string;
-  productId: string;
-  productTitle: string;
-  amount: number;
-  purchaseDate: string;
-  paymentId: string;
-  site: string;
-  sourceApp: string;
+  email: string; firstName?: string; lastName?: string; productId: string; productTitle: string; amount: number; purchaseDate: string; paymentId: string; site: string; sourceApp: string;
 }) {
   try {
     const response = await fetch(MAKE_WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        email: purchaseData.email,
-        first_name: purchaseData.firstName || "",
-        last_name: purchaseData.lastName || "",
-        product_id: purchaseData.productId,
-        product_title: purchaseData.productTitle,
-        amount_paid: purchaseData.amount,
-        purchase_date: purchaseData.purchaseDate,
-        stripe_payment_id: purchaseData.paymentId,
-        site: purchaseData.site,
-        source: purchaseData.sourceApp,
+        email: purchaseData.email, first_name: purchaseData.firstName || "", last_name: purchaseData.lastName || "",
+        product_id: purchaseData.productId, product_title: purchaseData.productTitle, amount_paid: purchaseData.amount,
+        purchase_date: purchaseData.purchaseDate, stripe_payment_id: purchaseData.paymentId,
+        site: purchaseData.site, source: purchaseData.sourceApp,
       }),
     });
-
     if (!response.ok) {
       console.error("Make.com webhook failed:", response.status, await response.text());
     } else {
@@ -108,32 +91,22 @@ serve(async (req) => {
     const body = await req.text();
     const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
 
-    // SECURITY: Webhook signature verification is mandatory
     if (!webhookSecret) {
       console.error("STRIPE_WEBHOOK_SECRET is not configured");
       return new Response(
         JSON.stringify({ error: "Webhook configuration error" }),
-        {
-          headers: { "Content-Type": "application/json" },
-          status: 500,
-        },
+        { headers: { "Content-Type": "application/json" }, status: 500 }
       );
     }
 
-    // Verify the webhook signature
     const event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
-
     console.log("Webhook event received:", event.type);
 
-    // Handle successful payment
     if (event.type === "payment_intent.succeeded") {
       const paymentIntent = event.data.object;
       console.log("Payment succeeded:", paymentIntent.id);
 
-      // Get customer email from payment intent
-      const email = paymentIntent.receipt_email ||
-        (paymentIntent.charges?.data[0]?.billing_details?.email);
-
+      const email = paymentIntent.receipt_email || (paymentIntent.charges?.data[0]?.billing_details?.email);
       let productTitle = paymentIntent.metadata?.product_title || "Digital Product";
       const productId = paymentIntent.metadata?.product_id;
       const customerFirstName = paymentIntent.metadata?.customer_first_name || "";
@@ -144,34 +117,39 @@ serve(async (req) => {
 
       console.log("Recording purchase for:", email, "Amount:", amount);
 
-      // Ignore payments not explicitly created by this storefront to prevent cross-app misdelivery
+      // Ignore payments not from this storefront
       if (sourceApp !== EXPECTED_SOURCE_APP || site !== EXPECTED_SITE) {
-        console.warn("Ignoring payment from unexpected source", {
-          paymentIntentId: paymentIntent.id,
-          sourceApp,
-          site,
-          productId,
-          email,
-        });
+        console.warn("Ignoring payment from unexpected source", { paymentIntentId: paymentIntent.id, sourceApp, site, productId, email });
         return new Response(JSON.stringify({ received: true, ignored: true, reason: "source_mismatch" }), {
-          headers: { "Content-Type": "application/json" },
-          status: 200,
+          headers: { "Content-Type": "application/json" }, status: 200,
         });
       }
 
       if (!email || !productId) {
         console.error("Missing email or productId!", { email, productId, paymentIntentId: paymentIntent.id });
+
+        // Log payment failure
+        await logTransaction(supabase, {
+          site: EXPECTED_SITE,
+          eventType: "payment_failed",
+          status: "failed",
+          customerEmail: email || undefined,
+          productId: productId || undefined,
+          stripePaymentId: paymentIntent.id,
+          edgeFunction: "stripe-webhook",
+          errorMessage: `Missing ${!email ? "customer email" : "product ID"}`,
+        });
+
         await sendAdminAlert(
           "Payment Missing Email or Product ID",
           `A payment of $${amount} succeeded (${paymentIntent.id}) but ${!email ? "customer email" : "product ID"} is missing. Product: ${productTitle}. This customer will NOT receive their download. Check Stripe dashboard for details.`,
         );
         return new Response(JSON.stringify({ received: true, ignored: true, reason: "missing_required_metadata" }), {
-          headers: { "Content-Type": "application/json" },
-          status: 200,
+          headers: { "Content-Type": "application/json" }, status: 200,
         });
       }
 
-      // Idempotency guard for duplicate Stripe webhook deliveries
+      // Idempotency guard
       const { data: existingPurchase } = await supabase
         .from("purchases")
         .select("id")
@@ -181,12 +159,11 @@ serve(async (req) => {
       if (existingPurchase) {
         console.log("Payment already processed, skipping duplicate delivery:", paymentIntent.id);
         return new Response(JSON.stringify({ received: true, duplicate: true }), {
-          headers: { "Content-Type": "application/json" },
-          status: 200,
+          headers: { "Content-Type": "application/json" }, status: 200,
         });
       }
 
-      // Canonical product lookup so delivery always maps from DB product_id
+      // Canonical product lookup
       const { data: catalogProduct, error: catalogProductError } = await supabase
         .from("products")
         .select("id, title, price, site")
@@ -194,44 +171,55 @@ serve(async (req) => {
         .maybeSingle();
 
       if (catalogProductError || !catalogProduct) {
-        console.error("Product lookup failed for webhook delivery", {
-          productId,
-          paymentIntentId: paymentIntent.id,
-          error: catalogProductError,
+        console.error("Product lookup failed for webhook delivery", { productId, paymentIntentId: paymentIntent.id, error: catalogProductError });
+
+        await logTransaction(supabase, {
+          site: EXPECTED_SITE,
+          eventType: "payment_failed",
+          status: "failed",
+          customerEmail: email,
+          productId: productId,
+          stripePaymentId: paymentIntent.id,
+          edgeFunction: "stripe-webhook",
+          errorMessage: "Product lookup failed - unknown product ID",
         });
+
         await sendAdminAlert(
           "Webhook Product Lookup Failed",
           `Payment ${paymentIntent.id} could not be matched to a valid product row for product_id <strong>${productId}</strong>. Delivery was intentionally blocked to prevent wrong-product emails.`,
         );
         return new Response(JSON.stringify({ received: true, ignored: true, reason: "unknown_product" }), {
-          headers: { "Content-Type": "application/json" },
-          status: 200,
+          headers: { "Content-Type": "application/json" }, status: 200,
         });
       }
 
       if (catalogProduct.site !== EXPECTED_SITE) {
-        console.error("Catalog product site mismatch - delivery blocked", {
-          productId,
-          catalogSite: catalogProduct.site,
-          expectedSite: EXPECTED_SITE,
-          paymentIntentId: paymentIntent.id,
+        console.error("Catalog product site mismatch - delivery blocked", { productId, catalogSite: catalogProduct.site, expectedSite: EXPECTED_SITE, paymentIntentId: paymentIntent.id });
+
+        await logTransaction(supabase, {
+          site: EXPECTED_SITE,
+          eventType: "payment_failed",
+          status: "failed",
+          customerEmail: email,
+          productId: productId,
+          stripePaymentId: paymentIntent.id,
+          edgeFunction: "stripe-webhook",
+          errorMessage: `Catalog site mismatch: ${catalogProduct.site} vs ${EXPECTED_SITE}`,
         });
+
         await sendAdminAlert(
           "Blocked Cross-Site Product Delivery",
           `Payment ${paymentIntent.id} resolved to product <strong>${catalogProduct.title}</strong> (${productId}) but catalog site is <strong>${catalogProduct.site}</strong>, expected <strong>${EXPECTED_SITE}</strong>. Delivery was blocked to prevent wrong product fulfillment.`,
         );
         return new Response(JSON.stringify({ received: true, ignored: true, reason: "catalog_site_mismatch" }), {
-          headers: { "Content-Type": "application/json" },
-          status: 200,
+          headers: { "Content-Type": "application/json" }, status: 200,
         });
       }
 
       if (paymentIntent.metadata?.product_title && paymentIntent.metadata.product_title !== catalogProduct.title) {
         console.warn("Metadata product title mismatch; using canonical DB title", {
-          paymentIntentId: paymentIntent.id,
-          metadataTitle: paymentIntent.metadata.product_title,
-          canonicalTitle: catalogProduct.title,
-          productId,
+          paymentIntentId: paymentIntent.id, metadataTitle: paymentIntent.metadata.product_title,
+          canonicalTitle: catalogProduct.title, productId,
         });
       }
 
@@ -240,16 +228,12 @@ serve(async (req) => {
       const expectedCents = parsePriceToCents(catalogProduct.price);
       if (expectedCents !== null && expectedCents !== paymentIntent.amount) {
         console.warn("Amount differs from catalog price (coupon/discount likely)", {
-          paymentIntentId: paymentIntent.id,
-          productId,
-          expectedCents,
-          chargedCents: paymentIntent.amount,
+          paymentIntentId: paymentIntent.id, productId, expectedCents, chargedCents: paymentIntent.amount,
         });
       }
 
-      // SECURITY: Record purchase in database for verification
+      // Record purchase
       if (productId && email) {
-        // Check if user exists with this email
         const { data: profile } = await supabase
           .from("profiles")
           .select("id")
@@ -263,52 +247,50 @@ serve(async (req) => {
             stripe_payment_id: paymentIntent.id,
             amount_paid: paymentIntent.amount,
             customer_email: email,
-            user_id: profile?.id || null, // Link to user if they have an account
+            user_id: profile?.id || null,
             site: EXPECTED_SITE,
           });
 
         if (purchaseError) {
           console.error("Error recording purchase:", purchaseError);
-          // Continue anyway to send email
         } else {
           console.log("Purchase recorded successfully", profile?.id ? "with user_id" : "without user_id");
         }
 
-        // Send to Make.com webhook with deterministic product fields
-        await sendToMake({
-          email: email,
-          firstName: customerFirstName,
-          lastName: customerLastName,
-          productId: productId,
-          productTitle: productTitle,
-          amount: amount,
-          purchaseDate: new Date().toISOString(),
-          paymentId: paymentIntent.id,
+        // Log successful payment
+        await logTransaction(supabase, {
           site: EXPECTED_SITE,
-          sourceApp: EXPECTED_SOURCE_APP,
+          eventType: "payment_succeeded",
+          status: "success",
+          customerEmail: email,
+          productId: productId,
+          stripePaymentId: paymentIntent.id,
+          edgeFunction: "stripe-webhook",
+          metadata: { productTitle, amount, customerFirstName, customerLastName },
         });
 
-        // Check if this is a lesson booking
+        // Send to Make.com
+        await sendToMake({
+          email, firstName: customerFirstName, lastName: customerLastName,
+          productId, productTitle, amount,
+          purchaseDate: new Date().toISOString(),
+          paymentId: paymentIntent.id, site: EXPECTED_SITE, sourceApp: EXPECTED_SOURCE_APP,
+        });
+
         const isLesson = paymentIntent.metadata?.is_lesson === "true";
         const lessonDate = paymentIntent.metadata?.lesson_date;
         const lessonTime = paymentIntent.metadata?.lesson_time;
 
-        // Only send download email for non-lesson products
         if (!isLesson) {
-          // Generate secure download token (7-day expiry, 5 downloads max)
           const downloadToken = crypto.randomUUID() + "-" + Date.now().toString(36);
           const expiresAt = new Date();
-          expiresAt.setDate(expiresAt.getDate() + 7); // 7 days from now
+          expiresAt.setDate(expiresAt.getDate() + 7);
 
           const { error: tokenError } = await supabase
             .from("download_tokens")
             .insert({
-              token: downloadToken,
-              product_id: productId,
-              customer_email: email,
-              user_id: profile?.id || null,
-              expires_at: expiresAt.toISOString(),
-              max_downloads: 5,
+              token: downloadToken, product_id: productId, customer_email: email,
+              user_id: profile?.id || null, expires_at: expiresAt.toISOString(), max_downloads: 5,
             });
 
           if (tokenError) {
@@ -319,17 +301,11 @@ serve(async (req) => {
             );
           } else {
             console.log("Download token created successfully, expires:", expiresAt.toISOString());
-            console.log("Sending purchase email to:", email);
 
-            // Call the send-purchase-email function with secure download token
             const { error: emailError } = await supabase.functions.invoke("send-purchase-email", {
               body: {
-                to: email,
-                productTitle: productTitle,
-                amount: amount,
-                paymentIntentId: paymentIntent.id,
-                productId: productId,
-                downloadToken: downloadToken,
+                to: email, productTitle, amount,
+                paymentIntentId: paymentIntent.id, productId, downloadToken,
               },
             });
 
@@ -345,83 +321,72 @@ serve(async (req) => {
           }
         }
 
-        // Send lesson notification for lesson bookings
         if (isLesson && lessonDate && lessonTime) {
-          // Calculate duration from product title
-          let durationMinutes = 60; // default
-          if (productTitle.includes("2 Hour")) {
-            durationMinutes = 120;
-          } else if (productTitle.includes("4 Lesson")) {
-            durationMinutes = 60; // First session is 1 hour
-          }
+          let durationMinutes = 60;
+          if (productTitle.includes("2 Hour")) durationMinutes = 120;
+          else if (productTitle.includes("4 Lesson")) durationMinutes = 60;
 
-          // Generate cancellation token for the lesson
           const cancellationToken = crypto.randomUUID() + "-" + Date.now().toString(36);
 
-          // Record the lesson booking
           const { error: bookingError } = await supabase
             .from("lesson_bookings")
             .insert({
-              customer_email: email,
-              customer_first_name: customerFirstName || null,
-              customer_last_name: customerLastName || null,
-              product_id: productId,
-              product_title: productTitle,
-              lesson_date: lessonDate,
-              lesson_time: lessonTime,
-              duration_minutes: durationMinutes,
-              amount_paid: paymentIntent.amount,
-              stripe_payment_id: paymentIntent.id,
-              cancellation_token: cancellationToken,
-              status: "confirmed",
+              customer_email: email, customer_first_name: customerFirstName || null,
+              customer_last_name: customerLastName || null, product_id: productId,
+              product_title: productTitle, lesson_date: lessonDate, lesson_time: lessonTime,
+              duration_minutes: durationMinutes, amount_paid: paymentIntent.amount,
+              stripe_payment_id: paymentIntent.id, cancellation_token: cancellationToken, status: "confirmed",
             });
 
-          if (bookingError) {
-            console.error("Error recording lesson booking:", bookingError);
-          } else {
-            console.log("Lesson booking recorded successfully");
-          }
-
-          console.log("Sending lesson notification for:", { productTitle, lessonDate, lessonTime });
+          if (bookingError) console.error("Error recording lesson booking:", bookingError);
+          else console.log("Lesson booking recorded successfully");
 
           const { error: lessonEmailError } = await supabase.functions.invoke("send-lesson-notification", {
             body: {
-              customerEmail: email,
-              lessonTitle: productTitle,
-              lessonDate: lessonDate,
-              lessonTime: lessonTime,
-              durationMinutes: durationMinutes,
-              amountPaid: amount,
-              cancellationToken: cancellationToken,
+              customerEmail: email, lessonTitle: productTitle, lessonDate, lessonTime,
+              durationMinutes, amountPaid: amount, cancellationToken,
             },
           });
 
-          if (lessonEmailError) {
-            console.error("Error sending lesson notification:", lessonEmailError);
-          } else {
-            console.log("Lesson notification email sent successfully");
-          }
+          if (lessonEmailError) console.error("Error sending lesson notification:", lessonEmailError);
+          else console.log("Lesson notification email sent successfully");
         }
       }
     }
 
+    // Handle failed payments
+    if (event.type === "payment_intent.payment_failed") {
+      const paymentIntent = event.data.object;
+      const email = paymentIntent.receipt_email || (paymentIntent.charges?.data[0]?.billing_details?.email);
+      const productId = paymentIntent.metadata?.product_id;
+      const errorMessage = paymentIntent.last_payment_error?.message || "Unknown payment failure";
+
+      console.error("Payment failed:", paymentIntent.id, errorMessage);
+
+      await logTransaction(supabase, {
+        site: EXPECTED_SITE,
+        eventType: "payment_failed",
+        status: "failed",
+        customerEmail: email || undefined,
+        productId: productId || undefined,
+        stripePaymentId: paymentIntent.id,
+        edgeFunction: "stripe-webhook",
+        errorMessage,
+      });
+    }
+
     return new Response(JSON.stringify({ received: true }), {
-      headers: { "Content-Type": "application/json" },
-      status: 200,
+      headers: { "Content-Type": "application/json" }, status: 200,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Webhook error:", error.message);
-    // Alert admin on complete webhook failure
     await sendAdminAlert(
       "Stripe Webhook CRASHED",
       `The webhook handler threw an unhandled error: <strong>${error.message}</strong>. This means a payment may have been received but NOT processed at all. Check logs immediately.`,
     );
     return new Response(
       JSON.stringify({ error: "Webhook processing failed" }),
-      {
-        headers: { "Content-Type": "application/json" },
-        status: 400,
-      },
+      { headers: { "Content-Type": "application/json" }, status: 400 }
     );
   }
 });

@@ -107,3 +107,9 @@ verify_jwt = false
 
 [functions.daily-health-check]
 verify_jwt = false
+
+[functions.retry-failed-emails]
+verify_jwt = false
+
+[functions.send-dj-inquiry]
+verify_jwt = false
