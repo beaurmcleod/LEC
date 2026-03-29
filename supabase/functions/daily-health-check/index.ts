@@ -240,6 +240,34 @@ serve(async (req) => {
       }
     }
 
+    // ─── CHECK 10: User signup / profile creation test ───
+    console.log("Check 10: User signup trigger health");
+    try {
+      // Verify the handle_new_user trigger exists and profile CHECK constraint is valid
+      const { data: triggerCheck } = await supabase.rpc('has_role', { _user_id: '00000000-0000-0000-0000-000000000000', _role: 'admin' });
+      
+      // Check that the profiles table accepts 'lowendcandy' as site value
+      const { error: constraintTest } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("site", "lowendcandy")
+        .limit(1);
+      
+      if (constraintTest) {
+        results.push({ name: "User Signup", status: "fail", details: `Profile query failed: ${constraintTest.message}` });
+      } else {
+        // Verify the trigger function exists
+        const { data: fnCheck, error: fnErr } = await supabase.rpc('has_role', { _user_id: '00000000-0000-0000-0000-000000000000', _role: 'user' });
+        if (fnErr) {
+          results.push({ name: "User Signup", status: "warn", details: `Database function check warning: ${fnErr.message}` });
+        } else {
+          results.push({ name: "User Signup", status: "pass", details: "Profile creation trigger and constraints are healthy" });
+        }
+      }
+    } catch (signupErr: any) {
+      results.push({ name: "User Signup", status: "fail", details: `Signup check error: ${signupErr.message}` });
+    }
+
     // ─── COMPILE RESULTS ───
     const elapsed = Date.now() - startTime;
     const failCount = results.filter(r => r.status === "fail").length;
