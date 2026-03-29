@@ -1218,35 +1218,44 @@ export type Database = {
       }
       profiles: {
         Row: {
+          avatar_url: string | null
+          bio: string | null
           created_at: string
+          display_name: string | null
           email: string
           first_name: string | null
           full_name: string | null
           id: string
           last_name: string | null
-          site: string
+          site: string | null
           stripe_customer_id: string | null
           updated_at: string
         }
         Insert: {
+          avatar_url?: string | null
+          bio?: string | null
           created_at?: string
+          display_name?: string | null
           email: string
           first_name?: string | null
           full_name?: string | null
           id: string
           last_name?: string | null
-          site?: string
+          site?: string | null
           stripe_customer_id?: string | null
           updated_at?: string
         }
         Update: {
+          avatar_url?: string | null
+          bio?: string | null
           created_at?: string
+          display_name?: string | null
           email?: string
           first_name?: string | null
           full_name?: string | null
           id?: string
           last_name?: string | null
-          site?: string
+          site?: string | null
           stripe_customer_id?: string | null
           updated_at?: string
         }
