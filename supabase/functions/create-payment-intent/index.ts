@@ -171,6 +171,8 @@ serve(async (req) => {
     const metadata: Record<string, string> = {
       product_id: product.id,
       product_title: product.title,
+      site: 'lowendcandy',
+      source_app: 'lowendcandy_store',
       customer_first_name: customerFirstName || '',
       customer_last_name: customerLastName || '',
       coupon_code: discountApplied ? upperCoupon : '',
