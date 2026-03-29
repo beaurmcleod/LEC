@@ -32,7 +32,8 @@ serve(async (req) => {
     console.log("Check 1: Product data integrity");
     const { data: products, error: prodErr } = await supabase
       .from("products")
-      .select("id, title, price, image, category");
+      .select("id, title, price, image, category, site")
+      .eq("site", "lowendcandy");
 
     if (prodErr) {
       results.push({ name: "Product Database", status: "fail", details: `Cannot query products: ${prodErr.message}` });
@@ -44,7 +45,6 @@ serve(async (req) => {
         if (!p.price || p.price.trim() === "") issues.push(`${p.title}: missing price`);
         if (!p.image || p.image.trim() === "") issues.push(`${p.title}: missing image`);
         if (!p.category || p.category.trim() === "") issues.push(`${p.title}: missing category`);
-        // Check for invalid price format (allow "Free" as valid)
         const priceStr = (p.price || "").trim();
         const isFreeStr = priceStr.toLowerCase() === "free";
         const priceNum = parseFloat(priceStr.replace(/\$/g, ""));
@@ -57,37 +57,84 @@ serve(async (req) => {
       }
     }
 
-    // ─── CHECK 2: Download URLs configured for paid products ───
-    console.log("Check 2: Download URLs");
+    // ─── CHECK 2: Download URLs configured for non-lesson products ───
+    console.log("Check 2: Download URL mappings");
     if (products && products.length > 0) {
-      const paidProducts = products.filter(p => {
-        const price = parseFloat((p.price || "0").replace(/\$/g, ""));
-        return price > 0 && p.category?.toLowerCase() !== "lessons";
+      const downloadableProducts = products.filter(p => {
+        const cat = (p.category || "").toLowerCase();
+        return cat !== "lessons";
       });
 
       const { data: downloads, error: dlErr } = await supabase
         .from("product_downloads")
-        .select("product_id, download_url");
+        .select("product_id, download_url, download_path");
 
       if (dlErr) {
         results.push({ name: "Download URLs", status: "warn", details: `Cannot query downloads: ${dlErr.message}` });
       } else {
-        const downloadProductIds = new Set((downloads || []).map(d => d.product_id));
-        const missingDownloads = paidProducts.filter(p => !downloadProductIds.has(p.id));
+        const downloadMap = new Map((downloads || []).map(d => [d.product_id, d]));
+        const missingDownloads = downloadableProducts.filter(p => !downloadMap.has(p.id));
         if (missingDownloads.length > 0) {
           results.push({
             name: "Download URLs",
             status: "fail",
-            details: `Missing download URLs: ${missingDownloads.map(p => p.title).join(", ")}`,
+            details: `Missing download mappings: ${missingDownloads.map(p => p.title).join(", ")}`,
           });
         } else {
-          results.push({ name: "Download URLs", status: "pass", details: `${paidProducts.length} paid products all have download URLs` });
+          results.push({ name: "Download URLs", status: "pass", details: `${downloadableProducts.length} downloadable products all have mappings` });
         }
       }
     }
 
-    // ─── CHECK 3: Stripe API connectivity ───
-    console.log("Check 3: Stripe connectivity");
+    // ─── CHECK 3: Verify download files actually exist in storage ───
+    console.log("Check 3: Storage file verification");
+    if (products && products.length > 0) {
+      const { data: downloads } = await supabase
+        .from("product_downloads")
+        .select("product_id, download_path");
+
+      const downloadableProducts = products.filter(p => (p.category || "").toLowerCase() !== "lessons");
+      const dlMap = new Map((downloads || []).map(d => [d.product_id, d.download_path]));
+      const storageIssues: string[] = [];
+
+      for (const p of downloadableProducts) {
+        const dlPath = dlMap.get(p.id);
+        if (!dlPath) continue; // already caught in check 2
+
+        // Determine bucket and path
+        let bucketName = "product-downloads";
+        let filePath = dlPath;
+        if (dlPath.startsWith("LEC/")) {
+          bucketName = "LEC";
+          filePath = dlPath.replace("LEC/", "");
+        } else if (dlPath.startsWith("/downloads/")) {
+          // External URL path — skip storage check
+          continue;
+        }
+
+        // Try to create a signed URL — if the file doesn't exist, this fails
+        const { error: signErr } = await supabase.storage
+          .from(bucketName)
+          .createSignedUrl(filePath, 10);
+
+        if (signErr) {
+          storageIssues.push(`${p.title}: file missing in ${bucketName}/${filePath}`);
+        }
+      }
+
+      if (storageIssues.length > 0) {
+        results.push({
+          name: "Storage Files",
+          status: "fail",
+          details: storageIssues.join("; "),
+        });
+      } else {
+        results.push({ name: "Storage Files", status: "pass", details: "All download files verified in storage" });
+      }
+    }
+
+    // ─── CHECK 4: Stripe API connectivity ───
+    console.log("Check 4: Stripe connectivity");
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     if (!stripeKey) {
       results.push({ name: "Stripe API", status: "fail", details: "STRIPE_SECRET_KEY not configured" });
@@ -101,10 +148,13 @@ serve(async (req) => {
       }
     }
 
-    // ─── CHECK 4: create-payment-intent edge function ───
-    console.log("Check 4: Payment intent edge function");
+    // ─── CHECK 5: create-payment-intent edge function ───
+    console.log("Check 5: Payment intent edge function");
     if (products && products.length > 0) {
-      const testProduct = products.find(p => parseFloat((p.price || "0").replace(/\$/g, "")) > 0);
+      const testProduct = products.find(p => {
+        const price = parseFloat((p.price || "0").replace(/\$/g, ""));
+        return price > 0 && (p.category || "").toLowerCase() !== "lessons";
+      });
       if (testProduct) {
         try {
           const resp = await fetch(`${supabaseUrl}/functions/v1/create-payment-intent`, {
@@ -130,8 +180,8 @@ serve(async (req) => {
       }
     }
 
-    // ─── CHECK 5: Stripe webhook secret configured ───
-    console.log("Check 5: Webhook secret");
+    // ─── CHECK 6: Stripe webhook secret configured ───
+    console.log("Check 6: Webhook secret");
     const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
     if (!webhookSecret) {
       results.push({ name: "Stripe Webhook Secret", status: "fail", details: "STRIPE_WEBHOOK_SECRET not configured" });
@@ -139,16 +189,16 @@ serve(async (req) => {
       results.push({ name: "Stripe Webhook Secret", status: "pass", details: "Configured" });
     }
 
-    // ─── CHECK 6: Resend API key ───
-    console.log("Check 6: Resend");
+    // ─── CHECK 7: Resend API key ───
+    console.log("Check 7: Resend");
     if (!resendApiKey) {
       results.push({ name: "Resend Email", status: "fail", details: "RESEND_API_KEY not configured" });
     } else {
       results.push({ name: "Resend Email", status: "pass", details: "Configured" });
     }
 
-    // ─── CHECK 7: Active coupons validity ───
-    console.log("Check 7: Coupons");
+    // ─── CHECK 8: Active coupons validity ───
+    console.log("Check 8: Coupons");
     const { data: coupons, error: coupErr } = await supabase
       .from("coupons")
       .select("code, is_active, expires_at, current_uses, max_uses");
@@ -167,6 +217,26 @@ serve(async (req) => {
         results.push({ name: "Coupons", status: "warn", details: issues.join("; ") });
       } else {
         results.push({ name: "Coupons", status: "pass", details: `${coupons.filter(c => c.is_active).length} active coupons, all valid` });
+      }
+    }
+
+    // ─── CHECK 9: Product-to-download ID integrity ───
+    console.log("Check 9: Product↔Download ID cross-check");
+    if (products && products.length > 0) {
+      const { data: allDownloads } = await supabase
+        .from("product_downloads")
+        .select("product_id, download_path");
+
+      const productIds = new Set(products.map(p => p.id));
+      const orphanedDownloads = (allDownloads || []).filter(d => !productIds.has(d.product_id));
+      if (orphanedDownloads.length > 0) {
+        results.push({
+          name: "Orphaned Downloads",
+          status: "warn",
+          details: `${orphanedDownloads.length} download entries point to non-existent lowendcandy products`,
+        });
+      } else {
+        results.push({ name: "Download Integrity", status: "pass", details: "All download mappings point to valid products" });
       }
     }
 
@@ -192,13 +262,13 @@ serve(async (req) => {
       <tr style="border-bottom: 1px solid #eee;">
         <td style="padding: 12px; font-size: 20px;">${statusEmoji[r.status]}</td>
         <td style="padding: 12px; font-weight: 600;">${r.name}</td>
-        <td style="padding: 12px; color: ${r.status === 'fail' ? '#dc2626' : r.status === 'warn' ? '#d97706' : '#16a34a'};">${r.details}</td>
+        <td style="padding: 12px; color: ${r.status === "fail" ? "#dc2626" : r.status === "warn" ? "#d97706" : "#16a34a"};">${r.details}</td>
       </tr>
     `).join("");
 
     const html = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 640px; margin: 0 auto; background: #fff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
-        <div style="background: ${failCount > 0 ? '#dc2626' : warnCount > 0 ? '#d97706' : '#16a34a'}; padding: 24px; text-align: center;">
+        <div style="background: ${failCount > 0 ? "#dc2626" : warnCount > 0 ? "#d97706" : "#16a34a"}; padding: 24px; text-align: center;">
           <h1 style="color: white; margin: 0; font-size: 24px;">${overallStatus}</h1>
           <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0; font-size: 14px;">Low End Candy • ${dateStr} • ${timeStr} PST</p>
         </div>
@@ -208,11 +278,11 @@ serve(async (req) => {
               <div style="font-size: 24px; font-weight: bold; color: #16a34a;">${passCount}</div>
               <div style="font-size: 12px; color: #666;">Passed</div>
             </div>
-            <div style="flex: 1; background: ${warnCount > 0 ? '#fffbeb' : '#f9fafb'}; padding: 12px; border-radius: 8px;">
+            <div style="flex: 1; background: ${warnCount > 0 ? "#fffbeb" : "#f9fafb"}; padding: 12px; border-radius: 8px;">
               <div style="font-size: 24px; font-weight: bold; color: #d97706;">${warnCount}</div>
               <div style="font-size: 12px; color: #666;">Warnings</div>
             </div>
-            <div style="flex: 1; background: ${failCount > 0 ? '#fef2f2' : '#f9fafb'}; padding: 12px; border-radius: 8px;">
+            <div style="flex: 1; background: ${failCount > 0 ? "#fef2f2" : "#f9fafb"}; padding: 12px; border-radius: 8px;">
               <div style="font-size: 24px; font-weight: bold; color: #dc2626;">${failCount}</div>
               <div style="font-size: 12px; color: #666;">Failed</div>
             </div>
@@ -258,9 +328,6 @@ serve(async (req) => {
       console.warn("No RESEND_API_KEY, skipping email");
     }
 
-    // ─── INSTANT ALERT for critical failures (only if triggered by cron, not manual) ───
-    // The instant alert is embedded in the same function — if there are failures, the email is sent immediately.
-
     return new Response(JSON.stringify({
       status: overallStatus,
       passed: passCount,
@@ -275,7 +342,6 @@ serve(async (req) => {
   } catch (err: any) {
     console.error("Health check fatal error:", err);
 
-    // Send emergency alert
     if (resendApiKey) {
       await fetch("https://api.resend.com/emails", {
         method: "POST",
