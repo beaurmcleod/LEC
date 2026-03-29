@@ -12,6 +12,8 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const MAKE_WEBHOOK_URL = "https://hook.us2.make.com/9568sygekt6l2vvyjbtvamhd1ptuim46";
 const ADMIN_EMAIL = Deno.env.get("ADMIN_NOTIFICATION_EMAIL") || "beau@lowendcandy.com";
+const EXPECTED_SOURCE_APP = "lowendcandy_store";
+const EXPECTED_SITE = "lowendcandy";
 
 // Send alert email to admin when delivery fails
 async function sendAdminAlert(subject: string, details: string) {
@@ -80,6 +82,15 @@ async function sendToMake(purchaseData: {
   }
 }
 
+function parsePriceToCents(price: string | null | undefined): number | null {
+  if (!price) return null;
+  const normalized = price.trim().toLowerCase();
+  if (normalized === 'free') return 0;
+  const numeric = parseFloat(normalized.replace(/[^0-9.]/g, ''));
+  if (Number.isNaN(numeric)) return null;
+  return Math.round(numeric * 100);
+}
+
 serve(async (req) => {
   const signature = req.headers.get("stripe-signature");
   
@@ -118,13 +129,30 @@ serve(async (req) => {
       const email = paymentIntent.receipt_email || 
                     (paymentIntent.charges?.data[0]?.billing_details?.email);
       
-      const productTitle = paymentIntent.metadata?.product_title || "Digital Product";
+      let productTitle = paymentIntent.metadata?.product_title || "Digital Product";
       const productId = paymentIntent.metadata?.product_id;
       const customerFirstName = paymentIntent.metadata?.customer_first_name || "";
       const customerLastName = paymentIntent.metadata?.customer_last_name || "";
       const amount = paymentIntent.amount / 100;
+      const sourceApp = paymentIntent.metadata?.source_app || "";
+      const site = paymentIntent.metadata?.site || "";
 
       console.log("Recording purchase for:", email, "Amount:", amount);
+
+      // Ignore payments not explicitly created by this storefront to prevent cross-app misdelivery
+      if (sourceApp !== EXPECTED_SOURCE_APP || site !== EXPECTED_SITE) {
+        console.warn("Ignoring payment from unexpected source", {
+          paymentIntentId: paymentIntent.id,
+          sourceApp,
+          site,
+          productId,
+          email,
+        });
+        return new Response(JSON.stringify({ received: true, ignored: true, reason: "source_mismatch" }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
 
       if (!email || !productId) {
         console.error("Missing email or productId!", { email, productId, paymentIntentId: paymentIntent.id });
@@ -132,6 +160,60 @@ serve(async (req) => {
           "Payment Missing Email or Product ID",
           `A payment of $${amount} succeeded (${paymentIntent.id}) but ${!email ? 'customer email' : 'product ID'} is missing. Product: ${productTitle}. This customer will NOT receive their download. Check Stripe dashboard for details.`
         );
+        return new Response(JSON.stringify({ received: true, ignored: true, reason: "missing_required_metadata" }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
+      // Idempotency guard for duplicate Stripe webhook deliveries
+      const { data: existingPurchase } = await supabase
+        .from('purchases')
+        .select('id')
+        .eq('stripe_payment_id', paymentIntent.id)
+        .maybeSingle();
+
+      if (existingPurchase) {
+        console.log("Payment already processed, skipping duplicate delivery:", paymentIntent.id);
+        return new Response(JSON.stringify({ received: true, duplicate: true }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
+      // Canonical product lookup so delivery always maps from DB product_id
+      const { data: catalogProduct, error: catalogProductError } = await supabase
+        .from('products')
+        .select('id, title, price')
+        .eq('id', productId)
+        .maybeSingle();
+
+      if (catalogProductError || !catalogProduct) {
+        console.error("Product lookup failed for webhook delivery", {
+          productId,
+          paymentIntentId: paymentIntent.id,
+          error: catalogProductError,
+        });
+        await sendAdminAlert(
+          "Webhook Product Lookup Failed",
+          `Payment ${paymentIntent.id} could not be matched to a valid product row for product_id <strong>${productId}</strong>. Delivery was intentionally blocked to prevent wrong-product emails.`
+        );
+        return new Response(JSON.stringify({ received: true, ignored: true, reason: "unknown_product" }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
+      productTitle = catalogProduct.title;
+
+      const expectedCents = parsePriceToCents(catalogProduct.price);
+      if (expectedCents !== null && expectedCents !== paymentIntent.amount) {
+        console.warn("Amount differs from catalog price (coupon/discount likely)", {
+          paymentIntentId: paymentIntent.id,
+          productId,
+          expectedCents,
+          chargedCents: paymentIntent.amount,
+        });
       }
 
       // SECURITY: Record purchase in database for verification
@@ -202,30 +284,29 @@ serve(async (req) => {
             );
           } else {
             console.log("Download token created successfully, expires:", expiresAt.toISOString());
-          }
+            console.log("Sending purchase email to:", email);
 
-          console.log("Sending purchase email to:", email);
+            // Call the send-purchase-email function with secure download token
+            const { error: emailError } = await supabase.functions.invoke("send-purchase-email", {
+              body: {
+                to: email,
+                productTitle: productTitle,
+                amount: amount,
+                paymentIntentId: paymentIntent.id,
+                productId: productId,
+                downloadToken: downloadToken,
+              },
+            });
 
-          // Call the send-purchase-email function with secure download token
-          const { error: emailError } = await supabase.functions.invoke("send-purchase-email", {
-            body: {
-              to: email,
-              productTitle: productTitle,
-              amount: amount,
-              paymentIntentId: paymentIntent.id,
-              productId: productId,
-              downloadToken: downloadToken,
-            },
-          });
-
-          if (emailError) {
-            console.error("Error sending purchase email:", emailError);
-            await sendAdminAlert(
-              "Purchase Email Delivery Failed",
-              `Failed to send purchase email to <strong>${email}</strong> for <strong>${productTitle}</strong> ($${amount}). Payment ID: ${paymentIntent.id}. Error: ${emailError.message || JSON.stringify(emailError)}. The customer paid but did NOT receive their download link. Use the resend-purchase-email function to manually deliver.`
-            );
-          } else {
-            console.log("Purchase email sent successfully");
+            if (emailError) {
+              console.error("Error sending purchase email:", emailError);
+              await sendAdminAlert(
+                "Purchase Email Delivery Failed",
+                `Failed to send purchase email to <strong>${email}</strong> for <strong>${productTitle}</strong> ($${amount}). Payment ID: ${paymentIntent.id}. Error: ${emailError.message || JSON.stringify(emailError)}. The customer paid but did NOT receive their download link. Use the resend-purchase-email function to manually deliver.`
+              );
+            } else {
+              console.log("Purchase email sent successfully");
+            }
           }
         }
 
