@@ -613,6 +613,65 @@ export type Database = {
           },
         ]
       }
+      email_retry_queue: {
+        Row: {
+          created_at: string
+          customer_email: string
+          email_type: string
+          id: string
+          last_error: string | null
+          max_retries: number
+          next_retry_at: string
+          original_transaction_id: string | null
+          payload: Json
+          retry_count: number
+          site: string
+          status: string
+          subject: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          customer_email: string
+          email_type: string
+          id?: string
+          last_error?: string | null
+          max_retries?: number
+          next_retry_at?: string
+          original_transaction_id?: string | null
+          payload?: Json
+          retry_count?: number
+          site: string
+          status?: string
+          subject?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          customer_email?: string
+          email_type?: string
+          id?: string
+          last_error?: string | null
+          max_retries?: number
+          next_retry_at?: string
+          original_transaction_id?: string | null
+          payload?: Json
+          retry_count?: number
+          site?: string
+          status?: string
+          subject?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_retry_queue_original_transaction_id_fkey"
+            columns: ["original_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transaction_log"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       google_calendar_tokens: {
         Row: {
           access_token: string
@@ -1803,6 +1862,73 @@ export type Database = {
           title?: string
         }
         Relationships: []
+      }
+      transaction_log: {
+        Row: {
+          created_at: string
+          customer_email: string | null
+          edge_function: string | null
+          error_message: string | null
+          event_type: string
+          id: string
+          metadata: Json | null
+          product_id: string | null
+          purchase_id: string | null
+          site: string
+          status: string
+          stripe_payment_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          customer_email?: string | null
+          edge_function?: string | null
+          error_message?: string | null
+          event_type: string
+          id?: string
+          metadata?: Json | null
+          product_id?: string | null
+          purchase_id?: string | null
+          site: string
+          status?: string
+          stripe_payment_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          customer_email?: string | null
+          edge_function?: string | null
+          error_message?: string | null
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          product_id?: string | null
+          purchase_id?: string | null
+          site?: string
+          status?: string
+          stripe_payment_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transaction_log_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_log_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_log_purchase_id_fkey"
+            columns: ["purchase_id"]
+            isOneToOne: false
+            referencedRelation: "purchases"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
