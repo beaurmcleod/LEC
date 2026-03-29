@@ -15,6 +15,7 @@ import ProductDetail from "./pages/ProductDetail";
 import Free from "./pages/Free";
 import Racks from "./pages/Racks";
 import Auth from "./pages/Auth";
+import ResetPassword from "./pages/ResetPassword";
 import MyPurchases from "./pages/MyPurchases";
 import Download from "./pages/Download";
 import Links from "./pages/Links";
