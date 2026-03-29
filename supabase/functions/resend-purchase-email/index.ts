@@ -59,14 +59,13 @@ serve(async (req) => {
       .maybeSingle();
 
     if (!existingPurchase) {
-      // Create purchase record
       const paymentId = `manual_resend_${Date.now()}`;
       const { error: purchaseError } = await supabase
         .from('purchases')
         .insert({
           product_id: productId,
           stripe_payment_id: paymentId,
-          amount_paid: 0, // Manual resend
+          amount_paid: 0,
           customer_email: customerEmail,
         });
 
@@ -77,10 +76,10 @@ serve(async (req) => {
       }
     }
 
-    // Generate secure download token (30-day expiry, 10 downloads max for manual resends)
+    // Generate secure download token
     const downloadToken = crypto.randomUUID() + '-' + Date.now().toString(36);
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30); // 30 days for manual resends
+    expiresAt.setDate(expiresAt.getDate() + 30);
 
     const { error: tokenError } = await supabase
       .from('download_tokens')
@@ -89,7 +88,7 @@ serve(async (req) => {
         product_id: productId,
         customer_email: customerEmail,
         expires_at: expiresAt.toISOString(),
-        max_downloads: 10 // More generous for manual resends
+        max_downloads: 10
       });
 
     if (tokenError) {
@@ -100,13 +99,10 @@ serve(async (req) => {
       );
     }
 
-    console.log('Download token created for:', customerEmail, 'expires:', expiresAt.toISOString());
-
-    // Parse price
     const priceStr = product.price.replace(/[^0-9.]/g, '');
     const amount = parseFloat(priceStr) || 0;
 
-    // Send email to customer
+    // Send email via send-purchase-email (which now uses sendEmailWithFailsafe)
     const { error: emailError } = await supabase.functions.invoke("send-purchase-email", {
       body: {
         to: customerEmail,
