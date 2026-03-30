@@ -234,5 +234,11 @@ const MyPurchases = () => {
 
         {/* CRUX Chords Subscription Section */}
         <CruxAccountSection />
+      </main>
+
+      <Footer />
+    </div>
+  );
+};
 
 export default MyPurchases;
