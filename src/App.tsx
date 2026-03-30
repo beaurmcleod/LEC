@@ -37,6 +37,7 @@ import BlogPost from "./pages/BlogPost";
 import SkoolRedirect from "./pages/SkoolRedirect";
 import FreeConsultation from "./pages/FreeConsultation";
 import CruxChords from "./pages/CruxChords";
+import CruxApiGuide from "./pages/CruxApiGuide";
 
 const queryClient = new QueryClient();
 
