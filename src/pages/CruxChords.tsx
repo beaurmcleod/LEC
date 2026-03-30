@@ -127,7 +127,26 @@ export default function CruxChords() {
         </div>
       </section>
 
-      {/* Active Subscriber Dashboard */}
+      {/* Demo Video */}
+      <section className="py-16 px-4">
+        <div className="container max-w-3xl mx-auto text-center">
+          <h2 className="font-display text-3xl md:text-4xl font-bold mb-8">
+            <span className="bg-gradient-primary bg-clip-text text-transparent">See It In Action</span>
+          </h2>
+          <div className="aspect-video rounded-xl overflow-hidden border border-border shadow-lg">
+            <iframe
+              src="https://www.youtube.com/embed/bAnkZfPHNuI"
+              title="CRUX Chords Demo"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              className="w-full h-full"
+              loading="lazy"
+            />
+          </div>
+        </div>
+      </section>
+
+
       {isActive && license && (
         <section className="py-16 px-4">
           <div className="container max-w-2xl mx-auto">
