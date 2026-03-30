@@ -260,9 +260,9 @@ export default function CruxChords() {
                 size="lg"
                 className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-glow-accent/30"
                 onClick={handleSubscribe}
-                disabled={subscribing || loading}
+                disabled={actionLoading || loading}
               >
-                {subscribing ? "Redirecting to checkout..." : user ? "Subscribe Now" : "Sign In & Subscribe"}
+                {actionLoading ? "Redirecting to checkout..." : user ? "Subscribe Now" : "Sign In & Subscribe"}
               </Button>
             </Card>
           </div>
