@@ -1,0 +1,1 @@
+UPDATE products SET image = '/lovable-uploads/crux-chords-product.png' WHERE id = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';

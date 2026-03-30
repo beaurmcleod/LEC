@@ -13,6 +13,13 @@ export default function ProductDetail() {
   const { id: slug } = useParams();
   const navigate = useNavigate();
 
+  // Redirect CRUX Chords product to subscription page
+  useEffect(() => {
+    if (slug && slug.toLowerCase().includes("crux-chords")) {
+      navigate("/crux-chords", { replace: true });
+    }
+  }, [slug, navigate]);
+
   const { data: product, isLoading } = useQuery({
     queryKey: ['product', slug],
     queryFn: async () => {
