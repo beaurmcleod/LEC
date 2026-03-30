@@ -231,6 +231,9 @@ const MyPurchases = () => {
             ))}
           </div>
         )}
+
+        {/* CRUX Chords Subscription Section */}
+        <CruxSection />
       </main>
 
       <Footer />
