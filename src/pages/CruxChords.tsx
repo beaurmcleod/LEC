@@ -4,17 +4,24 @@ import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Check, Copy, Music, Zap, Brain, Sparkles, Shield } from "lucide-react";
+import { useCruxSubscription } from "@/hooks/useCruxSubscription";
 import { useCruxChords } from "@/hooks/useCruxChords";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function CruxChords() {
-  const { plans, subscription, license, loading, user, isActive } = useCruxChords();
+  const { subscription, license, isActive, loading, actionLoading, subscribe, cancelSubscription } = useCruxSubscription();
+  const { plans } = useCruxChords();
   const [selectedPlan, setSelectedPlan] = useState<"monthly" | "annual">("annual");
-  const [subscribing, setSubscribing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [user, setUser] = useState<any>(null);
   const navigate = useNavigate();
+
+  // Check auth on mount
+  useState(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
+  });
 
   const handleSubscribe = async () => {
     if (!user) {
@@ -25,32 +32,20 @@ export default function CruxChords() {
     const plan = selectedPlan === "monthly" ? plans.monthly : plans.annual;
     if (!plan) return;
 
-    setSubscribing(true);
     try {
-      const { data, error } = await supabase.functions.invoke("create-subscription", {
-        body: { product_slug: plan.slug },
-      });
-
-      if (error) throw error;
-      if (data?.url) {
-        window.location.href = data.url;
+      const url = await subscribe(plan.slug);
+      if (url) {
+        window.location.href = url;
       }
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to start subscription", variant: "destructive" });
-    } finally {
-      setSubscribing(false);
     }
   };
 
   const handleCancel = async () => {
-    if (!subscription) return;
     try {
-      const { error } = await supabase.functions.invoke("cancel-subscription", {
-        body: { subscription_id: subscription.id },
-      });
-      if (error) throw error;
+      await cancelSubscription();
       toast({ title: "Subscription cancelled", description: "Your access continues until the end of the billing period." });
-      window.location.reload();
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to cancel", variant: "destructive" });
     }
