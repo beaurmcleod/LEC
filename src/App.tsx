@@ -76,6 +76,7 @@ const App = () => (
           <Route path="/tiktok" element={<TikTok />} />
           <Route path="/blog" element={<Blog />} />
           <Route path="/blog/:slug" element={<BlogPost />} />
+          <Route path="/crux-chords" element={<CruxChords />} />
           <Route path="/skool" element={<SkoolRedirect />} />
           <Route path="/admin/setup" element={<AdminSetup />} />
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
