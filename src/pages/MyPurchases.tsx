@@ -7,7 +7,7 @@ import { ArrowLeft, Download, Loader2, Copy, Check, Music, Shield } from "lucide
 import { toast } from "sonner";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
-import { useCruxChords } from "@/hooks/useCruxChords";
+import { CruxAccountSection } from "@/components/CruxAccountSection";
 
 interface Purchase {
   id: string;
