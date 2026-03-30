@@ -80,6 +80,7 @@ const App = () => (
           <Route path="/blog/:slug" element={<BlogPost />} />
           <Route path="/crux-chords" element={<CruxChords />} />
           <Route path="/crux-chords/api-guide" element={<CruxApiGuide />} />
+          <Route path="/crux-chords/download" element={<CruxDownload />} />
           <Route path="/skool" element={<SkoolRedirect />} />
           <Route path="/admin/setup" element={<AdminSetup />} />
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
