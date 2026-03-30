@@ -113,3 +113,9 @@ verify_jwt = false
 
 [functions.send-dj-inquiry]
 verify_jwt = false
+
+[functions.create-subscription]
+verify_jwt = false
+
+[functions.cancel-subscription]
+verify_jwt = false
