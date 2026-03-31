@@ -195,6 +195,7 @@ serve(async (req) => {
       product_title: product.title,
       site: 'lowendcandy',
       source_app: 'lowendcandy_store',
+      user_id: user.id,
       customer_first_name: customerFirstName || '',
       customer_last_name: customerLastName || '',
       coupon_code: discountApplied ? upperCoupon : '',
