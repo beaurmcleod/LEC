@@ -234,11 +234,18 @@ serve(async (req) => {
 
       // Record purchase
       if (productId && email) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("email", email)
-          .maybeSingle();
+        // Prefer user_id from payment metadata (set during checkout), fall back to profile lookup
+        const metadataUserId = paymentIntent.metadata?.user_id;
+        let userId = metadataUserId || null;
+
+        if (!userId) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("email", email)
+            .maybeSingle();
+          userId = profile?.id || null;
+        }
 
         const { error: purchaseError } = await supabase
           .from("purchases")
@@ -247,14 +254,14 @@ serve(async (req) => {
             stripe_payment_id: paymentIntent.id,
             amount_paid: paymentIntent.amount,
             customer_email: email,
-            user_id: profile?.id || null,
+            user_id: userId,
             site: EXPECTED_SITE,
           });
 
         if (purchaseError) {
           console.error("Error recording purchase:", purchaseError);
         } else {
-          console.log("Purchase recorded successfully", profile?.id ? "with user_id" : "without user_id");
+          console.log("Purchase recorded successfully", userId ? "with user_id" : "without user_id");
         }
 
         // Log successful payment
@@ -290,7 +297,7 @@ serve(async (req) => {
             .from("download_tokens")
             .insert({
               token: downloadToken, product_id: productId, customer_email: email,
-              user_id: profile?.id || null, expires_at: expiresAt.toISOString(), max_downloads: 5,
+              user_id: userId, expires_at: expiresAt.toISOString(), max_downloads: 5,
             });
 
           if (tokenError) {

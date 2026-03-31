@@ -169,6 +169,7 @@ const Checkout = () => {
   const [error, setError] = useState<string>("");
   const [finalAmount, setFinalAmount] = useState<number | null>(null);
   const [discountApplied, setDiscountApplied] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   
   const productTitle = searchParams.get("title") || "";
   const price = searchParams.get("price") || "";
@@ -186,21 +187,28 @@ const Checkout = () => {
   
   console.log("Checkout params:", { productTitle, price, productId, customerEmail, customerFirstName, customerLastName, isLesson, lessonDate, lessonTime });
 
+  // Require authentication before checkout
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) {
+        const returnUrl = `/enter-email?title=${encodeURIComponent(productTitle)}&price=${encodeURIComponent(price)}&id=${productId}`;
+        navigate(`/auth?redirect=${encodeURIComponent(returnUrl)}`, { replace: true });
+      } else {
+        setAuthChecked(true);
+      }
+    });
+  }, [navigate, productTitle, price, productId]);
+
   // TikTok InitiateCheckout event
   useEffect(() => {
     if (productTitle && productId && price) {
       ttqTrack.initiateCheckout({ id: productId, title: productTitle, price });
     }
   }, [productTitle, productId, price]);
-  // Add toast notification to help with debugging
-  if (productTitle && price) {
-    toast({
-      title: "Checkout Page Loaded",
-      description: `Loading payment for ${productTitle} - ${price}`,
-    });
-  }
 
   useEffect(() => {
+    if (!authChecked) return;
+    
     if (!productTitle || !price) {
       navigate("/");
       return;
