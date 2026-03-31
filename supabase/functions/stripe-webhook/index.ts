@@ -297,7 +297,7 @@ serve(async (req) => {
             .from("download_tokens")
             .insert({
               token: downloadToken, product_id: productId, customer_email: email,
-              user_id: profile?.id || null, expires_at: expiresAt.toISOString(), max_downloads: 5,
+              user_id: userId, expires_at: expiresAt.toISOString(), max_downloads: 5,
             });
 
           if (tokenError) {
