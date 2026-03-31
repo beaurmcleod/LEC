@@ -53,6 +53,26 @@ serve(async (req) => {
 
   try {
     console.log('Payment intent request received');
+
+    // Require authenticated user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Authentication required. Please sign in to make a purchase.' }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: authError } = await userClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid session. Please sign in again.' }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const body = await req.json();
     
     // Input validation with zod
@@ -81,7 +101,9 @@ serve(async (req) => {
       );
     }
 
-    const { productId, customerEmail, customerFirstName, customerLastName, couponCode, isLesson, lessonId, lessonDate, lessonTime } = validation.data;
+    const { productId, customerEmail: providedEmail, customerFirstName, customerLastName, couponCode, isLesson, lessonId, lessonDate, lessonTime } = validation.data;
+    // Use authenticated user's email, falling back to provided email
+    const customerEmail = user.email || providedEmail;
 
     // SECURITY: Fetch actual price from database instead of trusting client
     // Support both UUID and title/slug lookup
