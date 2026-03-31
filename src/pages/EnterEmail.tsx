@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -14,6 +14,27 @@ const EnterEmail = () => {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
+  const [authChecked, setAuthChecked] = useState(false);
+
+  // Require login before purchasing
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) {
+        const currentUrl = window.location.pathname + window.location.search;
+        navigate(`/auth?redirect=${encodeURIComponent(currentUrl)}`, { replace: true });
+      } else {
+        // Pre-fill from profile
+        setEmail(user.email || "");
+        supabase.from("profiles").select("first_name, last_name").eq("id", user.id).single().then(({ data }) => {
+          if (data) {
+            setFirstName(data.first_name || "");
+            setLastName(data.last_name || "");
+          }
+          setAuthChecked(true);
+        });
+      }
+    });
+  }, [navigate]);
   const [couponCode, setCouponCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
@@ -116,6 +137,14 @@ const EnterEmail = () => {
     
     navigate(checkoutUrl);
   };
+
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background py-8 px-4">
@@ -230,7 +259,7 @@ const EnterEmail = () => {
         </Card>
 
         <div className="mt-6 space-y-2 text-center text-sm text-muted-foreground">
-          <p>🔒 Secure checkout — no account required</p>
+          <p>🔒 Secure checkout powered by Stripe</p>
           <p>📧 Instant download link emailed immediately</p>
           <p>♾️ Lifetime access + free updates included</p>
         </div>
