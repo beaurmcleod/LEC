@@ -259,7 +259,7 @@ const EnterEmail = () => {
         </Card>
 
         <div className="mt-6 space-y-2 text-center text-sm text-muted-foreground">
-          <p>🔒 Secure checkout — no account required</p>
+          <p>🔒 Secure checkout powered by Stripe</p>
           <p>📧 Instant download link emailed immediately</p>
           <p>♾️ Lifetime access + free updates included</p>
         </div>
