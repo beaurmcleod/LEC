@@ -34,6 +34,11 @@ const Cart = () => {
   const handleCheckout = () => {
     if (items.length === 0) return;
     
+    if (!user) {
+      navigate("/auth?redirect=/cart");
+      return;
+    }
+    
     // For now, redirect to email entry with first item
     // In future, this could handle multiple items
     const firstItem = items[0];
