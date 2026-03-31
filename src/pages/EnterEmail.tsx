@@ -138,8 +138,15 @@ const EnterEmail = () => {
     navigate(checkoutUrl);
   };
 
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-background py-8 px-4">
       <div className="container mx-auto max-w-md">
         <div className="mb-6">
           <Button 
