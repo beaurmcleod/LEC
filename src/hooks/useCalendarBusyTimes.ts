@@ -58,21 +58,31 @@ export function isTimeSlotBusy(
   pstHour: number,
   durationMinutes: number = 60
 ): boolean {
-  // Create the slot start time in PST
-  const slotStart = new Date(date);
-  slotStart.setHours(pstHour, 0, 0, 0);
-  
-  // Convert PST to UTC (PST is UTC-8)
-  const pstOffset = -8 * 60; // minutes
-  const utcStart = new Date(slotStart.getTime() - pstOffset * 60 * 1000);
+  // Get the Pacific timezone offset for this specific date (handles DST)
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hourStr = String(pstHour).padStart(2, '0');
+
+  const pacificFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles',
+    hour: '2-digit', hour12: false,
+  });
+
+  const tempUtc = new Date(`${year}-${month}-${day}T12:00:00Z`);
+  const pacificParts = pacificFormatter.formatToParts(tempUtc);
+  const pHourVal = parseInt(pacificParts.find(p => p.type === 'hour')?.value || '0');
+  const pacificOffsetHours = pHourVal - 12; // -7 for PDT, -8 for PST
+
+  // Convert Pacific time to UTC
+  const utcStart = new Date(`${year}-${month}-${day}T${hourStr}:00:00Z`);
+  utcStart.setHours(utcStart.getHours() - pacificOffsetHours);
   const utcEnd = new Date(utcStart.getTime() + durationMinutes * 60 * 1000);
 
   // Check if this slot overlaps with any busy time
   return busyTimes.some((busy) => {
     const busyStart = new Date(busy.start);
     const busyEnd = new Date(busy.end);
-
-    // Check for overlap: slot starts before busy ends AND slot ends after busy starts
     return utcStart < busyEnd && utcEnd > busyStart;
   });
 }
