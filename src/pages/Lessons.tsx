@@ -90,40 +90,47 @@ function getTimezoneAbbr(timezone: string): string {
   return tzPart?.value || timezone;
 }
 
-// Convert PST hour to user's local time
+// Convert Pacific Time hour to user's local time (handles DST automatically)
 function convertPSTToLocal(pstHour: number, selectedDate: Date | undefined): { hour: number; label: string; nextDay: boolean } {
   if (!selectedDate) {
-    // Return placeholder if no date selected
     const isPM = pstHour >= 12;
     const displayHour = pstHour > 12 ? pstHour - 12 : pstHour === 0 ? 12 : pstHour;
     return { hour: pstHour, label: `${displayHour}:00 ${isPM ? 'PM' : 'AM'}`, nextDay: false };
   }
 
-  // Create a date in PST (UTC-8)
-  // PST is UTC-8, PDT is UTC-7. For simplicity, we'll use -8 (standard time)
-  // A more robust solution would detect DST, but this works for most cases
-  const pstOffset = -8; // PST offset from UTC
-  
-  // Create the PST time
-  const pstDate = new Date(selectedDate);
-  pstDate.setHours(pstHour, 0, 0, 0);
-  
-  // Convert PST to UTC
-  const utcTime = new Date(pstDate.getTime() - (pstOffset * 60 * 60 * 1000));
-  
-  // Get the user's local offset
-  const localOffset = new Date().getTimezoneOffset(); // in minutes, negative for ahead of UTC
-  
-  // Convert UTC to local
-  const localTime = new Date(utcTime.getTime() - (localOffset * 60 * 1000));
-  
+  // Build the target date/time string and parse it in America/Los_Angeles
+  const year = selectedDate.getFullYear();
+  const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+  const day = String(selectedDate.getDate()).padStart(2, '0');
+  const hourStr = String(pstHour).padStart(2, '0');
+  const pacificDateStr = `${year}-${month}-${day}T${hourStr}:00:00`;
+
+  // Get the UTC offset for America/Los_Angeles on this specific date/time
+  const pacificFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  });
+
+  // Create a temp date to find the Pacific offset on this day
+  // We use a known UTC time and see what Pacific shows to derive offset
+  const tempUtc = new Date(`${year}-${month}-${day}T12:00:00Z`);
+  const pacificParts = pacificFormatter.formatToParts(tempUtc);
+  const pHour = parseInt(pacificParts.find(p => p.type === 'hour')?.value || '0');
+  const pacificOffsetHours = pHour - 12; // offset from UTC in hours (will be -7 or -8)
+
+  // Now convert the desired Pacific time to UTC
+  const utcTime = new Date(`${year}-${month}-${day}T${hourStr}:00:00Z`);
+  utcTime.setHours(utcTime.getHours() - pacificOffsetHours);
+
+  // Convert to user's local time
+  const localTime = new Date(utcTime);
   const localHour = localTime.getHours();
   const isPM = localHour >= 12;
   const displayHour = localHour > 12 ? localHour - 12 : localHour === 0 ? 12 : localHour;
-  
-  // Check if it's the next day
   const nextDay = localTime.getDate() !== selectedDate.getDate();
-  
+
   return { 
     hour: localHour, 
     label: `${displayHour}:00 ${isPM ? 'PM' : 'AM'}${nextDay ? ' (+1 day)' : ''}`,

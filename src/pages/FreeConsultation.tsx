@@ -41,13 +41,27 @@ function convertPSTToLocal(pstHour: number, selectedDate: Date | undefined): { h
     return { hour: pstHour, label: `${displayHour}:00 ${isPM ? 'PM' : 'AM'}`, nextDay: false };
   }
 
-  const pstOffset = -8;
-  const pstDate = new Date(selectedDate);
-  pstDate.setHours(pstHour, 0, 0, 0);
-  const utcTime = new Date(pstDate.getTime() - (pstOffset * 60 * 60 * 1000));
-  const localOffset = new Date().getTimezoneOffset();
-  const localTime = new Date(utcTime.getTime() - (localOffset * 60 * 1000));
+  const year = selectedDate.getFullYear();
+  const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+  const day = String(selectedDate.getDate()).padStart(2, '0');
+  const hourStr = String(pstHour).padStart(2, '0');
 
+  const pacificFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  });
+
+  const tempUtc = new Date(`${year}-${month}-${day}T12:00:00Z`);
+  const pacificParts = pacificFormatter.formatToParts(tempUtc);
+  const pHour = parseInt(pacificParts.find(p => p.type === 'hour')?.value || '0');
+  const pacificOffsetHours = pHour - 12;
+
+  const utcTime = new Date(`${year}-${month}-${day}T${hourStr}:00:00Z`);
+  utcTime.setHours(utcTime.getHours() - pacificOffsetHours);
+
+  const localTime = new Date(utcTime);
   const localHour = localTime.getHours();
   const isPM = localHour >= 12;
   const displayHour = localHour > 12 ? localHour - 12 : localHour === 0 ? 12 : localHour;
