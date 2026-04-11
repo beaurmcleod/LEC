@@ -18,6 +18,8 @@ const authSchema = z.object({
 
 const Auth = () => {
   const navigate = useNavigate();
+  const [searchParams] = new URLSearchParams(window.location.search) ? [new URLSearchParams(window.location.search)] : [new URLSearchParams()];
+  const redirectTo = searchParams.get("redirect") || "/";
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");

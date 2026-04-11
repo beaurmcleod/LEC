@@ -329,7 +329,7 @@ const Checkout = () => {
     };
 
     initializeCheckout();
-  }, [productTitle, price, productId, customerEmail, navigate]);
+  }, [productTitle, price, productId, customerEmail, navigate, authChecked]);
 
   if (loading) {
     return (
