@@ -54,23 +54,19 @@ serve(async (req) => {
   try {
     console.log('Payment intent request received');
 
-    // Require authenticated user
+    // Optional auth - try to get user if logged in, but allow guests
+    let user: { id: string; email?: string } | null = null;
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Authentication required. Please sign in to make a purchase.' }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-    const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user }, error: authError } = await userClient.auth.getUser();
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid session. Please sign in again.' }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    if (authHeader) {
+      try {
+        const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+          global: { headers: { Authorization: authHeader } },
+        });
+        const { data: { user: authUser } } = await userClient.auth.getUser();
+        if (authUser) user = authUser;
+      } catch (e) {
+        console.log('Auth check failed, proceeding as guest:', e);
+      }
     }
 
     const body = await req.json();
@@ -103,7 +99,7 @@ serve(async (req) => {
 
     const { productId, customerEmail: providedEmail, customerFirstName, customerLastName, couponCode, isLesson, lessonId, lessonDate, lessonTime } = validation.data;
     // Use authenticated user's email, falling back to provided email
-    const customerEmail = user.email || providedEmail;
+    const customerEmail = user?.email || providedEmail;
 
     // SECURITY: Fetch actual price from database instead of trusting client
     // Support both UUID and title/slug lookup
@@ -195,7 +191,7 @@ serve(async (req) => {
       product_title: product.title,
       site: 'lowendcandy',
       source_app: 'lowendcandy_store',
-      user_id: user.id,
+      user_id: user?.id || 'guest',
       customer_first_name: customerFirstName || '',
       customer_last_name: customerLastName || '',
       coupon_code: discountApplied ? upperCoupon : '',
