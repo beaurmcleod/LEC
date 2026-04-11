@@ -57,7 +57,7 @@ const Auth = () => {
 
         if (data.user) {
           toast.success("Welcome back!");
-          navigate("/");
+          navigate(redirectTo);
         }
       } else {
         const { data, error } = await supabase.auth.signUp({
