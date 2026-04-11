@@ -84,7 +84,7 @@ const Auth = () => {
 
         if (data.user) {
           toast.success("Account created! Please check your email to confirm.");
-          navigate("/");
+          navigate(redirectTo);
         }
       }
     } catch (error) {
