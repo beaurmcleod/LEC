@@ -16,25 +16,21 @@ const EnterEmail = () => {
   const [email, setEmail] = useState("");
   const [authChecked, setAuthChecked] = useState(false);
 
-  // Require login before purchasing
+  // Pre-fill from profile if logged in, but don't require auth
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) {
-        const currentUrl = window.location.pathname + window.location.search;
-        navigate(`/auth?redirect=${encodeURIComponent(currentUrl)}`, { replace: true });
-      } else {
-        // Pre-fill from profile
+      if (user) {
         setEmail(user.email || "");
         supabase.from("profiles").select("first_name, last_name").eq("id", user.id).single().then(({ data }) => {
           if (data) {
             setFirstName(data.first_name || "");
             setLastName(data.last_name || "");
           }
-          setAuthChecked(true);
         });
       }
+      setAuthChecked(true);
     });
-  }, [navigate]);
+  }, []);
   const [couponCode, setCouponCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
