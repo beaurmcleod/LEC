@@ -65,17 +65,21 @@ const PaymentSuccess = () => {
       if (!customerEmail || !productId || isLesson) return;
       
       try {
-        // Look for the most recent download token for this purchase
-        const { data: tokens } = await supabase
-          .from('download_tokens')
-          .select('token')
-          .eq('product_id', productId)
-          .eq('customer_email', customerEmail)
-          .order('created_at', { ascending: false })
-          .limit(1);
-        
-        if (tokens && tokens.length > 0) {
-          setDownloadToken(tokens[0].token);
+        const { data, error } = await supabase.functions.invoke('resend-purchase-email', {
+          body: {
+            customerEmail,
+            productId,
+            sendEmail: false,
+          },
+        });
+
+        if (error) {
+          console.error("Error preparing guest download token:", error);
+          return;
+        }
+
+        if (data?.token) {
+          setDownloadToken(data.token);
         }
       } catch (err) {
         console.error("Error fetching download token:", err);

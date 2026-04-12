@@ -11,6 +11,7 @@ const requestSchema = z.object({
   customerEmail: z.string().email(),
   productId: z.string().uuid(),
   ccEmail: z.string().email().optional(),
+  sendEmail: z.boolean().optional(),
 });
 
 serve(async (req) => {
@@ -29,7 +30,7 @@ serve(async (req) => {
       );
     }
 
-    const { customerEmail, productId, ccEmail } = validation.data;
+    const { customerEmail, productId, ccEmail, sendEmail = true } = validation.data;
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -102,52 +103,56 @@ serve(async (req) => {
     const priceStr = product.price.replace(/[^0-9.]/g, '');
     const amount = parseFloat(priceStr) || 0;
 
-    // Send email via send-purchase-email (which now uses sendEmailWithFailsafe)
-    const { error: emailError } = await supabase.functions.invoke("send-purchase-email", {
-      body: {
-        to: customerEmail,
-        productTitle: product.title,
-        amount: amount,
-        paymentIntentId: `resend_${Date.now()}`,
-        productId: productId,
-        downloadToken: downloadToken,
-      },
-    });
-
-    if (emailError) {
-      console.error('Error sending email to customer:', emailError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to send email' }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    console.log('Email sent to customer:', customerEmail);
-
-    // Send CC copy if requested
-    if (ccEmail) {
-      const { error: ccError } = await supabase.functions.invoke("send-purchase-email", {
+    if (sendEmail) {
+      // Send email via send-purchase-email (which now uses sendEmailWithFailsafe)
+      const { error: emailError } = await supabase.functions.invoke("send-purchase-email", {
         body: {
-          to: ccEmail,
-          productTitle: `[CC] ${product.title} - Sent to ${customerEmail}`,
+          to: customerEmail,
+          productTitle: product.title,
           amount: amount,
-          paymentIntentId: `resend_cc_${Date.now()}`,
+          paymentIntentId: `resend_${Date.now()}`,
           productId: productId,
           downloadToken: downloadToken,
         },
       });
 
-      if (ccError) {
-        console.error('Error sending CC email:', ccError);
-      } else {
-        console.log('CC email sent to:', ccEmail);
+      if (emailError) {
+        console.error('Error sending email to customer:', emailError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to send email' }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      console.log('Email sent to customer:', customerEmail);
+
+      // Send CC copy if requested
+      if (ccEmail) {
+        const { error: ccError } = await supabase.functions.invoke("send-purchase-email", {
+          body: {
+            to: ccEmail,
+            productTitle: `[CC] ${product.title} - Sent to ${customerEmail}`,
+            amount: amount,
+            paymentIntentId: `resend_cc_${Date.now()}`,
+            productId: productId,
+            downloadToken: downloadToken,
+          },
+        });
+
+        if (ccError) {
+          console.error('Error sending CC email:', ccError);
+        } else {
+          console.log('CC email sent to:', ccEmail);
+        }
       }
     }
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: `Email sent to ${customerEmail}${ccEmail ? ` (CC: ${ccEmail})` : ''}`,
+        message: sendEmail
+          ? `Email sent to ${customerEmail}${ccEmail ? ` (CC: ${ccEmail})` : ''}`
+          : `Download token prepared for ${customerEmail}`,
         token: downloadToken,
         expires: expiresAt.toISOString()
       }),
