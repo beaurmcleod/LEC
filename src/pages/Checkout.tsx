@@ -335,6 +335,17 @@ const Checkout = () => {
     initializeCheckout();
   }, [productTitle, price, productId, customerEmail, navigate, customerFirstName, customerLastName, couponCode, isLesson, lessonId, lessonDate, lessonTime]);
 
+  if (!stripeKey) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="p-8 text-center max-w-md">
+          <p className="text-destructive mb-4">Payment system is not configured. Please contact support.</p>
+          <Button variant="outline" onClick={() => navigate("/")}>Return to Store</Button>
+        </Card>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
