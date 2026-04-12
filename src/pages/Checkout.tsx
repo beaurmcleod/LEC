@@ -9,7 +9,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { ttqTrack } from "@/lib/tiktokPixel";
 
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "");
+const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+const stripePromise = stripeKey ? loadStripe(stripeKey) : null;
 
 interface CheckoutFormProps {
   clientSecret: string;
@@ -333,6 +334,17 @@ const Checkout = () => {
 
     initializeCheckout();
   }, [productTitle, price, productId, customerEmail, navigate, customerFirstName, customerLastName, couponCode, isLesson, lessonId, lessonDate, lessonTime]);
+
+  if (!stripeKey) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="p-8 text-center max-w-md">
+          <p className="text-destructive mb-4">Payment system is not configured. Please contact support.</p>
+          <Button variant="outline" onClick={() => navigate("/")}>Return to Store</Button>
+        </Card>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
