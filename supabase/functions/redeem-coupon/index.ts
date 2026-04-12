@@ -108,6 +108,8 @@ serve(async (req) => {
       .eq('email', customerEmail)
       .maybeSingle();
 
+    const purchaseReference = `coupon_${couponCode}_${Date.now()}`;
+
     // Create $0 purchase record
     const { data: purchase, error: purchaseError } = await supabase
       .from('purchases')
@@ -115,8 +117,9 @@ serve(async (req) => {
         product_id: productId,
         customer_email: customerEmail,
         amount_paid: 0,
-        stripe_payment_id: `coupon_${couponCode}_${Date.now()}`,
+        stripe_payment_id: purchaseReference,
         user_id: profile?.id || null,
+        site: 'lowendcandy',
       })
       .select()
       .single();
@@ -140,6 +143,7 @@ serve(async (req) => {
         token,
         product_id: productId,
         customer_email: customerEmail,
+        user_id: profile?.id || null,
         expires_at: expiresAt.toISOString(),
         max_downloads: 5,
       });
@@ -169,9 +173,28 @@ serve(async (req) => {
 
     // Generate signed URL if using storage
     if (productDownload?.download_path) {
-      const { data: signedUrlData, error: storageError } = await supabase.storage
-        .from('product-downloads')
-        .createSignedUrl(productDownload.download_path, 86400); // 24 hours
+      let downloadPath = productDownload.download_path;
+      let bucketName = 'product-downloads';
+
+      if (downloadPath.startsWith('LEC/')) {
+        bucketName = 'LEC';
+        downloadPath = downloadPath.replace('LEC/', '');
+      }
+
+      let { data: signedUrlData, error: storageError } = await supabase.storage
+        .from(bucketName)
+        .createSignedUrl(downloadPath, 86400);
+
+      if (storageError && bucketName === 'product-downloads') {
+        const fallbackResult = await supabase.storage
+          .from('LEC')
+          .createSignedUrl(downloadPath, 86400);
+
+        if (!fallbackResult.error && fallbackResult.data?.signedUrl) {
+          signedUrlData = fallbackResult.data;
+          storageError = null;
+        }
+      }
 
       console.log('Signed URL result:', { signedUrlData, storageError });
 
@@ -191,7 +214,7 @@ serve(async (req) => {
           to: customerEmail,
           productTitle: product.title,
           amount: 0,
-          paymentIntentId: `coupon_${couponCode}_${Date.now()}`,
+          paymentIntentId: purchaseReference,
           productId,
           downloadToken: token,
         },

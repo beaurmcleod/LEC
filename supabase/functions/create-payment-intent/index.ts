@@ -126,13 +126,18 @@ serve(async (req) => {
       throw new Error("Product not found");
     }
 
+    const parsedPrice = parseFloat(product.price.replace('$', ''));
+    if (Number.isNaN(parsedPrice)) {
+      throw new Error("Invalid product price configuration");
+    }
+
     // Initialize Stripe
     const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
       apiVersion: "2023-10-16",
     });
 
     // Convert database price to cents
-    let priceInCents = Math.round(parseFloat(product.price.replace('$', '')) * 100);
+    let priceInCents = Math.round(parsedPrice * 100);
     let discountApplied = '';
     const upperCoupon = couponCode?.toUpperCase() || '';
 
@@ -170,11 +175,6 @@ serve(async (req) => {
             console.log(`Coupon ${upperCoupon} applied, $${coupon.discount_value} off`);
           }
 
-          // Increment coupon usage
-          await supabase
-            .from('coupons')
-            .update({ current_uses: coupon.current_uses + 1 })
-            .eq('id', coupon.id);
         } else {
           console.log(`Coupon ${upperCoupon} not valid: expired=${isExpired}, maxUsesReached=${maxUsesReached}, appliesToProduct=${appliesToProduct}`);
         }
@@ -184,6 +184,13 @@ serve(async (req) => {
     }
 
     console.log('Creating payment intent for product:', product.title, 'amount:', priceInCents, 'discountApplied:', discountApplied, 'isLesson:', isLesson);
+
+    if (!customerEmail) {
+      return new Response(
+        JSON.stringify({ error: 'Customer email is required to complete checkout.' }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
     
     // Build metadata object
     const metadata: Record<string, string> = {
@@ -191,12 +198,15 @@ serve(async (req) => {
       product_title: product.title,
       site: 'lowendcandy',
       source_app: 'lowendcandy_store',
-      user_id: user?.id || 'guest',
       customer_first_name: customerFirstName || '',
       customer_last_name: customerLastName || '',
       coupon_code: discountApplied ? upperCoupon : '',
       discount_applied: discountApplied,
     };
+
+    if (user?.id) {
+      metadata.user_id = user.id;
+    }
     
     // Add lesson metadata if applicable
     if (isLesson) {

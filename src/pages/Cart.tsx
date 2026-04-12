@@ -1,20 +1,13 @@
-import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ArrowLeft, Trash2, ShoppingBag } from "lucide-react";
 import { useCartStore } from "@/lib/cartStore";
 import { toast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 
 const Cart = () => {
   const navigate = useNavigate();
   const { items, removeItem, clearCart } = useCartStore();
-  const [user, setUser] = useState<any>(null);
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
-  }, []);
 
   const handleRemoveItem = (id: string, title: string) => {
     removeItem(id);
@@ -33,11 +26,6 @@ const Cart = () => {
 
   const handleCheckout = () => {
     if (items.length === 0) return;
-    
-    if (!user) {
-      navigate("/auth?redirect=/cart");
-      return;
-    }
     
     // For now, redirect to email entry with first item
     // In future, this could handle multiple items
