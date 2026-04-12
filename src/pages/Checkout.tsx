@@ -20,9 +20,12 @@ interface CheckoutFormProps {
   originalPrice?: string;
   discountApplied?: string | null;
   finalAmount?: number;
+  isLesson?: boolean;
+  lessonDate?: string;
+  lessonTime?: string;
 }
 
-const CheckoutForm = ({ clientSecret, productTitle, price, productId, customerEmail, originalPrice, discountApplied, finalAmount }: CheckoutFormProps) => {
+const CheckoutForm = ({ clientSecret, productTitle, price, productId, customerEmail, originalPrice, discountApplied, finalAmount, isLesson, lessonDate, lessonTime }: CheckoutFormProps) => {
   const stripe = useStripe();
   const elements = useElements();
   const navigate = useNavigate();
@@ -63,10 +66,20 @@ const CheckoutForm = ({ clientSecret, productTitle, price, productId, customerEm
         throw submitError;
       }
 
+      const successParams = new URLSearchParams({
+        product_id: productId,
+        customer_email: customerEmail,
+      });
+
+      if (isLesson) {
+        if (lessonDate) successParams.set("lesson_date", lessonDate);
+        if (lessonTime) successParams.set("lesson_time", lessonTime);
+      }
+
       const { error } = await stripe.confirmPayment({
         elements,
         confirmParams: {
-          return_url: `${window.location.origin}/payment-success?product_id=${productId}&customer_email=${encodeURIComponent(customerEmail)}`,
+          return_url: `${window.location.origin}/payment-success?${successParams.toString()}`,
         },
       });
 
@@ -169,7 +182,6 @@ const Checkout = () => {
   const [error, setError] = useState<string>("");
   const [finalAmount, setFinalAmount] = useState<number | null>(null);
   const [discountApplied, setDiscountApplied] = useState<string | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
   
   const productTitle = searchParams.get("title") || "";
   const price = searchParams.get("price") || "";
@@ -187,18 +199,6 @@ const Checkout = () => {
   
   console.log("Checkout params:", { productTitle, price, productId, customerEmail, customerFirstName, customerLastName, isLesson, lessonDate, lessonTime });
 
-  // Require authentication before checkout
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) {
-        const returnUrl = `/enter-email?title=${encodeURIComponent(productTitle)}&price=${encodeURIComponent(price)}&id=${productId}`;
-        navigate(`/auth?redirect=${encodeURIComponent(returnUrl)}`, { replace: true });
-      } else {
-        setAuthChecked(true);
-      }
-    });
-  }, [navigate, productTitle, price, productId]);
-
   // TikTok InitiateCheckout event
   useEffect(() => {
     if (productTitle && productId && price) {
@@ -207,8 +207,6 @@ const Checkout = () => {
   }, [productTitle, productId, price]);
 
   useEffect(() => {
-    if (!authChecked) return;
-    
     if (!productTitle || !price) {
       navigate("/");
       return;
@@ -284,9 +282,14 @@ const Checkout = () => {
           paymentBody.lessonDate = lessonDate;
           paymentBody.lessonTime = lessonTime;
         }
+
+        const { data: { session } } = await supabase.auth.getSession();
         
         const { data, error } = await supabase.functions.invoke('create-payment-intent', {
           body: paymentBody,
+          headers: session?.access_token
+            ? { Authorization: `Bearer ${session.access_token}` }
+            : undefined,
         });
 
         console.log('Payment intent response:', { data, error });
@@ -329,7 +332,7 @@ const Checkout = () => {
     };
 
     initializeCheckout();
-  }, [productTitle, price, productId, customerEmail, navigate, authChecked]);
+  }, [productTitle, price, productId, customerEmail, navigate, customerFirstName, customerLastName, couponCode, isLesson, lessonId, lessonDate, lessonTime]);
 
   if (loading) {
     return (
@@ -401,6 +404,9 @@ const Checkout = () => {
                 originalPrice={price}
                 discountApplied={discountApplied}
                 finalAmount={finalAmount || undefined}
+                isLesson={isLesson}
+                lessonDate={lessonDate}
+                lessonTime={lessonTime}
               />
             </Elements>
           ) : (

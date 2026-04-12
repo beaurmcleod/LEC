@@ -168,11 +168,30 @@ serve(async (req) => {
       );
     }
 
-    // Generate signed URL from private bucket (required - no fallback)
-    const { data: signedUrlData, error: signedUrlError } = await supabase
+    let downloadPath = productDownload.download_path;
+    let bucketName = 'product-downloads';
+
+    if (downloadPath.startsWith('LEC/')) {
+      bucketName = 'LEC';
+      downloadPath = downloadPath.replace('LEC/', '');
+    }
+
+    let { data: signedUrlData, error: signedUrlError } = await supabase
       .storage
-      .from('product-downloads')
-      .createSignedUrl(productDownload.download_path, 3600); // 1 hour expiry
+      .from(bucketName)
+      .createSignedUrl(downloadPath, 3600);
+
+    if (signedUrlError && bucketName === 'product-downloads') {
+      const fallbackResult = await supabase
+        .storage
+        .from('LEC')
+        .createSignedUrl(downloadPath, 3600);
+
+      if (!fallbackResult.error && fallbackResult.data?.signedUrl) {
+        signedUrlData = fallbackResult.data;
+        signedUrlError = null;
+      }
+    }
 
     if (signedUrlError || !signedUrlData?.signedUrl) {
       console.error('Error generating signed URL:', signedUrlError);

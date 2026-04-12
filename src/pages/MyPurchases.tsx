@@ -119,17 +119,13 @@ const MyPurchases = () => {
         return;
       }
 
-      // Fetch download URL from edge function (returns JSON instead of redirect for security compliance)
-      const response = await fetch(
-        `https://ocydkbblpnshbvkilngl.supabase.co/functions/v1/get-secure-download?token=${encodeURIComponent(tokenData.token)}`
-      );
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to get download link');
+      const { data, error } = await supabase.functions.invoke('get-secure-download', {
+        body: { token: tokenData.token },
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Failed to get download link');
       }
-      
-      const data = await response.json();
       
       if (!data.downloadUrl) {
         throw new Error('No download URL received');

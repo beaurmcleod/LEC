@@ -11,10 +11,43 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-const MAKE_WEBHOOK_URL = "https://hook.us2.make.com/9568sygekt6l2vvyjbtvamhd1ptuim46";
+const MAKE_WEBHOOK_URL = Deno.env.get("MAKE_WEBHOOK_URL") || "";
 const ADMIN_EMAIL = Deno.env.get("ADMIN_NOTIFICATION_EMAIL") || "beau@lowendcandy.com";
 const EXPECTED_SOURCE_APP = "lowendcandy_store";
 const EXPECTED_SITE = "lowendcandy";
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function normalizeUserId(value?: string | null): string | null {
+  if (!value) return null;
+  return UUID_REGEX.test(value) ? value : null;
+}
+
+async function incrementCouponUsage(couponCode?: string) {
+  if (!couponCode) return;
+
+  const normalizedCode = couponCode.trim().toUpperCase();
+  if (!normalizedCode) return;
+
+  const { data: coupon, error: couponError } = await supabase
+    .from("coupons")
+    .select("id, current_uses")
+    .eq("code", normalizedCode)
+    .maybeSingle();
+
+  if (couponError || !coupon) {
+    console.error("Failed to look up coupon for fulfilled payment:", normalizedCode, couponError);
+    return;
+  }
+
+  const { error: updateError } = await supabase
+    .from("coupons")
+    .update({ current_uses: coupon.current_uses + 1 })
+    .eq("id", coupon.id);
+
+  if (updateError) {
+    console.error("Failed to increment coupon usage after successful payment:", normalizedCode, updateError);
+  }
+}
 
 async function sendAdminAlert(subject: string, details: string) {
   try {
@@ -50,6 +83,11 @@ async function sendToMake(purchaseData: {
   email: string; firstName?: string; lastName?: string; productId: string; productTitle: string; amount: number; purchaseDate: string; paymentId: string; site: string; sourceApp: string;
 }) {
   try {
+    if (!MAKE_WEBHOOK_URL) {
+      console.warn("MAKE_WEBHOOK_URL is not configured; skipping Make.com webhook delivery");
+      return;
+    }
+
     const response = await fetch(MAKE_WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -114,6 +152,7 @@ serve(async (req) => {
       const amount = paymentIntent.amount / 100;
       const sourceApp = paymentIntent.metadata?.source_app || "";
       const site = paymentIntent.metadata?.site || "";
+      const couponCode = paymentIntent.metadata?.coupon_code || "";
 
       console.log("Recording purchase for:", email, "Amount:", amount);
 
@@ -235,8 +274,8 @@ serve(async (req) => {
       // Record purchase
       if (productId && email) {
         // Prefer user_id from payment metadata (set during checkout), fall back to profile lookup
-        const metadataUserId = paymentIntent.metadata?.user_id;
-        let userId = metadataUserId || null;
+        const metadataUserId = normalizeUserId(paymentIntent.metadata?.user_id);
+        let userId = metadataUserId;
 
         if (!userId) {
           const { data: profile } = await supabase
@@ -260,6 +299,10 @@ serve(async (req) => {
 
         if (purchaseError) {
           console.error("Error recording purchase:", purchaseError);
+          await sendAdminAlert(
+            "Purchase Record Failed",
+            `Failed to record purchase for <strong>${email}</strong> on payment <strong>${paymentIntent.id}</strong>. Error: ${JSON.stringify(purchaseError)}`,
+          );
         } else {
           console.log("Purchase recorded successfully", userId ? "with user_id" : "without user_id");
         }
@@ -275,6 +318,8 @@ serve(async (req) => {
           edgeFunction: "stripe-webhook",
           metadata: { productTitle, amount, customerFirstName, customerLastName },
         });
+
+        await incrementCouponUsage(couponCode);
 
         // Send to Make.com
         await sendToMake({
