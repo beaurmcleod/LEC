@@ -59,11 +59,16 @@ const PaymentSuccess = () => {
     }
   }, [productId]);
 
-  // Fetch download token for non-lesson products
+  // Fetch download token for non-lesson products with retry
   useEffect(() => {
+    if (!customerEmail || !productId || isLesson) return;
+
+    let cancelled = false;
+    let attempt = 0;
+    const maxAttempts = 5;
+    const delays = [3000, 5000, 8000, 12000, 18000];
+
     const fetchDownloadToken = async () => {
-      if (!customerEmail || !productId || isLesson) return;
-      
       try {
         const { data, error } = await supabase.functions.invoke('resend-purchase-email', {
           body: {
@@ -73,22 +78,29 @@ const PaymentSuccess = () => {
           },
         });
 
-        if (error) {
-          console.error("Error preparing guest download token:", error);
-          return;
-        }
+        if (cancelled) return;
 
         if (data?.token) {
           setDownloadToken(data.token);
+          return; // success, stop retrying
+        }
+
+        if (error) {
+          console.error("Error preparing guest download token:", error);
         }
       } catch (err) {
         console.error("Error fetching download token:", err);
       }
+
+      // Retry if no token yet
+      attempt++;
+      if (!cancelled && attempt < maxAttempts) {
+        setTimeout(fetchDownloadToken, delays[attempt] || 5000);
+      }
     };
 
-    // Small delay to allow webhook to process
-    const timer = setTimeout(fetchDownloadToken, 3000);
-    return () => clearTimeout(timer);
+    const timer = setTimeout(fetchDownloadToken, delays[0]);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [customerEmail, productId, isLesson]);
 
   useEffect(() => {

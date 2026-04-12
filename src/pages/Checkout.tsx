@@ -9,7 +9,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { ttqTrack } from "@/lib/tiktokPixel";
 
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "");
+const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+const stripePromise = stripeKey ? loadStripe(stripeKey) : null;
 
 interface CheckoutFormProps {
   clientSecret: string;
