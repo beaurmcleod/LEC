@@ -243,7 +243,7 @@ const EnterEmail = () => {
                 maxLength={255}
               />
               <p className="text-xs text-muted-foreground">
-                Your download link will be sent to this email
+                {isSubscription ? "Your subscription will be linked to this email" : "Your download link will be sent to this email"}
               </p>
             </div>
 
