@@ -78,28 +78,37 @@ export default function CruxChords() {
       {/* Hero */}
       <section className="relative py-20 lg:py-32 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-background to-accent/5" />
-        <div className="container max-w-5xl mx-auto px-4 relative z-10 text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-accent text-sm font-medium mb-6">
-            <Sparkles className="h-4 w-4" />
-            Max for Live Device
+        <div className="container max-w-5xl mx-auto px-4 relative z-10 flex flex-col lg:flex-row items-center gap-12">
+          <div className="flex-1 text-center lg:text-left">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-accent text-sm font-medium mb-6">
+              <Sparkles className="h-4 w-4" />
+              Max for Live Device
+            </div>
+            <h1 className="font-display text-5xl md:text-7xl font-bold mb-6">
+              <span className="bg-gradient-primary bg-clip-text text-transparent text-glow-primary">
+                CRUX Chords
+              </span>
+            </h1>
+            <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mb-10">
+              AI-powered chord generation inside Ableton Live. Generate musically intelligent progressions in seconds.
+            </p>
+            {!isActive && (
+              <Button
+                size="lg"
+                onClick={() => document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" })}
+                className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-glow-accent/30 text-lg px-8 py-6"
+              >
+                Get CRUX Chords — from ${annualMonthly}/mo
+              </Button>
+            )}
           </div>
-          <h1 className="font-display text-5xl md:text-7xl font-bold mb-6">
-            <span className="bg-gradient-primary bg-clip-text text-transparent text-glow-primary">
-              CRUX Chords
-            </span>
-          </h1>
-          <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto mb-10">
-            AI-powered chord generation inside Ableton Live. Generate musically intelligent progressions in seconds.
-          </p>
-          {!isActive && (
-            <Button
-              size="lg"
-              onClick={() => document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" })}
-              className="bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-glow-accent/30 text-lg px-8 py-6"
-            >
-              Get CRUX Chords — from ${annualMonthly}/mo
-            </Button>
-          )}
+          <div className="flex-shrink-0 w-64 md:w-80 lg:w-96">
+            <img
+              src="/lovable-uploads/crux-chords-device.png"
+              alt="CRUX Chords Max for Live device"
+              className="w-full h-auto drop-shadow-2xl"
+            />
+          </div>
         </div>
       </section>
 
