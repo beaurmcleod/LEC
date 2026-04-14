@@ -119,3 +119,6 @@ verify_jwt = false
 
 [functions.cancel-subscription]
 verify_jwt = false
+
+[functions.create-subscription-intent]
+verify_jwt = false
