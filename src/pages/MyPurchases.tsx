@@ -64,26 +64,25 @@ const MyPurchases = () => {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    checkAuth();
+    // Wait for Supabase auth to settle before deciding to redirect
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      setAuthChecked(true);
+
+      if (!currentUser) {
+        toast.error("Please sign in to view your purchases");
+        navigate("/auth?redirect=/my-purchases");
+      } else {
+        fetchPurchases(currentUser.id);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
-
-  const checkAuth = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    // Client-side auth check for UX only - actual security is enforced by RLS policies
-    // on the purchases table. This prevents unnecessary API calls and provides immediate
-    // user feedback, but does not provide security protection on its own.
-    if (!user) {
-      toast.error("Please sign in to view your purchases");
-      navigate("/auth");
-      return;
-    }
-
-    setUser(user);
-    fetchPurchases(user.id);
-  };
 
   const fetchPurchases = async (userId: string) => {
     try {
