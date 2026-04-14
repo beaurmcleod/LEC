@@ -232,9 +232,44 @@ const Checkout = () => {
 
     const initializeCheckout = async () => {
       try {
-        console.log('Initializing checkout for:', { productTitle, price, productId, customerEmail });
+        console.log('Initializing checkout for:', { productTitle, price, productId, customerEmail, isSubscription });
+
+        // Subscription checkout — uses a different edge function
+        if (isSubscription && subscriptionSlug) {
+          console.log('Creating subscription intent for:', subscriptionSlug);
+          const { data: { session } } = await supabase.auth.getSession();
+
+          if (!session?.access_token) {
+            navigate("/auth?redirect=/crux-chords");
+            return;
+          }
+
+          const { data, error } = await supabase.functions.invoke('create-subscription-intent', {
+            body: {
+              product_slug: subscriptionSlug,
+              customerFirstName: customerFirstName,
+              customerLastName: customerLastName,
+            },
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          });
+
+          if (error) {
+            console.error('Subscription intent error:', error);
+            throw new Error(error.message || 'Failed to set up subscription');
+          }
+
+          if (!data?.client_secret) {
+            throw new Error(data?.error || 'Subscription setup incomplete');
+          }
+
+          console.log('Subscription intent created, client secret received');
+          setClientSecret(data.client_secret);
+          setFinalAmount(data.amount);
+          setLoading(false);
+          return;
+        }
         
-        // Always trust DB price to decide free vs paid
+        // Regular product checkout
         const { data: product, error: productError } = await supabase
           .from('products')
           .select('price, title')
