@@ -1,158 +1,87 @@
 import { useEffect, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ArrowLeft, Download, Loader2, Copy, Check, Music, Shield } from "lucide-react";
+import { ArrowLeft, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { CruxAccountSection } from "@/components/CruxAccountSection";
-
-interface Purchase {
-  id: string;
-  product_id: string;
-  purchased_at: string;
-  amount_paid: number;
-  customer_email: string;
-  products: {
-    title: string;
-    image: string;
-    download_url: string;
-  };
-}
-
-interface PurchaseQueryRow {
-  id: string;
-  product_id: string;
-  purchased_at: string;
-  amount_paid: number;
-  customer_email: string;
-  products_public:
-    | {
-        title: string | null;
-        image: string | null;
-      }
-    | {
-        title: string | null;
-        image: string | null;
-      }[]
-    | null;
-}
-
-const mapPurchaseRow = (purchase: PurchaseQueryRow): Purchase => {
-  const product = Array.isArray(purchase.products_public)
-    ? purchase.products_public[0]
-    : purchase.products_public;
-
-  return {
-    id: purchase.id,
-    product_id: purchase.product_id,
-    purchased_at: purchase.purchased_at,
-    amount_paid: purchase.amount_paid,
-    customer_email: purchase.customer_email,
-    products: {
-      title: product?.title || "Unknown Product",
-      image: product?.image || "",
-      download_url: "",
-    },
-  };
-};
+import { loadPurchasesForUser, type Purchase } from "@/lib/purchaseLookup";
 
 const MyPurchases = () => {
   const navigate = useNavigate();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<any>(null);
-  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    // First check current session (may already be loaded from storage)
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    let isActive = true;
+
+    const fetchPurchases = async (userId: string, email?: string | null) => {
+      try {
+        const purchaseData = await loadPurchasesForUser(userId, email);
+
+        if (!isActive) return;
+
+        setPurchases(purchaseData);
+      } catch (error) {
+        console.error("Error fetching purchases:", error);
+
+        if (!isActive) return;
+
+        toast.error("Failed to load purchases");
+      } finally {
+        if (isActive) {
+          setLoading(false);
+        }
+      }
+    };
+
+    const initializePurchases = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       const currentUser = session?.user ?? null;
-      if (currentUser) {
-        setUser(currentUser);
-        setAuthChecked(true);
-        fetchPurchases(currentUser.id);
-      } else {
-        // No existing session — give onAuthStateChange a moment to restore,
-        // then redirect if still unauthenticated
-        setAuthChecked(true);
+
+      if (!isActive) return;
+
+      if (!currentUser) {
+        setLoading(false);
         toast.error("Please sign in to view your purchases");
         navigate("/auth?redirect=/my-purchases");
+        return;
       }
-    });
 
-    // Also listen for subsequent changes (sign-in, sign-out)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        setUser(session.user);
-        fetchPurchases(session.user.id);
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null);
+      void fetchPurchases(currentUser.id, currentUser.email);
+    };
+
+    void initializePurchases();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!isActive) return;
+
+      if (event === "SIGNED_OUT") {
         setPurchases([]);
+        setLoading(false);
         navigate("/auth?redirect=/my-purchases");
+        return;
+      }
+
+      if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session?.user) {
+        setLoading(true);
+        void fetchPurchases(session.user.id, session.user.email);
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const fetchPurchases = async (userId: string) => {
-    try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      const userEmail = currentUser?.email?.trim();
-
-      const purchaseSelect = `
-        id,
-        product_id,
-        purchased_at,
-        amount_paid,
-        customer_email,
-        products_public (
-          title,
-          image
-        )
-      `;
-
-      const [userPurchasesResult, emailPurchasesResult] = await Promise.all([
-        supabase
-          .from('purchases')
-          .select(purchaseSelect)
-          .eq('user_id', userId)
-          .order('purchased_at', { ascending: false }),
-        userEmail
-          ? supabase
-              .from('purchases')
-              .select(purchaseSelect)
-              .ilike('customer_email', userEmail)
-              .order('purchased_at', { ascending: false })
-          : Promise.resolve({ data: [], error: null }),
-      ]);
-
-      if (userPurchasesResult.error) throw userPurchasesResult.error;
-      if (emailPurchasesResult.error) throw emailPurchasesResult.error;
-
-      const combinedPurchases = [
-        ...(userPurchasesResult.data || []),
-        ...(emailPurchasesResult.data || []),
-      ] as PurchaseQueryRow[];
-
-      const uniquePurchases = Array.from(
-        new Map(combinedPurchases.map((purchase) => [purchase.id, purchase])).values()
-      ).sort(
-        (a, b) =>
-          new Date(b.purchased_at || 0).getTime() - new Date(a.purchased_at || 0).getTime()
-      );
-
-      setPurchases(uniquePurchases.map(mapPurchaseRow));
-    } catch (error) {
-      console.error('Error fetching purchases:', error);
-      toast.error("Failed to load purchases");
-    } finally {
-      setLoading(false);
-    }
-  };
+    return () => {
+      isActive = false;
+      subscription.unsubscribe();
+    };
+  }, [navigate]);
 
   const handleDownload = async (productId: string, customerEmail: string, title: string) => {
     try {
