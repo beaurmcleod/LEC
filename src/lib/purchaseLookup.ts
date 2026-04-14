@@ -61,7 +61,7 @@ export const loadPurchasesForUser = async (
       supabase
         .from("purchases")
         .select(PURCHASE_SELECT)
-        .eq("customer_email", email)
+        .ilike("customer_email", email)
         .order("purchased_at", { ascending: false })
     ),
   ];
