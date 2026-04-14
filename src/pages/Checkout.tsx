@@ -24,6 +24,7 @@ interface CheckoutFormProps {
   isLesson?: boolean;
   lessonDate?: string;
   lessonTime?: string;
+  isSubscription?: boolean;
 }
 
 const CheckoutForm = ({ clientSecret, productTitle, price, productId, customerEmail, originalPrice, discountApplied, finalAmount, isLesson, lessonDate, lessonTime }: CheckoutFormProps) => {
