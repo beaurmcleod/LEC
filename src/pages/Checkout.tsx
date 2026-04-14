@@ -342,10 +342,30 @@ const Checkout = () => {
           throw new Error(`Payment setup failed: ${error.message || 'Please try again'}`);
         }
 
-        // Handle free purchases (e.g., BOHEMYTHTEST coupon)
+        // Handle free purchases (coupon reduced price to $0)
         if (data?.free) {
-          console.log('Free purchase confirmed, redirecting to success page');
-          navigate(`/payment-success?product_id=${productId}&customer_email=${encodeURIComponent(customerEmail)}&free=true&lesson_date=${encodeURIComponent(lessonDate)}&lesson_time=${encodeURIComponent(lessonTime)}`);
+          console.log('Free purchase via coupon, redeeming...');
+          try {
+            const { data: redeemData, error: redeemError } = await supabase.functions.invoke('redeem-coupon', {
+              body: {
+                productId,
+                customerEmail,
+                couponCode: couponCode || 'FREE_PURCHASE',
+              },
+            });
+
+            if (redeemError) {
+              console.error('Redeem error:', redeemError);
+              throw new Error('Failed to process free purchase');
+            }
+
+            console.log('Free purchase redeemed:', redeemData);
+            navigate(`/payment-success?product_id=${productId}&customer_email=${encodeURIComponent(customerEmail)}&free=true&lesson_date=${encodeURIComponent(lessonDate)}&lesson_time=${encodeURIComponent(lessonTime)}`);
+          } catch (redeemErr: any) {
+            console.error('Free redeem failed:', redeemErr);
+            setError(redeemErr.message || 'Failed to process free purchase');
+            setLoading(false);
+          }
           return;
         }
 
