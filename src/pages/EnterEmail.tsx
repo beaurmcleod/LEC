@@ -253,7 +253,7 @@ const EnterEmail = () => {
               size="lg"
               disabled={loading}
             >
-              {loading ? "Loading..." : "Continue to Payment"}
+              {loading ? "Loading..." : (discountedPrice && parseFloat(discountedPrice) === 0 ? "Get it Free!" : "Continue to Payment")}
             </Button>
           </form>
         </Card>
