@@ -360,7 +360,7 @@ const Checkout = () => {
             }
 
             console.log('Free purchase redeemed:', redeemData);
-            navigate(`/payment-success?product_id=${productId}&customer_email=${encodeURIComponent(customerEmail)}&free=true&lesson_date=${encodeURIComponent(lessonDate)}&lesson_time=${encodeURIComponent(lessonTime)}`);
+            navigate(`/payment-success?product_id=${productId}&customer_email=${encodeURIComponent(customerEmail)}&free=true&redeemed=true&lesson_date=${encodeURIComponent(lessonDate)}&lesson_time=${encodeURIComponent(lessonTime)}`);
           } catch (redeemErr: any) {
             console.error('Free redeem failed:', redeemErr);
             setError(redeemErr.message || 'Failed to process free purchase');
