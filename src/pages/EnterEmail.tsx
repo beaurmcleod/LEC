@@ -129,7 +129,9 @@ const EnterEmail = () => {
 
     let checkoutUrl = `/checkout?title=${encodeURIComponent(productTitle)}&price=${encodeURIComponent(price)}&id=${productId}&email=${encodeURIComponent(userEmail)}&firstName=${encodeURIComponent(fn)}&lastName=${encodeURIComponent(ln)}${appliedCoupon ? `&coupon=${appliedCoupon}` : ''}`;
     
-    if (isLesson) {
+    if (isSubscription) {
+      checkoutUrl += `&type=subscription&subscriptionSlug=${encodeURIComponent(subscriptionSlug)}`;
+    } else if (isLesson) {
       checkoutUrl += `&type=lesson&lessonId=${encodeURIComponent(lessonId)}&date=${encodeURIComponent(lessonDate)}&time=${encodeURIComponent(lessonTime)}`;
     }
     
