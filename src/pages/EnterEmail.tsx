@@ -44,6 +44,8 @@ const EnterEmail = () => {
   
   // Lesson booking params
   const isLesson = searchParams.get("type") === "lesson";
+  const isSubscription = searchParams.get("type") === "subscription";
+  const subscriptionSlug = searchParams.get("subscriptionSlug") || "";
   const lessonId = searchParams.get("lessonId") || "";
   const lessonDate = searchParams.get("date") || "";
   const lessonTime = searchParams.get("time") || "";
@@ -127,7 +129,9 @@ const EnterEmail = () => {
 
     let checkoutUrl = `/checkout?title=${encodeURIComponent(productTitle)}&price=${encodeURIComponent(price)}&id=${productId}&email=${encodeURIComponent(userEmail)}&firstName=${encodeURIComponent(fn)}&lastName=${encodeURIComponent(ln)}${appliedCoupon ? `&coupon=${appliedCoupon}` : ''}`;
     
-    if (isLesson) {
+    if (isSubscription) {
+      checkoutUrl += `&type=subscription&subscriptionSlug=${encodeURIComponent(subscriptionSlug)}`;
+    } else if (isLesson) {
       checkoutUrl += `&type=lesson&lessonId=${encodeURIComponent(lessonId)}&date=${encodeURIComponent(lessonDate)}&time=${encodeURIComponent(lessonTime)}`;
     }
     
@@ -239,7 +243,7 @@ const EnterEmail = () => {
                 maxLength={255}
               />
               <p className="text-xs text-muted-foreground">
-                Your download link will be sent to this email
+                {isSubscription ? "Your subscription will be linked to this email" : "Your download link will be sent to this email"}
               </p>
             </div>
 

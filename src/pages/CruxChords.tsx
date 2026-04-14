@@ -23,7 +23,7 @@ export default function CruxChords() {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
   });
 
-  const handleSubscribe = async () => {
+  const handleSubscribe = () => {
     if (!user) {
       navigate("/auth?redirect=/crux-chords");
       return;
@@ -32,14 +32,11 @@ export default function CruxChords() {
     const plan = selectedPlan === "monthly" ? plans.monthly : plans.annual;
     if (!plan) return;
 
-    try {
-      const url = await subscribe(plan.slug);
-      if (url) {
-        window.location.href = url;
-      }
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to start subscription", variant: "destructive" });
-    }
+    const price = (plan.price_cents / 100).toFixed(2);
+    const label = selectedPlan === "monthly" ? "CRUX Chords Monthly" : "CRUX Chords Annual";
+    navigate(
+      `/enter-email?title=${encodeURIComponent(label)}&price=${encodeURIComponent(price)}&id=${encodeURIComponent(plan.id)}&type=subscription&subscriptionSlug=${encodeURIComponent(plan.slug)}`
+    );
   };
 
   const handleCancel = async () => {
@@ -288,9 +285,9 @@ export default function CruxChords() {
                 size="lg"
                 className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold shadow-glow-accent/30"
                 onClick={handleSubscribe}
-                disabled={actionLoading || loading}
+                disabled={loading}
               >
-                {actionLoading ? "Redirecting to checkout..." : user ? "Subscribe Now" : "Sign In & Subscribe"}
+                {user ? "Subscribe Now" : "Sign In & Subscribe"}
               </Button>
             </Card>
           </div>
