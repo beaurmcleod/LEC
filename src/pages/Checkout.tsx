@@ -78,10 +78,14 @@ const CheckoutForm = ({ clientSecret, productTitle, price, productId, customerEm
         if (lessonTime) successParams.set("lesson_time", lessonTime);
       }
 
+      const successUrl = isSubscription
+        ? `${window.location.origin}/crux-chords?subscribed=true`
+        : `${window.location.origin}/payment-success?${successParams.toString()}`;
+
       const { error } = await stripe.confirmPayment({
         elements,
         confirmParams: {
-          return_url: `${window.location.origin}/payment-success?${successParams.toString()}`,
+          return_url: successUrl,
         },
       });
 
