@@ -34,54 +34,55 @@ export function useCruxChords() {
     const load = async () => {
       setLoading(true);
 
-      // Always fetch plans (public)
-      const { data: products } = await supabase
-        .from("site_products")
-        .select("id, slug, price_cents")
-        .ilike("slug", "crux-chords%")
-        .eq("is_active", true);
+      // Fetch plans and auth in parallel
+      const [plansRes, authRes] = await Promise.all([
+        supabase
+          .from("site_products")
+          .select("id, slug, price_cents")
+          .ilike("slug", "crux-chords%")
+          .eq("is_active", true),
+        supabase.auth.getUser(),
+      ]);
 
-      if (products) {
-        const monthly = products.find((p) => p.slug.includes("monthly"));
-        const annual = products.find((p) => p.slug.includes("annual"));
+      if (plansRes.data) {
+        const monthly = plansRes.data.find((p) => p.slug.includes("monthly"));
+        const annual = plansRes.data.find((p) => p.slug.includes("annual"));
         setPlans({
           monthly: monthly ? { id: monthly.id, price_cents: monthly.price_cents, slug: monthly.slug } : null,
           annual: annual ? { id: annual.id, price_cents: annual.price_cents, slug: annual.slug } : null,
         });
       }
 
-      // Check auth
-      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const authUser = authRes.data?.user;
       if (!authUser) {
         setLoading(false);
         return;
       }
       setUser({ id: authUser.id, email: authUser.email ?? "" });
 
-      // Fetch subscription
-      const { data: subs } = await supabase
-        .from("subscriptions")
-        .select("id, status, current_period_end, site_product_slug, cancel_at_period_end")
-        .eq("user_id", authUser.id)
-        .in("site_product_slug", ["crux-chords-monthly", "crux-chords-annual"])
-        .in("status", ["active", "trialing", "past_due"])
-        .order("created_at", { ascending: false })
-        .limit(1);
+      // Fetch subscription and license in parallel
+      const [subsRes, licsRes] = await Promise.all([
+        supabase
+          .from("subscriptions")
+          .select("id, status, current_period_end, site_product_slug, cancel_at_period_end")
+          .eq("user_id", authUser.id)
+          .in("site_product_slug", ["crux-chords-monthly", "crux-chords-annual"])
+          .in("status", ["active", "trialing", "past_due"])
+          .order("created_at", { ascending: false })
+          .limit(1),
+        supabase
+          .from("licenses")
+          .select("id, license_key, status, daily_limit, requests_today, total_requests")
+          .eq("user_id", authUser.id)
+          .eq("product", "crux_chords")
+          .limit(1),
+      ]);
 
-      if (subs && subs.length > 0) {
-        setSubscription(subs[0]);
+      if (subsRes.data && subsRes.data.length > 0) {
+        setSubscription(subsRes.data[0]);
       }
-
-      // Fetch license
-      const { data: lics } = await supabase
-        .from("licenses")
-        .select("id, license_key, status, daily_limit, requests_today, total_requests")
-        .eq("user_id", authUser.id)
-        .eq("product", "crux_chords")
-        .limit(1);
-
-      if (lics && lics.length > 0) {
-        setLicense(lics[0]);
+      if (licsRes.data && licsRes.data.length > 0) {
+        setLicense(licsRes.data[0]);
       }
 
       setLoading(false);
