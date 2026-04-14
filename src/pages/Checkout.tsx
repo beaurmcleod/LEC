@@ -27,7 +27,7 @@ interface CheckoutFormProps {
   isSubscription?: boolean;
 }
 
-const CheckoutForm = ({ clientSecret, productTitle, price, productId, customerEmail, originalPrice, discountApplied, finalAmount, isLesson, lessonDate, lessonTime }: CheckoutFormProps) => {
+const CheckoutForm = ({ clientSecret, productTitle, price, productId, customerEmail, originalPrice, discountApplied, finalAmount, isLesson, lessonDate, lessonTime, isSubscription }: CheckoutFormProps) => {
   const stripe = useStripe();
   const elements = useElements();
   const navigate = useNavigate();
