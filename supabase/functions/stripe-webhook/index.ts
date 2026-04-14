@@ -427,6 +427,83 @@ serve(async (req) => {
       });
     }
 
+    // Handle subscription invoice paid (for embedded subscription checkout)
+    if (event.type === "invoice.paid") {
+      const invoice = event.data.object as any;
+      const subscriptionId = invoice.subscription;
+      
+      if (subscriptionId && invoice.billing_reason === "subscription_create") {
+        console.log("New subscription invoice paid:", invoice.id, "subscription:", subscriptionId);
+        
+        try {
+          // Fetch the full subscription from Stripe to get metadata
+          const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
+          const meta = stripeSubscription.metadata || {};
+          const userId = normalizeUserId(meta.supabase_user_id);
+          const siteProductSlug = meta.site_product_slug;
+          const site = meta.site;
+
+          if (site !== EXPECTED_SITE) {
+            console.log("Ignoring subscription from different site:", site);
+          } else if (userId && siteProductSlug) {
+            // Record the subscription in our DB
+            const { error: subError } = await supabase
+              .from("subscriptions")
+              .insert({
+                user_id: userId,
+                stripe_subscription_id: subscriptionId,
+                stripe_customer_id: stripeSubscription.customer as string,
+                stripe_price_id: stripeSubscription.items.data[0]?.price?.id || "",
+                status: stripeSubscription.status,
+                site_product_slug: siteProductSlug,
+                current_period_start: new Date((stripeSubscription as any).current_period_start * 1000).toISOString(),
+                current_period_end: new Date((stripeSubscription as any).current_period_end * 1000).toISOString(),
+                cancel_at_period_end: stripeSubscription.cancel_at_period_end,
+                site: EXPECTED_SITE,
+              });
+
+            if (subError) {
+              console.error("Error recording subscription:", subError);
+              await sendAdminAlert(
+                "Subscription Record Failed",
+                `Failed to record subscription ${subscriptionId} for user ${userId}. Error: ${JSON.stringify(subError)}`,
+              );
+            } else {
+              console.log("Subscription recorded successfully for user:", userId, "plan:", siteProductSlug);
+            }
+          } else {
+            console.warn("Missing userId or siteProductSlug in subscription metadata", meta);
+          }
+        } catch (subErr) {
+          console.error("Error processing subscription invoice:", subErr);
+        }
+      }
+    }
+
+    // Handle subscription updates (cancellation, renewal, etc.)
+    if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
+      const stripeSubscription = event.data.object as any;
+      const meta = stripeSubscription.metadata || {};
+      const site = meta.site;
+
+      if (site === EXPECTED_SITE) {
+        const { error: updateError } = await supabase
+          .from("subscriptions")
+          .update({
+            status: stripeSubscription.status,
+            cancel_at_period_end: stripeSubscription.cancel_at_period_end,
+            current_period_end: new Date(stripeSubscription.current_period_end * 1000).toISOString(),
+          })
+          .eq("stripe_subscription_id", stripeSubscription.id);
+
+        if (updateError) {
+          console.error("Error updating subscription:", updateError);
+        } else {
+          console.log("Subscription updated:", stripeSubscription.id, "status:", stripeSubscription.status);
+        }
+      }
+    }
+
     return new Response(JSON.stringify({ received: true }), {
       headers: { "Content-Type": "application/json" }, status: 200,
     });
