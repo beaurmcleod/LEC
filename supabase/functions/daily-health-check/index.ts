@@ -337,26 +337,30 @@ serve(async (req) => {
       </div>
     `;
 
-    // ─── SEND EMAIL ───
-    if (resendApiKey) {
-      console.log("Sending health check email to:", adminEmail);
-      const emailResp = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${resendApiKey}`,
-        },
-        body: JSON.stringify({
-          from: "Low End Candy <beau@lowendcandy.com>",
-          to: [adminEmail],
-          subject,
-          html,
-        }),
-      });
-      const emailData = await emailResp.json();
-      console.log("Email send result:", emailData);
+    // ─── SEND EMAIL (only if something is wrong) ───
+    if (failCount > 0 || warnCount > 0) {
+      if (resendApiKey) {
+        console.log("Issues detected — sending health check alert to:", adminEmail);
+        const emailResp = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${resendApiKey}`,
+          },
+          body: JSON.stringify({
+            from: "Low End Candy <beau@lowendcandy.com>",
+            to: [adminEmail],
+            subject,
+            html,
+          }),
+        });
+        const emailData = await emailResp.json();
+        console.log("Email send result:", emailData);
+      } else {
+        console.warn("No RESEND_API_KEY, skipping email");
+      }
     } else {
-      console.warn("No RESEND_API_KEY, skipping email");
+      console.log("All checks passed — no email sent");
     }
 
     return new Response(JSON.stringify({
