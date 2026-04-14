@@ -22,6 +22,43 @@ interface Purchase {
   };
 }
 
+interface PurchaseQueryRow {
+  id: string;
+  product_id: string;
+  purchased_at: string;
+  amount_paid: number;
+  customer_email: string;
+  products_public:
+    | {
+        title: string | null;
+        image: string | null;
+      }
+    | {
+        title: string | null;
+        image: string | null;
+      }[]
+    | null;
+}
+
+const mapPurchaseRow = (purchase: PurchaseQueryRow): Purchase => {
+  const product = Array.isArray(purchase.products_public)
+    ? purchase.products_public[0]
+    : purchase.products_public;
+
+  return {
+    id: purchase.id,
+    product_id: purchase.product_id,
+    purchased_at: purchase.purchased_at,
+    amount_paid: purchase.amount_paid,
+    customer_email: purchase.customer_email,
+    products: {
+      title: product?.title || "Unknown Product",
+      image: product?.image || "",
+      download_url: "",
+    },
+  };
+};
+
 const MyPurchases = () => {
   const navigate = useNavigate();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
@@ -50,47 +87,52 @@ const MyPurchases = () => {
 
   const fetchPurchases = async (userId: string) => {
     try {
-      // Get user email to also find purchases made before account was linked
       const { data: { user: currentUser } } = await supabase.auth.getUser();
-      const userEmail = currentUser?.email;
+      const userEmail = currentUser?.email?.trim();
 
-      // Query by user_id OR email to catch pre-account purchases
-      let query = supabase
-        .from('purchases')
-        .select(`
-          id,
-          product_id,
-          purchased_at,
-          amount_paid,
-          customer_email,
-          products_public (
-            title,
-            image
-          )
-        `)
-        .order('purchased_at', { ascending: false });
+      const purchaseSelect = `
+        id,
+        product_id,
+        purchased_at,
+        amount_paid,
+        customer_email,
+        products_public (
+          title,
+          image
+        )
+      `;
 
-      if (userEmail) {
-        query = query.or(`user_id.eq.${userId},customer_email.eq.${userEmail}`);
-      } else {
-        query = query.eq('user_id', userId);
-      }
+      const [userPurchasesResult, emailPurchasesResult] = await Promise.all([
+        supabase
+          .from('purchases')
+          .select(purchaseSelect)
+          .eq('user_id', userId)
+          .order('purchased_at', { ascending: false }),
+        userEmail
+          ? supabase
+              .from('purchases')
+              .select(purchaseSelect)
+              .ilike('customer_email', userEmail)
+              .order('purchased_at', { ascending: false })
+          : Promise.resolve({ data: [], error: null }),
+      ]);
 
-      const { data, error } = await query;
+      if (userPurchasesResult.error) throw userPurchasesResult.error;
+      if (emailPurchasesResult.error) throw emailPurchasesResult.error;
 
-      if (error) throw error;
+      const combinedPurchases = [
+        ...(userPurchasesResult.data || []),
+        ...(emailPurchasesResult.data || []),
+      ] as PurchaseQueryRow[];
 
-      // Map the data to match the expected structure
-      const mappedData = data?.map(purchase => ({
-        ...purchase,
-        products: {
-          title: purchase.products_public?.title || 'Unknown Product',
-          image: purchase.products_public?.image || '',
-          download_url: '' // Will be fetched securely when downloading
-        }
-      })) || [];
+      const uniquePurchases = Array.from(
+        new Map(combinedPurchases.map((purchase) => [purchase.id, purchase])).values()
+      ).sort(
+        (a, b) =>
+          new Date(b.purchased_at || 0).getTime() - new Date(a.purchased_at || 0).getTime()
+      );
 
-      setPurchases(mappedData);
+      setPurchases(uniquePurchases.map(mapPurchaseRow));
     } catch (error) {
       console.error('Error fetching purchases:', error);
       toast.error("Failed to load purchases");
