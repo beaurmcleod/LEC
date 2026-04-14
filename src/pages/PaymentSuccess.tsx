@@ -25,6 +25,7 @@ const PaymentSuccess = () => {
   const productId = searchParams.get("product_id");
   const customerEmail = searchParams.get("customer_email");
   const isFree = searchParams.get("free") === "true";
+  const alreadyRedeemed = searchParams.get("redeemed") === "true";
   const lessonDate = searchParams.get("lesson_date");
   const lessonTime = searchParams.get("lesson_time");
   
@@ -105,7 +106,7 @@ const PaymentSuccess = () => {
 
   useEffect(() => {
     const handleFreePurchase = async () => {
-      if (!isFree || !customerEmail || !productId || notificationSent) return;
+      if (!isFree || !customerEmail || !productId || notificationSent || alreadyRedeemed) return;
 
       try {
         console.log("Processing free purchase...", { productId, customerEmail, isLesson });
