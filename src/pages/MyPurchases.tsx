@@ -64,26 +64,39 @@ const MyPurchases = () => {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    checkAuth();
+    // First check current session (may already be loaded from storage)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const currentUser = session?.user ?? null;
+      if (currentUser) {
+        setUser(currentUser);
+        setAuthChecked(true);
+        fetchPurchases(currentUser.id);
+      } else {
+        // No existing session — give onAuthStateChange a moment to restore,
+        // then redirect if still unauthenticated
+        setAuthChecked(true);
+        toast.error("Please sign in to view your purchases");
+        navigate("/auth?redirect=/my-purchases");
+      }
+    });
+
+    // Also listen for subsequent changes (sign-in, sign-out)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        setUser(session.user);
+        fetchPurchases(session.user.id);
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setPurchases([]);
+        navigate("/auth?redirect=/my-purchases");
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
-
-  const checkAuth = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    // Client-side auth check for UX only - actual security is enforced by RLS policies
-    // on the purchases table. This prevents unnecessary API calls and provides immediate
-    // user feedback, but does not provide security protection on its own.
-    if (!user) {
-      toast.error("Please sign in to view your purchases");
-      navigate("/auth");
-      return;
-    }
-
-    setUser(user);
-    fetchPurchases(user.id);
-  };
 
   const fetchPurchases = async (userId: string) => {
     try {
