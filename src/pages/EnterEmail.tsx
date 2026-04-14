@@ -44,6 +44,8 @@ const EnterEmail = () => {
   
   // Lesson booking params
   const isLesson = searchParams.get("type") === "lesson";
+  const isSubscription = searchParams.get("type") === "subscription";
+  const subscriptionSlug = searchParams.get("subscriptionSlug") || "";
   const lessonId = searchParams.get("lessonId") || "";
   const lessonDate = searchParams.get("date") || "";
   const lessonTime = searchParams.get("time") || "";
