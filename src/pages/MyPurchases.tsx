@@ -92,7 +92,7 @@ const MyPurchases = () => {
         .from('download_tokens')
         .select('token')
         .eq('product_id', productId)
-        .eq('customer_email', customerEmail)
+        .ilike('customer_email', customerEmail)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
