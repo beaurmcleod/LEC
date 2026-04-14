@@ -135,7 +135,7 @@ export default function CruxChords() {
           </h2>
           <div className="aspect-video rounded-xl overflow-hidden border border-border shadow-lg">
             <iframe
-              src="https://www.youtube.com/embed/bAnkZfPHNuI"
+              src="https://www.youtube.com/embed/tBLaOFKpiPk?start=94"
               title="CRUX Chords Demo"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
