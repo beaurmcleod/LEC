@@ -375,7 +375,7 @@ const Checkout = () => {
     };
 
     initializeCheckout();
-  }, [productTitle, price, productId, customerEmail, navigate, customerFirstName, customerLastName, couponCode, isLesson, lessonId, lessonDate, lessonTime]);
+  }, [productTitle, price, productId, customerEmail, navigate, customerFirstName, customerLastName, couponCode, isLesson, isSubscription, subscriptionSlug, lessonId, lessonDate, lessonTime]);
 
   if (!stripeKey) {
     return (
@@ -461,6 +461,7 @@ const Checkout = () => {
                 isLesson={isLesson}
                 lessonDate={lessonDate}
                 lessonTime={lessonTime}
+                isSubscription={isSubscription}
               />
             </Elements>
           ) : (
