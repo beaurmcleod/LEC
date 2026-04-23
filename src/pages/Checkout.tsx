@@ -312,6 +312,7 @@ const Checkout = () => {
         console.log('Creating payment intent for paid product');
         const paymentBody: any = {
           productId: productId,
+          productTitle: productTitle,
           customerEmail: customerEmail,
           customerFirstName: customerFirstName,
           customerLastName: customerLastName,
@@ -336,6 +337,10 @@ const Checkout = () => {
         });
 
         console.log('Payment intent response:', { data, error });
+
+        if (data?.fallback) {
+          throw new Error(data.message || 'Checkout is temporarily unavailable. Please try again in a few minutes.');
+        }
 
         if (error) {
           console.error('Supabase function error:', error);

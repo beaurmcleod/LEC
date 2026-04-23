@@ -1108,6 +1108,72 @@ export type Database = {
           },
         ]
       }
+      pos_daily_rollup: {
+        Row: {
+          avg_completion_pct: number | null
+          avg_watch_time_sec: number | null
+          checkouts_initiated: number
+          clicks_count: number
+          extra: Json
+          id: number
+          ingested_at: string
+          leads_count: number
+          meta_clicks: number | null
+          meta_impressions: number | null
+          meta_spend_usd: number | null
+          purchases_count: number
+          revenue_usd: number
+          rollup_date: string
+          sessions_count: number
+          source: string
+          top_product: string | null
+          unique_buyers: number
+          video_sessions: number
+        }
+        Insert: {
+          avg_completion_pct?: number | null
+          avg_watch_time_sec?: number | null
+          checkouts_initiated?: number
+          clicks_count?: number
+          extra?: Json
+          id?: number
+          ingested_at?: string
+          leads_count?: number
+          meta_clicks?: number | null
+          meta_impressions?: number | null
+          meta_spend_usd?: number | null
+          purchases_count?: number
+          revenue_usd?: number
+          rollup_date: string
+          sessions_count?: number
+          source?: string
+          top_product?: string | null
+          unique_buyers?: number
+          video_sessions?: number
+        }
+        Update: {
+          avg_completion_pct?: number | null
+          avg_watch_time_sec?: number | null
+          checkouts_initiated?: number
+          clicks_count?: number
+          extra?: Json
+          id?: number
+          ingested_at?: string
+          leads_count?: number
+          meta_clicks?: number | null
+          meta_impressions?: number | null
+          meta_spend_usd?: number | null
+          purchases_count?: number
+          revenue_usd?: number
+          rollup_date?: string
+          sessions_count?: number
+          source?: string
+          top_product?: string | null
+          unique_buyers?: number
+          video_sessions?: number
+        }
+        Relationships: []
+      }
       pos_products: {
         Row: {
           billing_period: string | null
@@ -1765,6 +1831,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      system_health: {
+        Row: {
+          checked_at: string
+          created_at: string
+          error_count: number
+          findings: Json
+          id: number
+          notes: string | null
+          site: string
+          status: string
+          warning_count: number
+        }
+        Insert: {
+          checked_at?: string
+          created_at?: string
+          error_count?: number
+          findings?: Json
+          id?: number
+          notes?: string | null
+          site: string
+          status: string
+          warning_count?: number
+        }
+        Update: {
+          checked_at?: string
+          created_at?: string
+          error_count?: number
+          findings?: Json
+          id?: number
+          notes?: string | null
+          site?: string
+          status?: string
+          warning_count?: number
+        }
+        Relationships: []
       }
       tips: {
         Row: {

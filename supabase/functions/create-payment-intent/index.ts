@@ -13,6 +13,8 @@ const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT = 10; // requests per window
 const RATE_WINDOW = 60 * 60 * 1000; // 1 hour in milliseconds
 
+const STORE_SITE = "lowendcandy";
+
 function checkRateLimit(identifier: string): boolean {
   const now = Date.now();
   const record = rateLimitMap.get(identifier);
@@ -28,6 +30,21 @@ function checkRateLimit(identifier: string): boolean {
 
   record.count++;
   return true;
+}
+
+function jsonResponse(payload: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function normalizeProductLookup(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 // Initialize Supabase client
@@ -74,10 +91,12 @@ serve(async (req) => {
     // Input validation with zod
     const paymentSchema = z.object({
       productId: z.string().min(1, { message: "Product ID is required" }),
+      productTitle: z.string().max(255).optional(),
       customerEmail: z.string().email().max(255).optional(),
       customerFirstName: z.string().max(100).optional(),
       customerLastName: z.string().max(100).optional(),
       couponCode: z.string().optional(),
+      healthcheck: z.boolean().optional(),
       // Lesson booking fields
       isLesson: z.boolean().optional(),
       lessonId: z.string().optional(),
@@ -97,42 +116,111 @@ serve(async (req) => {
       );
     }
 
-    const { productId, customerEmail: providedEmail, customerFirstName, customerLastName, couponCode, isLesson, lessonId, lessonDate, lessonTime } = validation.data;
+    const {
+      productId,
+      productTitle,
+      customerEmail: providedEmail,
+      customerFirstName,
+      customerLastName,
+      couponCode,
+      healthcheck,
+      isLesson,
+      lessonId,
+      lessonDate,
+      lessonTime,
+    } = validation.data;
     // Use authenticated user's email, falling back to provided email
     const customerEmail = user?.email || providedEmail;
 
     // SECURITY: Fetch actual price from database instead of trusting client
-    // Support both UUID and title/slug lookup
-    let query = supabase.from('products').select('id, price, title');
-    
+    // Support UUID, exact title, and slugified title lookup
     // Check if productId is a UUID format
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let product: { id: string; price: string; title: string } | null = null;
+
     if (uuidRegex.test(productId)) {
       console.log('Looking up product by UUID:', productId);
-      query = query.eq('id', productId);
-    } else {
-      // Convert slug to title (e.g., "27-ott-rack" -> "27 OTT Rack")
-      const titleFromSlug = productId.split('-').map(word => 
-        word.charAt(0).toUpperCase() + word.slice(1)
-      ).join(' ');
-      console.log('Looking up product by title:', titleFromSlug);
-      query = query.eq('title', titleFromSlug);
-    }
-    
-    const { data: product, error: productError } = await query.single();
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, price, title')
+        .eq('site', STORE_SITE)
+        .eq('id', productId)
+        .maybeSingle();
 
-    if (productError || !product) {
-      console.error('Product not found:', productError);
-      throw new Error("Product not found");
+      if (error) {
+        console.error('UUID product lookup error:', error);
+      } else {
+        product = data;
+      }
     }
 
-    const parsedPrice = parseFloat(product.price.replace('$', ''));
-    if (Number.isNaN(parsedPrice)) {
-      throw new Error("Invalid product price configuration");
+    if (!product && productTitle?.trim()) {
+      console.log('Looking up product by exact title:', productTitle);
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, price, title')
+        .eq('site', STORE_SITE)
+        .ilike('title', productTitle.trim())
+        .maybeSingle();
+
+      if (error) {
+        console.error('Exact title lookup error:', error);
+      } else {
+        product = data;
+      }
+    }
+
+    if (!product) {
+      const normalizedIdentifier = normalizeProductLookup(productId || productTitle || '');
+      console.log('Looking up product by normalized title slug:', normalizedIdentifier);
+      const { data: products, error: productsError } = await supabase
+        .from('products')
+        .select('id, price, title')
+        .eq('site', STORE_SITE);
+
+      if (productsError) {
+        console.error('Fallback product lookup error:', productsError);
+      } else {
+        product = (products || []).find((candidate) => {
+          const normalizedTitle = normalizeProductLookup(candidate.title);
+          return normalizedTitle === normalizedIdentifier;
+        }) || null;
+      }
+    }
+
+    if (!product) {
+      console.error('Product not found for checkout:', { productId, productTitle });
+      return jsonResponse({
+        error: 'PRODUCT_NOT_FOUND',
+        message: 'This checkout link is out of date. Please return to the store and open the product again.',
+        fallback: true,
+      });
+    }
+
+    const rawPrice = (product.price || '').toString().trim();
+    const isFreeProduct = rawPrice.toLowerCase() === 'free';
+    const parsedPrice = isFreeProduct ? 0 : parseFloat(rawPrice.replace('$', ''));
+    if (!isFreeProduct && Number.isNaN(parsedPrice)) {
+      console.error('Invalid product price configuration:', product);
+      return jsonResponse({
+        error: 'PRODUCT_CONFIGURATION_ERROR',
+        message: 'This product is temporarily unavailable. Please contact support if you need help checking out.',
+        fallback: true,
+      });
+    }
+
+    const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY") || "";
+    if (!stripeSecretKey) {
+      console.error('Missing STRIPE_SECRET_KEY');
+      return jsonResponse({
+        error: 'PAYMENT_SERVICE_UNAVAILABLE',
+        message: 'Checkout is temporarily unavailable. Please try again in a few minutes or contact support.',
+        fallback: true,
+      });
     }
 
     // Initialize Stripe
-    const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
+    const stripe = new Stripe(stripeSecretKey, {
       apiVersion: "2023-10-16",
     });
 
@@ -229,6 +317,17 @@ serve(async (req) => {
         status: 200,
       });
     }
+
+    if (healthcheck) {
+      console.log('Health check request validated for product:', product.title);
+      return jsonResponse({
+        ready: true,
+        amount: priceInCents,
+        currency: 'usd',
+        productId: product.id,
+        productTitle: product.title,
+      });
+    }
     
     // Create a payment intent for embedded checkout
     const paymentIntent = await stripe.paymentIntents.create({
@@ -251,12 +350,10 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error('Payment intent creation error:', error);
-    return new Response(
-      JSON.stringify({ error: 'Unable to create payment. Please try again or contact support.' }), 
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500,
-      }
-    );
+    return jsonResponse({
+      error: 'PAYMENT_SERVICE_UNAVAILABLE',
+      message: 'Checkout is temporarily unavailable. Please try again in a few minutes or contact support.',
+      fallback: true,
+    });
   }
 });

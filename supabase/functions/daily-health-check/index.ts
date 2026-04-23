@@ -151,12 +151,22 @@ serve(async (req) => {
     // ─── CHECK 5: create-payment-intent edge function ───
     console.log("Check 5: Payment intent edge function");
     if (products && products.length > 0) {
-      const testProduct = products.find(p => {
+      const paidProducts = products.filter(p => {
         const price = parseFloat((p.price || "0").replace(/\$/g, ""));
         return price > 0 && (p.category || "").toLowerCase() !== "lessons";
       });
-      if (testProduct) {
+
+      const paymentIssues: string[] = [];
+      let readyCount = 0;
+
+      for (const product of paidProducts) {
         try {
+          const slugifiedTitle = product.title
+            .toLowerCase()
+            .replace(/&/g, "and")
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "");
+
           const resp = await fetch(`${supabaseUrl}/functions/v1/create-payment-intent`, {
             method: "POST",
             headers: {
@@ -164,22 +174,36 @@ serve(async (req) => {
               "Authorization": `Bearer ${Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY")}`,
             },
             body: JSON.stringify({
-              productId: testProduct.id,
+              productId: slugifiedTitle,
+              productTitle: product.title,
               customerEmail: "healthcheck@test.internal",
+              healthcheck: true,
             }),
           });
+
           const respData = await resp.json();
-          if (resp.ok && respData.client_secret) {
-            results.push({ name: "Payment Intent Function", status: "pass", details: `Test payment intent created for "${testProduct.title}"` });
-          } else if (resp.status === 401) {
-            // 401 means the function is running and correctly enforcing authentication
-            results.push({ name: "Payment Intent Function", status: "pass", details: "Function reachable, auth enforcement verified" });
+          if (resp.ok && respData.ready) {
+            readyCount += 1;
           } else {
-            results.push({ name: "Payment Intent Function", status: "fail", details: `Response ${resp.status}: ${JSON.stringify(respData)}` });
+            paymentIssues.push(`${product.title}: ${respData.message || JSON.stringify(respData)}`);
           }
         } catch (fnErr: any) {
-          results.push({ name: "Payment Intent Function", status: "fail", details: `Function unreachable: ${fnErr.message}` });
+          paymentIssues.push(`${product.title}: ${fnErr.message}`);
         }
+      }
+
+      if (paymentIssues.length > 0) {
+        results.push({
+          name: "Per-Product Payment Readiness",
+          status: "fail",
+          details: paymentIssues.join("; "),
+        });
+      } else {
+        results.push({
+          name: "Per-Product Payment Readiness",
+          status: "pass",
+          details: `${readyCount}/${paidProducts.length} paid products checkout-ready`,
+        });
       }
     }
 
@@ -277,6 +301,30 @@ serve(async (req) => {
     const warnCount = results.filter(r => r.status === "warn").length;
     const passCount = results.filter(r => r.status === "pass").length;
     const overallStatus = failCount > 0 ? "CRITICAL" : warnCount > 0 ? "WARNING" : "ALL CLEAR";
+    const systemHealthSite = "lec";
+    const systemHealthStatus = failCount > 0 ? "red" : warnCount > 0 ? "yellow" : "green";
+
+    const findings = {
+      results,
+      elapsed_ms: elapsed,
+      pass_count: passCount,
+      warning_count: warnCount,
+      fail_count: failCount,
+    };
+
+    const { error: systemHealthError } = await supabase.from("system_health").insert({
+      site: systemHealthSite,
+      status: systemHealthStatus,
+      error_count: failCount,
+      warning_count: warnCount,
+      findings,
+      notes: `Daily commerce health check completed in ${elapsed}ms`,
+    });
+
+    if (systemHealthError) {
+      console.error("Failed to persist system health row:", systemHealthError);
+      results.push({ name: "System Health Logging", status: "warn", details: systemHealthError.message });
+    }
 
     const statusEmoji = { pass: "✅", fail: "❌", warn: "⚠️" };
     const subject = failCount > 0
@@ -376,6 +424,15 @@ serve(async (req) => {
     });
   } catch (err: any) {
     console.error("Health check fatal error:", err);
+
+    await supabase.from("system_health").insert({
+      site: "lec",
+      status: "red",
+      error_count: 1,
+      warning_count: 0,
+      findings: { fatal_error: err.message, stack: err.stack || null },
+      notes: "Daily commerce health check crashed before completion",
+    });
 
     if (resendApiKey) {
       await fetch("https://api.resend.com/emails", {
