@@ -197,8 +197,10 @@ serve(async (req) => {
       });
     }
 
-    const parsedPrice = parseFloat(product.price.replace('$', ''));
-    if (Number.isNaN(parsedPrice)) {
+    const rawPrice = (product.price || '').toString().trim();
+    const isFreeProduct = rawPrice.toLowerCase() === 'free';
+    const parsedPrice = isFreeProduct ? 0 : parseFloat(rawPrice.replace('$', ''));
+    if (!isFreeProduct && Number.isNaN(parsedPrice)) {
       console.error('Invalid product price configuration:', product);
       return jsonResponse({
         error: 'PRODUCT_CONFIGURATION_ERROR',
