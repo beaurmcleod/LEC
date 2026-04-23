@@ -301,6 +301,8 @@ serve(async (req) => {
     const warnCount = results.filter(r => r.status === "warn").length;
     const passCount = results.filter(r => r.status === "pass").length;
     const overallStatus = failCount > 0 ? "CRITICAL" : warnCount > 0 ? "WARNING" : "ALL CLEAR";
+    const systemHealthSite = "lec";
+    const systemHealthStatus = failCount > 0 ? "red" : warnCount > 0 ? "yellow" : "green";
 
     const findings = {
       results,
@@ -311,8 +313,8 @@ serve(async (req) => {
     };
 
     const { error: systemHealthError } = await supabase.from("system_health").insert({
-      site: "lowendcandy",
-      status: overallStatus,
+      site: systemHealthSite,
+      status: systemHealthStatus,
       error_count: failCount,
       warning_count: warnCount,
       findings,
@@ -424,8 +426,8 @@ serve(async (req) => {
     console.error("Health check fatal error:", err);
 
     await supabase.from("system_health").insert({
-      site: "lowendcandy",
-      status: "CRITICAL",
+      site: "lec",
+      status: "red",
       error_count: 1,
       warning_count: 0,
       findings: { fatal_error: err.message, stack: err.stack || null },
