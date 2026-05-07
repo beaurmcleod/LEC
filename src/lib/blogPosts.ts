@@ -12,6 +12,338 @@ export interface BlogPost {
 export const blogPosts: BlogPost[] = [
 
   {
+    slug: "major-vs-minor-keys",
+    title: "Major vs Minor Keys: How to Tell the Difference by Ear",
+    excerpt: "Major sounds bright and resolved. Minor sounds darker and tense. Here's the actual difference — and how to tell which one your sample or track is in.",
+    content: `You've heard it before: major sounds happy, minor sounds sad. That's oversimplified, but it's a useful starting point. Here's the actual difference — and how to figure out which one your sample or track is in.
+
+## What Is a Major Key?
+
+A major key is built on a specific pattern of intervals that creates brightness and resolution. When a melody lands on the root note of a major key, it feels complete, open, and confident.
+
+Think of classic "feel good" sounds: pop radio, uplifting house music, major-key gospel. The brightness isn't an accident — it's built into the structure of the scale.
+
+Common major keys in production: C Major, G Major, E Major, A♭ Major.
+
+## What Is a Minor Key?
+
+A minor key uses a different interval pattern that creates tension, depth, and a darker or more emotional sound. Landing on the root note of a minor key feels introspective rather than resolved.
+
+Trap, hip hop, drill, and dark R&B live almost entirely in minor keys. The minor key's tension is what makes a dark beat feel heavy.
+
+Common minor keys in production: A Minor, C# Minor, G Minor, F Minor.
+
+## The Actual Difference (Without the Theory)
+
+**Major:** tends to feel bright, resolved, optimistic, forward-moving.
+
+**Minor:** tends to feel tense, introspective, heavy, or melancholic.
+
+This isn't a rule — plenty of dark music uses major keys, and plenty of uplifting music sits in minor. But for 90% of what you hear in popular genres, this intuition holds.
+
+## How to Tell by Ear
+
+**Step 1: Find the root note.** Listen to the bass line or the lowest recurring note. That's usually the root. Hum it.
+
+**Step 2: Listen to the third.** The interval that most clearly separates major from minor is the third scale degree:
+- 4 semitones above the root = **major** sound
+- 3 semitones above the root = **minor** sound
+
+You can feel it without counting: the minor third has a characteristic heaviness, the major third has a lift.
+
+**Step 3: Trust your gut.** Does this feel heavy and unresolved, or bright and forward? That feeling is usually accurate.
+
+## How to Find the Key Without Training Your Ear
+
+**Low End Candy's Key & BPM Detector** returns the key (including major or minor), BPM, and Camelot code for any uploaded audio file.
+
+The Camelot code makes it even clearer: **A codes = minor, B codes = major.** So \`8A\` is A Minor, \`8B\` is C Major.
+
+[→ Find the key of any sample instantly](https://lowendcandy.com)
+
+## Why It Matters for Production
+
+**Writing melodies that fit.** Once you know the key is minor, you know which scale to use — play those notes and you'll stay inside the vibe of the track.
+
+**Finding compatible samples.** Two loops in the same mode (both major, or both minor) are more likely to blend.
+
+**Communicating with collaborators.** "This beat is in F# Minor" tells a vocalist exactly what scale to work in.
+
+## Major and Minor in Popular Genres
+
+| Genre | Typical Mode |
+|---|---|
+| Trap | Minor |
+| Hip hop / boom bap | Often minor |
+| Drill | Minor (almost always) |
+| R&B | Mixed |
+| House / dance | Major |
+| Techno | Minor |
+| Pop | Mixed |
+| Afrobeats | Often major |
+
+## Summary
+
+Major keys sound bright, resolved, open. Minor keys sound dark, heavy, introspective. You can tell them apart by ear over time — or find out instantly with a key detector.
+
+The Camelot code handles this automatically: A = minor, B = major.
+
+[→ Detect the key and Camelot code of your audio — Low End Candy](https://lowendcandy.com)`,
+    date: "2026-04-29",
+    readTime: "5 min read",
+    tags: ["music theory", "major key", "minor key", "key detection", "basics"],
+    metaDescription: "Major and minor keys explained simply — what makes them sound different, how to tell them apart by ear, and why producers need to know which one their sample is in."
+  },
+  {
+    slug: "camelot-wheel-for-sample-flipping",
+    title: "How to Use the Camelot Wheel to Flip Samples",
+    excerpt: "The Camelot wheel might be even more useful for producers than DJs. Here's how to use it specifically for sample-based production — finding compatible chords, layering loops, and pitching samples fast.",
+    content: `The Camelot wheel was designed for DJs, but it might be even more useful for producers who flip samples. Here's how to apply it specifically to beatmaking and sample-based production.
+
+## The Core Idea
+
+When you flip a sample, you're building around audio that already has a key. Every loop, vocal chop, or drum break with pitched content is locked to a specific key — and anything you add on top needs to be in a compatible key or it'll clash.
+
+The Camelot wheel tells you exactly which keys are compatible. Instead of trial-and-erroring on a keyboard until something works, you check codes and know instantly.
+
+## Step 1: Find the Sample's Camelot Code
+
+Before you flip anything, get the key and Camelot code of your sample.
+
+**Low End Candy's Key & BPM Detector** returns the key, BPM, and Camelot code for any audio file in seconds. Upload the sample, note the code, then build from there.
+
+[→ Get the Camelot code of your sample](https://lowendcandy.com)
+
+## Step 2: Know Your Compatible Codes
+
+Once you have the sample's code, the compatible codes are everything adjacent on the Camelot wheel:
+
+- **Same number, different letter** (\`8A\` → \`8B\`): relative major or minor — shares all the same notes
+- **One step clockwise** (\`8A\` → \`9A\`): one perfect fifth up
+- **One step counter-clockwise** (\`8A\` → \`7A\`): one perfect fifth down
+
+If your sample is in \`8A\` (A Minor), your compatible codes are \`7A\`, \`9A\`, and \`8B\`.
+
+## Applying This to Sample Flipping
+
+### Writing Chords and Melodies Over a Sample
+
+Once you know the sample's key, you know its scale — the set of notes available to you. Stay in a compatible Camelot code and the notes will work.
+
+**Practical approach:** If your sample is in \`9A\` (E Minor), write melodies using notes from E Minor. Or write in \`8A\` or \`10A\` — adjacent codes — and it'll still blend harmonically.
+
+### Layering a Second Loop
+
+Sample packs usually include loops in multiple keys. The Camelot code tells you instantly which ones can be layered with your main sample.
+
+If your main loop is \`6A\` (G Minor), any loop in \`5A\`, \`7A\`, or \`6B\` will blend. You can search by code instead of by ear — much faster.
+
+### Adding an 808 or Bass Line
+
+Bass lines need to be in the right key or they'll muddy the low end immediately. If your sample is in \`8A\` (A Minor), your 808 root notes and bass lines should stay in A Minor or an adjacent compatible code.
+
+Mismatched bass is one of the most common causes of a beat that sounds "off" without an obvious reason.
+
+### Chopping and Re-pitching Samples
+
+When you chop a sample and re-pitch individual slices, each slice stays in the same key as the original. If you pitch a slice up 7 semitones, you've moved one step clockwise on the Camelot wheel — the code changes. Account for that when building around the chop.
+
+## Pitching a Sample to a New Key
+
+If you need a sample in a different key, the Camelot wheel tells you how many semitones to move:
+
+| Move | Semitones |
+|---|---|
+| One step clockwise (\`8A\` → \`9A\`) | +7 (or -5) |
+| One step counter-clockwise (\`8A\` → \`7A\`) | -7 (or +5) |
+| A to B at same number (minor → relative major) | +3 semitones |
+| B to A at same number (major → relative minor) | -3 semitones |
+
+Keep shifts under 7 semitones for the best audio quality.
+
+## A Full Sample-Based Workflow
+
+1. **Drop your main sample into a key detector** — get the Camelot code
+2. **Set your DAW's project key** to match
+3. **Search your sample pack** for loops in adjacent Camelot codes
+4. **Write any MIDI** using notes from the same scale
+5. **Label everything** with its code as you work
+
+Producers who label their libraries move significantly faster. When you're building, you search by code instead of auditioning samples until something works.
+
+## Common Mistakes
+
+**Ignoring the key of bass loops.** A bass loop in the wrong key sounds muddy. People often blame the mix when the issue is the key.
+
+**Layering loops from different packs without checking codes.** Similar feel doesn't mean compatible keys.
+
+**Assuming vocal samples don't have keys.** Vocal chops are tonally specific. They have a key. Check it.
+
+## Summary
+
+The Camelot wheel makes sample-based production faster and more intentional. Know your sample's code, find compatible codes, build everything else around those.
+
+The whole system starts with a 10-second upload.
+
+[→ Find the Camelot code of any sample — Low End Candy](https://lowendcandy.com)`,
+    date: "2026-04-28",
+    readTime: "6 min read",
+    tags: ["sampling", "Camelot wheel", "sample flipping", "beatmaking", "music production"],
+    metaDescription: "How producers use the Camelot wheel to flip samples — find compatible chords, layer loops without clashing, and pitch-shift samples to the right key fast."
+  },
+  {
+    slug: "what-is-the-key-of-a-song",
+    title: "What Is the Key of a Song? Music Theory for Producers Who Don't Read Music",
+    excerpt: "What is the key of a song? Here's the plain-English explanation — no sheet music or jargon required. What keys are, why they matter, and how to find one in seconds.",
+    content: `If you've ever heard someone say "this beat is in C Minor" and had no idea what that means — this is for you. Understanding what a key is doesn't require years of music theory.
+
+## What Is a Key?
+
+The key of a song is the home base of its melody and harmony. It's the note that everything else in the song is built around — the note that sounds like "arrival" when the music lands on it.
+
+Every song uses a small set of notes that belong to its key. When you stay inside those notes, everything sounds in place. When you go outside them, you create tension or dissonance.
+
+Think of it like a palette of colors. The key gives you the 7 notes you're working with. Every melody, chord, and bass line in that song is drawn from that palette.
+
+## Major and Minor: The Two Basic Types
+
+Every key is either **major** or **minor**.
+
+**Major keys** sound bright, resolved, and forward-moving. Most "happy" or "uplifting" music lives in major keys.
+
+**Minor keys** sound darker, more tense or introspective. Most trap, hip hop, drill, and dark R&B sits in minor keys.
+
+There are 24 total keys: 12 root notes × 2 modes (major and minor).
+
+## How Keys Are Named
+
+Keys are named after their root note — the note the scale starts on. If the root is A and the mode is minor, the key is A Minor. If the root is C and the mode is major, it's C Major.
+
+Some notes have two names (e.g., C# and D♭ are the same note), which is why you'll sometimes see \`C# Minor / D♭ Minor\` — the same key written differently.
+
+## Why Producers Need to Know the Key
+
+**Layering samples and loops.** Two loops in compatible keys blend naturally. Two loops in clashing keys sound wrong together, no matter how you EQ them.
+
+**Writing melodies over a sample.** If your sample is in A Minor, the melody should use notes from A Minor. Knowing the key tells you which notes are available.
+
+**Pitching samples to match your project.** If your beat is in C Minor and your sample is in G Minor, you need to pitch-shift the sample. The key tells you exactly how many semitones.
+
+**Communicating with collaborators.** "This is in F# Minor" gives a vocalist or producer everything they need to work with your track.
+
+## The Camelot System: Keys Made Even Simpler
+
+The Camelot wheel maps all 24 keys to a number-and-letter system:
+
+- **1 through 12** — position on the wheel
+- **A** = minor key
+- **B** = major key
+
+So A Minor = \`8A\`. C Major = \`8B\`. F# Minor = \`11A\`.
+
+Adjacent codes on the Camelot wheel are harmonically compatible. If your track is \`8A\`, then \`7A\`, \`9A\`, and \`8B\` all blend with it. No theory required — just check the numbers.
+
+## How to Find the Key of Any Song or Sample
+
+**Online key detector** — the fastest and most accurate method. Upload any audio file and get the key, BPM, and Camelot code in seconds.
+
+**Low End Candy's Key & BPM Detector** handles this for any MP3, WAV, or FLAC file — no account or download required.
+
+[→ Find the key of any song instantly](https://lowendcandy.com)
+
+**By ear** — listen for the "home" note, hum it, find it on a keyboard. Takes practice.
+
+**Your DAW's built-in tools** — decent for simple audio, less reliable on complex mixes.
+
+## Summary
+
+The key of a song is its musical home base — the set of notes everything else is built around. For producers, knowing the key makes every other creative decision easier: you know what samples can be layered, what notes to play, and how to pitch things so they fit.
+
+You don't need to read music to use this. You just need to know the key — and that's a 10-second upload away.
+
+[→ Detect the key and Camelot code of any audio — Low End Candy](https://lowendcandy.com)`,
+    date: "2026-04-27",
+    readTime: "4 min read",
+    tags: ["music theory", "key of a song", "basics", "music production"],
+    metaDescription: "What is the key of a song? Here's the plain-English explanation — what keys are, why they matter for producers, and how to find the key of any track in seconds."
+  },
+  {
+    slug: "how-to-find-tempo-of-a-song",
+    title: "How to Find the Tempo of a Song Without a Metronome",
+    excerpt: "Finding the tempo of a song used to mean counting beats and doing math. Now it takes 10 seconds. Here are your options — and which one gives you an accurate result.",
+    content: `Finding the tempo of a song used to mean counting beats and doing math. Now it takes about 10 seconds. Here are your options, ranked fastest to slowest.
+
+## Why "Tempo" and "BPM" Mean the Same Thing Here
+
+Tempo is the speed of a piece of music. BPM (beats per minute) is how that speed is measured. In practice, they mean the same thing — any tool that finds "BPM" is finding the tempo.
+
+## Method 1: Online BPM/Tempo Detector (Fastest and Most Accurate)
+
+Upload your audio to an online analyzer and get the BPM back in seconds. No math, no counting, no guessing.
+
+**Low End Candy's Key & BPM Detector** works on any audio file (MP3, WAV, FLAC) and returns the BPM, musical key, and Camelot code at the same time.
+
+[→ Find the tempo of your song now](https://lowendcandy.com)
+
+This is the right method if:
+- You have the audio file
+- You need an accurate BPM for production or DJing
+- You want the key and Camelot code at the same time
+
+## Method 2: Tap Tempo
+
+Most DJ software, DAWs, and tap tempo websites let you tap in time with the beat. The software averages your taps and estimates the BPM.
+
+**How to do it:**
+1. Find a tap tempo tool
+2. Play the song
+3. Tap along with the kick drum for 8-16 bars
+4. Read the estimated BPM
+
+**The problem:** It's only as accurate as your tapping. On fast songs, complex rhythms, or half-time feels, it's easy to land off. For production work, an estimate isn't good enough.
+
+## Method 3: Manual Counting
+
+Count the beats in the song over 15 seconds, then multiply by 4.
+
+If you count 32 beats in 15 seconds: 32 × 4 = 128 BPM.
+
+**The problem:** Same as tap tempo — human error. Slow and pulls you out of the creative session.
+
+## The BPM Accuracy Problem
+
+If a sample is at 127.5 BPM and you tell your DAW it's 128, the DAW stretches it incorrectly. Within 8 bars, the loop has drifted noticeably. Within 32 bars, it's completely out of sync.
+
+For DJ beatmatching: even 0.5 BPM off means the tracks drift apart after a minute. You're constantly nudging instead of having a clean lock.
+
+Tap tempo and manual counting give you ±1-2 BPM on a good day. An audio analyzer gives you the exact value.
+
+## A Note on Half-Time and Double-Time
+
+Some genres feel like they're at one tempo but are technically at another.
+
+**Trap** typically has a kick pattern at 70-80 BPM but is produced at 140-160 BPM (half-time feel). An analyzer returns 140, but the music *feels* like 70.
+
+**Drum & bass** samples are often at 170 BPM but can be used at 85 BPM in hip hop by halving the playback speed.
+
+An audio analyzer returns the technical BPM. Whether you're working in half-time or double-time is a separate judgment call.
+
+## Summary
+
+1. **Have the audio file?** → Upload to an online BPM detector. Fastest and most accurate.
+2. **Need a rough check?** → Tap tempo gives you an estimate in 30 seconds.
+3. **No tools at all?** → Manual counting as a last resort.
+
+For anything where tempo precision matters — production, sampling, DJing — use the analyzer.
+
+[→ Find the exact tempo of any audio — Low End Candy](https://lowendcandy.com)`,
+    date: "2026-04-26",
+    readTime: "4 min read",
+    tags: ["BPM", "tempo", "music production", "DJing"],
+    metaDescription: "Need to find the tempo of a song without a metronome? Here are the fastest methods — from tap tempo to online BPM detection — and which one actually gives you an accurate result."
+  },
+
+  {
     slug: "how-to-mix-in-key",
     title: "How to Mix in Key: Harmonic Mixing for Producers and DJs",
     excerpt: "Harmonic mixing means only combining tracks and samples in compatible keys. Here's what that means in practice — and a step-by-step workflow using the Camelot wheel.",
