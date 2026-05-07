@@ -42,18 +42,36 @@ const BlogPost = () => {
 
   useEffect(() => {
     if (post) {
-      document.title = `${post.title} | Low End Candy`;
-      const metaDesc = document.querySelector('meta[name="description"]');
-      if (metaDesc) {
-        metaDesc.setAttribute("content", post.metaDescription);
-      } else {
-        const meta = document.createElement("meta");
-        meta.name = "description";
-        meta.content = post.metaDescription;
-        document.head.appendChild(meta);
-      }
+      const pageTitle = `${post.title} | Low End Candy`;
+      const pageUrl = `https://lowendcandy.com/blog/${slug}`;
+
+      document.title = pageTitle;
+
+      const setMeta = (selector: string, value: string) => {
+        let el = document.querySelector(selector);
+        if (!el) {
+          el = document.createElement("meta");
+          const nameMatch = selector.match(/\[name="(.+?)"\]/);
+          const propMatch = selector.match(/\[property="(.+?)"\]/);
+          if (nameMatch) (el as HTMLMetaElement).name = nameMatch[1];
+          if (propMatch) el.setAttribute("property", propMatch[1]);
+          document.head.appendChild(el);
+        }
+        el.setAttribute("content", value);
+      };
+
+      setMeta('meta[name="description"]', post.metaDescription);
+      setMeta('meta[property="og:title"]', pageTitle);
+      setMeta('meta[property="og:description"]', post.metaDescription);
+      setMeta('meta[property="og:url"]', pageUrl);
+      setMeta('meta[property="og:type"]', "article");
+
+      return () => {
+        // Restore homepage defaults on unmount
+        document.title = "Low End Candy — Music Production Tools for Producers and DJs";
+      };
     }
-  }, [post]);
+  }, [post, slug]);
 
   if (!post) {
     return (
@@ -102,14 +120,18 @@ const BlogPost = () => {
     });
   };
 
+  const postUrl = `https://lowendcandy.com/blog/${slug}`;
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
     headline: post.title,
     description: post.metaDescription,
     datePublished: post.date,
-    author: { "@type": "Person", name: "Low End Candy" },
-    publisher: { "@type": "Organization", name: "Low End Candy" },
+    dateModified: post.date,
+    author: { "@type": "Organization", name: "Low End Candy", url: "https://lowendcandy.com" },
+    publisher: { "@type": "Organization", name: "Low End Candy", url: "https://lowendcandy.com" },
+    mainEntityOfPage: { "@type": "WebPage", "@id": postUrl },
+    url: postUrl,
   };
 
   return (

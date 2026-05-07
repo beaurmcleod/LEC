@@ -51,6 +51,74 @@ export default function ProductDetail() {
     }
   }, [product]);
 
+  // SEO: dynamic title, meta description, OG tags, and JSON-LD per product
+  useEffect(() => {
+    if (!product) return;
+
+    const isKeyBpm = product.title === "Key & BPM Finder";
+    const pageTitle = isKeyBpm
+      ? "Key & BPM Detector — Find Any Song's Key Instantly | Low End Candy"
+      : `${product.title} | Low End Candy`;
+    const pageDesc = isKeyBpm
+      ? "Instantly detect the musical key and BPM of any song or sample. Free online key and BPM finder for producers and DJs. No download required."
+      : product.short_description || `${product.title} — premium production tool from Low End Candy.`;
+
+    document.title = pageTitle;
+
+    const setMeta = (selector: string, attr: string, value: string) => {
+      let el = document.querySelector(selector);
+      if (!el) {
+        el = document.createElement("meta");
+        if (attr === "name") (el as HTMLMetaElement).name = selector.match(/\[name="(.+?)"\]/)?.[1] || "";
+        if (attr === "property") (el as HTMLMetaElement).setAttribute("property", selector.match(/\[property="(.+?)"\]/)?.[1] || "");
+        document.head.appendChild(el);
+      }
+      el.setAttribute("content", value);
+    };
+
+    setMeta('meta[name="description"]', "name", pageDesc);
+    setMeta('meta[property="og:title"]', "property", pageTitle);
+    setMeta('meta[property="og:description"]', "property", pageDesc);
+    setMeta('meta[property="og:url"]', "property", `https://lowendcandy.com/product/${product.id}`);
+
+    // JSON-LD schema
+    const existingSchema = document.getElementById("product-jsonld");
+    if (existingSchema) existingSchema.remove();
+
+    if (isKeyBpm) {
+      const schema = {
+        "@context": "https://schema.org/",
+        "@type": "SoftwareApplication",
+        name: "Key & BPM Detector",
+        applicationCategory: "MultimediaApplication",
+        operatingSystem: "Web",
+        description: pageDesc,
+        url: "https://lowendcandy.com",
+        offers: {
+          "@type": "Offer",
+          priceCurrency: "USD",
+          price: "0",
+          availability: "https://schema.org/InStock",
+        },
+        publisher: {
+          "@type": "Organization",
+          name: "Low End Candy",
+          url: "https://lowendcandy.com",
+        },
+      };
+      const script = document.createElement("script");
+      script.id = "product-jsonld";
+      script.type = "application/ld+json";
+      script.textContent = JSON.stringify(schema);
+      document.head.appendChild(script);
+    }
+
+    return () => {
+      // Restore homepage defaults on unmount
+      document.title = "Low End Candy — Music Production Tools for Producers and DJs";
+    };
+  }, [product]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex flex-col">
