@@ -10,6 +10,461 @@ export interface BlogPost {
 }
 
 export const blogPosts: BlogPost[] = [
+
+  {
+    slug: "how-to-mix-in-key",
+    title: "How to Mix in Key: Harmonic Mixing for Producers and DJs",
+    excerpt: "Harmonic mixing means only combining tracks and samples in compatible keys. Here's what that means in practice — and a step-by-step workflow using the Camelot wheel.",
+    content: `If you've ever heard a DJ transition that made the room wince — or a beat where the sample and the melody seemed to fight each other — that's usually a key clash. Harmonic mixing is the fix.
+
+## What Is Harmonic Mixing?
+
+Harmonic mixing means only mixing tracks, loops, and samples that are musically compatible with each other. When two elements are in compatible keys, they blend naturally. When they clash, you hear dissonance — that awkward, wrong-note feeling.
+
+This applies to:
+- DJs transitioning between tracks in a set
+- Producers layering samples, loops, and melodies in a beat
+- Anyone trying to add a melody or bass line over an existing piece of audio
+
+The goal is simple: everything you play at the same time should be in a key that sounds good together.
+
+## Why It Matters More Than People Think
+
+A lot of producers — especially beginners — don't think about key until something sounds wrong. By then, you've already wasted time trying combinations that were never going to work.
+
+The difference between a beat that slaps and one that sounds busy-but-off often comes down to harmonic compatibility. A perfectly pitched 808 in the wrong key sounds muddy. A melody in the wrong key sounds like a mistake.
+
+Mixing in key removes that entire problem before it starts.
+
+## The Camelot Wheel: The Shortcut That Makes This Simple
+
+You don't need to know music theory to mix in key. The Camelot wheel does the work for you.
+
+The Camelot system maps all 24 musical keys to a number (1-12) and a letter (A = minor, B = major). The rule is simple: **adjacent codes are compatible.**
+
+Here's how adjacency works:
+- Same number, switch letter (\`8A\` and \`8B\`) — these are relative keys, they share the same notes
+- One number up (\`8A\` and \`9A\`)
+- One number down (\`8A\` and \`7A\`)
+
+That's it. If your track is \`8A\` (A Minor), compatible keys are \`7A\` (D Minor), \`9A\` (E Minor), and \`8B\` (C Major). Mix any of those together and they'll sound harmonically smooth.
+
+Think of it as a clock face. You can move one position in any direction and stay compatible.
+
+## Step-by-Step: How to Mix in Key
+
+### Step 1: Find the key and Camelot code of your audio
+
+Before you can mix in key, you need to know what key everything is in.
+
+**Low End Candy's Key & BPM Detector** returns the key, BPM, and Camelot code for any uploaded audio file. Upload your track or sample and you have the code in seconds.
+
+[→ Find the key of your audio now](https://lowendcandy.com)
+
+### Step 2: Label everything
+
+Once you have the codes, label your files. In your DAW, this might be the clip name or a note in your project. For DJs, most software lets you add custom tags to your track library.
+
+A sample labeled \`piano_loop_Gmin_9A_120bpm\` tells you everything you need before you even preview it.
+
+### Step 3: Only play compatible codes
+
+When you're building a beat or planning a mix, check the Camelot codes before you try to combine elements. If they're adjacent on the wheel, go for it. If they're not, you have two options:
+
+1. Find something in a compatible key
+2. Pitch-shift one element to match
+
+### Step 4: Pitch-shift when you need to
+
+If you have a sample you love but it's in the wrong key, you can pitch it to fit. Moving one step clockwise on the Camelot wheel is equivalent to moving up 7 semitones (or down 5). Moving one step counter-clockwise is the opposite.
+
+Most DAWs can pitch audio in semitones. The Camelot wheel tells you exactly how many semitones to move — no guessing.
+
+## For DJs: Building a Set That Stays in Key
+
+Harmonic mixing in a DJ context means planning your transitions so that adjacent tracks share compatible Camelot codes.
+
+A simple approach:
+- Map out your set's key flow in advance
+- Look for tracks that naturally share Camelot codes and build transitions around those
+- When you want an energy shift, jump two or more steps instead of one — intentional key tension rather than an accident
+
+## For Producers: Applying This to Beatmaking
+
+In production, harmonic mixing means making sure every element in your beat — samples, loops, melodies, 808s, bass lines — is in a compatible key.
+
+The workflow:
+1. Identify the key of your main sample or loop
+2. Note its Camelot code
+3. Write or find any additional elements in an adjacent code
+4. If something sounds off, check the keys first before assuming it's an EQ issue
+
+## Common Mistakes
+
+**Skipping the key check entirely.** The fastest way to waste an hour is to layer sounds and troubleshoot by ear what a Camelot check would have caught in 5 seconds.
+
+**Relying on software key detection without verifying.** Built-in DAW key detection isn't always accurate on complex mixes. A dedicated key detector gives more reliable results.
+
+**Treating A and B codes as always compatible.** \`8A\` and \`9B\` are NOT adjacent. The only compatible A/B swap is at the same number position (\`8A\` with \`8B\`).
+
+## The Bottom Line
+
+Harmonic mixing isn't about following rules — it's about removing accidents. When you know what key everything is in, every creative decision you make is intentional.
+
+It starts with knowing the key.
+
+[→ Detect the key and Camelot code of any audio — Low End Candy](https://lowendcandy.com)`,
+    date: "2026-05-04",
+    readTime: "6 min read",
+    tags: ["harmonic mixing", "Camelot wheel", "music theory", "DJing", "sampling"],
+    metaDescription: "Learn how to mix in key using harmonic mixing — what it is, why it matters, and a step-by-step workflow for producers and DJs using key detection tools."
+  },
+  {
+    slug: "what-key-is-my-sample",
+    title: "What Key Is My Sample? 4 Fast Ways to Find Out",
+    excerpt: "A sample without a known key is a gamble every time you use it. Here are 4 ways to figure out what key your sample is in — ranked fastest to slowest.",
+    content: `You've got a sample you love. It sounds great on its own. But the moment you try to add anything to it — a melody, a chord, an 808 — it immediately sounds off.
+
+The problem is almost always the key.
+
+Here are 4 ways to figure out what key your sample is in, ranked from fastest to slowest.
+
+## Why You Need to Know the Key
+
+A sample without a known key is a gamble. You can roll the dice every time you try to work with it, or you can know the key upfront and skip straight to making music.
+
+The key tells you:
+- What notes and chords will sound right with the sample
+- Whether two loops or samples can be layered without clashing
+- How many semitones to pitch-shift the sample if it doesn't match your project's key
+- What Camelot code the sample is — which tells you what else it's compatible with
+
+## Method 1: Online Key Detector (Fastest, Most Accurate)
+
+The fastest and most accurate way is to use a key detection tool. Upload the sample, get the key back in seconds.
+
+**Low End Candy's Key & BPM Detector** returns the key, BPM, and Camelot code for any audio file — MP3, WAV, FLAC. No account required.
+
+[→ Find the key of your sample now](https://lowendcandy.com)
+
+This is the only method that:
+- Works accurately on complex audio, not just single notes
+- Returns the Camelot code alongside the key name
+- Handles it in under 10 seconds
+- Doesn't interrupt your workflow
+
+## Method 2: Your DAW's Pitch or Key Detection
+
+Most major DAWs have some built-in pitch detection capability.
+
+**In Ableton:** Drop the clip into a MIDI track and use the Tuner device to analyze sustained notes.
+
+**In FL Studio:** Use Edison's built-in pitch detector. Import the audio, hit analyze, and look for the dominant pitch.
+
+**In Logic Pro:** The Smart Tempo and pitch detection features can analyze a region and suggest the key.
+
+The caveat: built-in DAW detection struggles with complex samples — layered chords, busy loops, pitched content with lots of overtones. For those, a dedicated tool is more reliable.
+
+## Method 3: The Humming Method
+
+This is old-school and takes practice, but it builds an ear you'll use forever.
+
+1. Play the sample and listen to the lowest sustained note — the note that feels like "home"
+2. Hum that note
+3. Find it on a keyboard or MIDI controller
+4. Determine if the sample feels bright and happy (major) or darker and tense (minor)
+
+If the bass centers on C and the feel is dark and moody, you're likely in C Minor.
+
+The limitation: this requires a trained ear, and it gets harder on samples with complex chord progressions.
+
+## Method 4: Look It Up (Released Music Only)
+
+For commercial samples or sample packs based on known songs, sites like Tunebat index the key and BPM of millions of released tracks.
+
+This doesn't work for original samples or unlabeled loops.
+
+## What to Do Once You Know the Key
+
+**Layer compatible samples.** If your sample is in \`9A\` (E Minor), other samples in \`8A\`, \`10A\`, or \`9B\` will blend with it harmonically.
+
+**Write melodies and chords in the right scale.** Every key corresponds to a specific set of notes. Once you know the key, you know which notes will sound right.
+
+**Pitch-shift to match your project key.** If your project is in C Minor (\`5A\`) and your sample is in G Minor (\`6A\`), pitch the sample down 7 semitones.
+
+**Label your sample library.** Knowing the key now means you don't have to figure it out again later.
+
+## The Fastest Workflow for Sample-Heavy Producers
+
+1. Drop the sample into a key detector before anything else
+2. Note the key, Camelot code, and BPM
+3. Rename the file to include that info (e.g., \`loop_Amin_8A_95bpm.wav\`)
+4. Build from there — find or write compatible elements without guessing
+
+[→ Find the key and Camelot code of your sample — Low End Candy](https://lowendcandy.com)`,
+    date: "2026-05-03",
+    readTime: "5 min read",
+    tags: ["sampling", "key detection", "music production", "workflow"],
+    metaDescription: "Can't figure out what key your sample is in? Here are 4 fast methods — from key detection tools to ear training — so you can start producing instead of guessing."
+  },
+  {
+    slug: "how-to-pitch-shift-a-sample",
+    title: "How to Pitch Shift a Sample to Match Your Beat's Key",
+    excerpt: "You've found a sample you love, but it clashes with your project. Here's how to pitch shift it to fit using Ableton, FL Studio, or Logic Pro — with the Camelot wheel semitone formula.",
+    content: `You've found a sample you love. The vibe is right. But when you drop it into your project, it clashes with everything else.
+
+The key doesn't match — and that's fixable. Here's how to pitch shift a sample to fit your project's key in any major DAW.
+
+## Step 1: Find the Key of Your Sample
+
+Before you can pitch anything, you need to know what key your sample is currently in.
+
+**Low End Candy's Key & BPM Detector** gives you both the key and Camelot code of any audio file in seconds.
+
+[→ Find the key of your sample](https://lowendcandy.com)
+
+## Step 2: Calculate How Many Semitones to Move
+
+Every step around the Camelot wheel corresponds to a specific number of semitones:
+
+| Movement | Semitones |
+|---|---|
+| One step clockwise (e.g. 8A → 9A) | +7 semitones (or -5) |
+| One step counter-clockwise (e.g. 8A → 7A) | -7 semitones (or +5) |
+| Same number, A to B (minor to relative major) | 0 semitones (same notes) |
+
+**Example:** Your project is in \`5A\` (C Minor). Your sample is in \`6A\` (G Minor). Moving from \`6A\` to \`5A\` is one step counter-clockwise = -7 semitones (or +5).
+
+In general, keep pitch shifts under 7 semitones in either direction. Larger shifts introduce audible artifacts.
+
+## Step 3: Pitch Shift in Your DAW
+
+### In Ableton Live
+
+1. Drag the audio clip into an Audio Track
+2. Open the Clip View and find the "Transposition" field
+3. Enter the semitone value (positive = up, negative = down)
+4. Use **Complex Pro** warp mode for best quality on melodic/tonal content
+
+### In FL Studio
+
+1. Load the sample into a Sampler channel
+2. In Sampler properties, use the Pitch knob (100 cents = 1 semitone)
+3. Or use Edison's pitch shifter: Tools → Pitch Shifter for highest quality
+
+### In Logic Pro
+
+1. Import audio into an Audio Track
+2. Select the region and open **Flex Pitch** (lightning bolt icon in the track header)
+3. Or go to Edit → Pitch → Transpose and enter the semitone value
+
+## Tips for Clean Pitch Shifting
+
+**Stay close.** The closer to the original key, the cleaner the result. A 2-semitone shift sounds almost identical. A 12-semitone shift (one octave) is also clean.
+
+**Pitch down rather than up when possible.** Most algorithms introduce fewer artifacts when shifting down. If your target is 7 semitones up or 5 down, try the -5 version first.
+
+**Use a high-quality algorithm.** Complex Pro (Ableton), Edison's pitch shifter (FL Studio), and Flex Pitch (Logic) all produce significantly better results than basic pitch controls.
+
+**Watch the BPM.** Pitch shifting doesn't change tempo — make sure your project tempo matches or time-stretch separately.
+
+## Summary
+
+Pitch shifting a sample to match your beat is a 3-step process:
+
+1. **Detect the key** of your sample
+2. **Calculate the semitones** using the Camelot wheel formula
+3. **Pitch-shift in your DAW** using the highest-quality algorithm available
+
+The hardest part used to be step 1. That's now a 10-second upload.
+
+[→ Find the key and Camelot code of your sample — Low End Candy](https://lowendcandy.com)`,
+    date: "2026-05-02",
+    readTime: "5 min read",
+    tags: ["sampling", "pitch shifting", "Ableton", "FL Studio", "Logic Pro", "Camelot wheel"],
+    metaDescription: "Learn how to pitch shift a sample to match your beat's key in Ableton, FL Studio, and Logic Pro — step-by-step with the Camelot wheel semitone formula."
+  },
+  {
+    slug: "bpm-vs-tempo",
+    title: "BPM vs Tempo: What's the Difference and Why Producers Need to Know",
+    excerpt: "BPM and tempo get used interchangeably, but there's a distinction worth knowing — especially when syncing samples, beatmatching, or working across DAWs.",
+    content: `BPM and tempo get used interchangeably all the time. Most of the time that's fine — but there's a subtle distinction worth knowing, especially if you're syncing samples, beatmatching in a DJ set, or working across DAWs.
+
+## What Is Tempo?
+
+Tempo is a musical term that refers to the speed of a piece of music — how fast or slow it moves. It comes from the Italian word meaning "time."
+
+Tempo can be described qualitatively:
+- Largo (very slow)
+- Andante (walking pace)
+- Allegro (fast)
+- Presto (very fast)
+
+These words still show up in classical music notation. But in electronic music and production, they've been almost entirely replaced by a numerical system.
+
+## What Is BPM?
+
+BPM stands for beats per minute. It's the numerical measurement of tempo — how many beats fall within 60 seconds of music.
+
+So instead of "this track is Allegro," you say "this track is 128 BPM."
+
+BPM is objective. Two people measuring the same track will get the same BPM. Tempo descriptions like "Allegro" are relative and open to interpretation.
+
+In production, DJing, and any digital music context, BPM is the standard.
+
+## Are BPM and Tempo the Same Thing?
+
+Functionally, yes. BPM is how tempo is measured in modern music production. When producers and DJs say "tempo," they almost always mean BPM.
+
+- **Tempo** = the concept (how fast music moves)
+- **BPM** = the unit of measurement (the specific number)
+
+## Why the Exact BPM Number Matters
+
+Here's where it stops being academic.
+
+**Sample sync drift.** If you import a loop and tell your DAW the wrong BPM, it warps incorrectly. The loop drifts out of time — sometimes noticeably within a few bars.
+
+**Grid misalignment.** Your drum grid and quantized MIDI won't line up with the sample.
+
+**DJ beatmatching.** If your software's BPM for a track is slightly off (even by 0.5 BPM), beatmatching becomes a constant correction exercise.
+
+**Time-stretching artifacts.** Wrong BPM = wrong stretch ratio = audible artifacts, especially on percussive content.
+
+## How to Find the Exact BPM
+
+**Tap tempo** is fast but imprecise. Human error makes it unreliable for precision work.
+
+**Manual counting** has the same problem.
+
+**An online BPM detector** analyzes the actual audio and returns the BPM to decimal precision. No human error.
+
+**Low End Candy's Key & BPM Detector** does this in seconds — you get BPM, musical key, and Camelot code at once.
+
+[→ Find the exact BPM of your track](https://lowendcandy.com)
+
+## Quick Reference: BPM Ranges by Genre
+
+| Genre | Typical BPM |
+|---|---|
+| Trap | 130-160 (half-time feel: 65-80) |
+| Hip hop | 85-100 |
+| Boom bap | 80-95 |
+| R&B | 60-80 |
+| House | 120-130 |
+| Techno | 130-145 |
+| Drum & bass | 160-180 |
+| Reggaeton | 90-100 |
+| Afrobeats | 90-120 |
+
+## Summary
+
+- **Tempo** = the concept of musical speed
+- **BPM** = the unit that measures it
+- In production and DJing, they mean the same thing in practice
+- The specific BPM number matters for sample syncing, grid alignment, and beatmatching
+- The fastest way to get an accurate BPM is an audio analysis tool
+
+Know your BPM before you build. Everything else fits better when the foundation is right.
+
+[→ Detect BPM and Key instantly — Low End Candy](https://lowendcandy.com)`,
+    date: "2026-05-01",
+    readTime: "4 min read",
+    tags: ["BPM", "tempo", "music production", "basics"],
+    metaDescription: "BPM and tempo — same thing or different? Here's the clear explanation every producer needs, plus why knowing your track's exact BPM matters for sampling and DJing."
+  },
+  {
+    slug: "free-bpm-detector-tools-compared",
+    title: "Free BPM Detector Tools Compared (2026)",
+    excerpt: "We compared the top free BPM detector tools in 2026 on accuracy, speed, and what extras each gives you. Here's which one works best for producers.",
+    content: `If you're a producer or DJ, you need to know the BPM of your audio before you can do anything useful with it. The question isn't whether to use a BPM detector — it's which one.
+
+Here's an honest comparison of the main free options in 2026.
+
+## What to Look For in a BPM Detector
+
+**Accuracy** — Does it return the correct BPM for complex, layered audio?
+
+**Decimal precision** — Does it return 127.5 or just 128? For production and beatmatching, decimal accuracy matters.
+
+**Key detection** — A BPM without a key is half the information you need.
+
+**Camelot code** — For harmonic mixing, the Camelot code is the most useful output format.
+
+**Speed** — How long from upload to result?
+
+**No download required** — The best tools work in a browser.
+
+## The Tools
+
+### Low End Candy Key & BPM Detector
+
+**lowendcandy.com**
+
+Built specifically for producers and DJs. Returns BPM, musical key, and Camelot code in a single upload — everything you need to start working with audio, not just one piece of the picture.
+
+Accuracy is strong on complex audio, not just clean loops. Fast, browser-based, no account required.
+
+**Best for:** Producers and DJs who need BPM + key + Camelot in one step
+
+[→ Try it here](https://lowendcandy.com)
+
+### Tunebat
+
+**tunebat.com**
+
+Primarily a database of key and BPM data for commercial tracks. Also has an analyzer for uploading files. Useful for released music lookups; less reliable on custom samples. No Camelot code output.
+
+**Best for:** Looking up BPM and key of released tracks
+
+### Soundplate BPM Analyzer
+
+**soundplate.com**
+
+Browser-based upload tool returning BPM and key. Results are generally accurate for simple loops. Ad-heavy interface. No Camelot code.
+
+**Best for:** Quick one-off lookups
+
+### Song BPM
+
+**songbpm.com**
+
+Database tool with tap tempo. No file upload for custom samples. No key detection. Not useful for original audio.
+
+**Best for:** Looking up BPMs of popular commercial songs
+
+### Tap BPM Tools
+
+Multiple sites offer tap tempo — you tap in time with the beat and get an estimated BPM. These give estimates, not precise BPMs. Human error introduces variance that matters in production.
+
+**Best for:** Rough estimates only
+
+## Comparison Table
+
+| Tool | File Upload | Key Detection | Camelot Code | Accuracy |
+|---|---|---|---|---|
+| Low End Candy | ✅ | ✅ | ✅ | High |
+| Tunebat | ✅ (analyzer) | ✅ | ❌ | Medium |
+| Soundplate | ✅ | ✅ | ❌ | Medium |
+| Song BPM | ❌ | ❌ | ❌ | N/A |
+| Tap BPM tools | N/A | ❌ | ❌ | Low |
+
+## Which One Should You Use?
+
+For producers and DJs working with custom audio — samples, loops, unreleased tracks — you need file upload + key detection + Camelot code. That combination lets you immediately use the information, not just know the BPM number.
+
+Low End Candy's tool is the only one in this comparison that returns all three in a single step.
+
+For looking up BPMs of commercial tracks, Tunebat's database is a fast shortcut.
+
+For everything else: upload, detect, and get back to making music.
+
+[→ Get BPM, Key, and Camelot code in one step — Low End Candy](https://lowendcandy.com)`,
+    date: "2026-04-30",
+    readTime: "5 min read",
+    tags: ["BPM detector", "tools", "key detection", "comparison"],
+    metaDescription: "We compared the top free BPM detector tools in 2026 — accuracy, speed, and what extras each one gives you. Here's which one actually works best for producers."
+  },
   {
     slug: "how-to-find-the-key-of-a-song",
     title: "How to Find the Key of a Song: The Complete Producer's Guide",
