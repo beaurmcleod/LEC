@@ -12,6 +12,603 @@ export interface BlogPost {
 export const blogPosts: BlogPost[] = [
 
   {
+    slug: "harmonic-mixing-guide",
+    title: "The DJ's Guide to Harmonic Mixing: Camelot Wheel, Key Detection, and BPM Matching",
+    excerpt: "Harmonic mixing is the practice of only transitioning between tracks in compatible musical keys. Here's the complete guide — Camelot wheel, key detection, BPM matching, and set planning.",
+    content: `Harmonic mixing is the practice of only transitioning between tracks that are musically compatible. When done well, it makes a DJ set feel like one continuous piece of music. Here's everything you need to know to do it right.
+
+## What Is Harmonic Mixing?
+
+Harmonic mixing means only combining tracks in compatible musical keys. Two tracks in compatible keys blend naturally. Two tracks in clashing keys create dissonance — that uncomfortable, off-note feeling that makes dancers lose focus.
+
+## The Camelot Wheel: The Foundation of Harmonic Mixing
+
+The Camelot wheel maps all 24 musical keys to a number (1-12) and letter (A = minor, B = major) system. The entire system is built on one rule: **adjacent codes are compatible.**
+
+Adjacent means:
+- Same number, different letter (\`8A\` and \`8B\`) — relative keys sharing the same notes
+- One step clockwise (\`8A\` and \`9A\`)
+- One step counter-clockwise (\`8A\` and \`7A\`)
+
+### The Full Camelot Reference
+
+| Code | Key | Code | Key |
+|---|---|---|---|
+| 1A | A♭ Minor | 1B | B Major |
+| 2A | E♭ Minor | 2B | F# Major |
+| 3A | B♭ Minor | 3B | D♭ Major |
+| 4A | F Minor | 4B | A♭ Major |
+| 5A | C Minor | 5B | E♭ Major |
+| 6A | G Minor | 6B | B♭ Major |
+| 7A | D Minor | 7B | F Major |
+| 8A | A Minor | 8B | C Major |
+| 9A | E Minor | 9B | G Major |
+| 10A | B Minor | 10B | D Major |
+| 11A | F# Minor | 11B | A Major |
+| 12A | C# Minor | 12B | E Major |
+
+## Getting Accurate Key Data
+
+The Camelot wheel is only useful if the key data is accurate. Most DJ software includes built-in key detection, but quality varies. For the most accurate results, use a dedicated key detection tool on your audio files before importing them into your DJ software.
+
+**Low End Candy's Key & BPM Detector** analyzes any audio file and returns the key, BPM, and Camelot code.
+
+[→ Get accurate key and Camelot data for your tracks](https://lowendcandy.com)
+
+## BPM Matching: The Other Half of the Equation
+
+Harmonic mixing handles keys. BPM matching handles tempo. Both matter. A harmonically smooth transition between tracks at very different BPMs still sounds jarring.
+
+## Building a Harmonically Planned Set
+
+### Step 1: Tag your library
+
+Every track you regularly play should be tagged with its Camelot code. Most DJ software lets you add custom tags to tracks.
+
+### Step 2: Plan your key flow
+
+**Smooth energy build:** Stay in the same code or move one step at a time (\`8A\` → \`9A\` → \`10A\`).
+
+**Energy shift:** Jump to the relative major or minor (same number, switch A/B).
+
+**Big energy reset:** Jump 4-5 positions intentionally — creates musical tension that signals something is changing.
+
+### Step 3: Build transitions around compatible codes
+
+Filter your library by Camelot code first. Only tracks in \`7A\`, \`9A\`, or \`8B\` are compatible with your current \`8A\` track.
+
+## Advanced Techniques
+
+**Moving clockwise** (e.g., \`8A\` → \`9A\` → \`10A\`) raises tension gradually — each step moves up a perfect fifth.
+
+**Switching letter at same number** (\`8A\` → \`8B\`) shifts from minor to relative major. Same notes, completely different feel.
+
+**Energy jumps** (skipping multiple positions) create deliberate harmonic tension. Powerful at drops and breakdowns.
+
+## Common Mistakes
+
+**Trusting built-in key detection without verifying.** DJ software detection is inconsistent. A verified library is a reliable library.
+
+**Staying in one key all night.** Move between compatible keys intentionally — that's what makes a set dynamic.
+
+**Treating the wheel as a hard rule.** If two tracks sound great together and their codes aren't adjacent — use your ears.
+
+## Summary
+
+Harmonic mixing is about intentionality. The Camelot wheel makes it practical without requiring music theory.
+
+Get the key data right. Plan your transitions. Move around the wheel with purpose.
+
+[→ Detect key, BPM, and Camelot code for your entire library — Low End Candy](https://lowendcandy.com)`,
+    date: "2026-04-25",
+    readTime: "7 min read",
+    tags: ["harmonic mixing", "Camelot wheel", "DJing", "key detection", "DJ set"],
+    metaDescription: "The complete harmonic mixing guide for DJs — how the Camelot wheel works, how to detect keys accurately, and how to build sets that always sound musically smooth."
+  },
+  {
+    slug: "dj-set-in-key",
+    title: "How to Build a DJ Set That Always Sounds in Key",
+    excerpt: "A set that always sounds in key doesn't happen by accident — it happens because of preparation done before the gig. Here's the step-by-step workflow.",
+    content: `A DJ set that always sounds in key doesn't happen by accident. It happens because of preparation done before the gig. Here's the workflow.
+
+## Why DJs Plan Key Before They Play
+
+Key mistakes are particularly noticeable because they're musical. A key clash sounds like a wrong note that lasts for an entire transition. Even non-musicians feel it, even if they can't name what's wrong.
+
+The fix isn't talent — it's preparation. If you know the Camelot code of every track in your set, you can plan harmonically smooth transitions before you ever open your DJ software.
+
+## Step 1: Build a Key-Tagged Library
+
+Every track in your active library needs a Camelot code. Most DJ software has key detection built in, but accuracy varies. For tracks you play regularly, verify the key with a dedicated detection tool.
+
+**Low End Candy's Key & BPM Detector** returns the key, BPM, and Camelot code for any uploaded audio file.
+
+[→ Verify the key and Camelot code of your tracks](https://lowendcandy.com)
+
+## Step 2: Understand How the Camelot Wheel Flows
+
+**The safe zone:** Adjacent codes. If you're playing \`9A\`, the next track can be \`8A\`, \`10A\`, or \`9B\`.
+
+**The energy build:** Moving clockwise (\`8A\` → \`9A\` → \`10A\`) gradually raises tension. Use this to build energy across a section.
+
+**The key change:** Switching the letter (\`9A\` → \`9B\`) takes you from minor to its relative major. Same notes, different feel. A subtle but powerful tool.
+
+**The hard cut:** Jumping multiple positions creates deliberate tension. Should be intentional — at a breakdown or peak.
+
+## Step 3: Plan the Key Arc of Your Set
+
+Before a gig, sketch the rough key movement. A simple example for a 2-hour set:
+
+- **Opening (minor, moderate energy):** \`8A\`, \`7A\`, \`9A\`
+- **Build (minor, climbing energy):** \`9A\`, \`10A\`, \`11A\`
+- **Peak (switch to relative major for brightness):** \`11B\`, \`12B\`, \`1B\`
+- **Cool-down:** \`1B\` → \`1A\` → \`12A\`
+
+This isn't rigid — you adapt in the moment. But a rough plan means you always know where you're going.
+
+## Step 4: Create Playlists by Camelot Code
+
+In your DJ software, create playlists tagged by Camelot code. When you're in \`9A\`, open the \`9A\` playlist and see all your compatible options.
+
+Some DJs go further: \`9A-low\` and \`9A-high\` for energy level within each code.
+
+## Step 5: Practice Transitions Between Codes
+
+Spend time in practice sessions mixing between adjacent codes. Notice how same-letter transitions (\`8A\` → \`9A\`) sound different from same-number transitions (\`8A\` → \`8B\`). The more familiar you are with these moves, the more confidently you can make them under pressure.
+
+## During the Gig: A Simple Decision Tree
+
+1. **What's my current code?** (Know this at all times.)
+2. **What energy do I need?** (Same, build, or reset?)
+3. **Filter to adjacent codes** and pick the track with the right energy and BPM.
+
+## Before Every Gig Checklist
+
+- All core tracks verified and tagged with Camelot code and BPM
+- Playlists organized by code
+- Key arc roughly planned
+- Key detection tool available for last-minute additions
+
+## Summary
+
+Building a set that always sounds in key is a preparation task, not a performance task. Tag your library, understand the Camelot movement, plan your key arc, and filter by code in the moment.
+
+The preparation takes time once. The results show up every gig.
+
+[→ Get accurate Camelot codes for your library — Low End Candy](https://lowendcandy.com)`,
+    date: "2026-04-24",
+    readTime: "5 min read",
+    tags: ["DJing", "harmonic mixing", "Camelot wheel", "DJ set", "key detection"],
+    metaDescription: "How to build a DJ set that always sounds in key — a step-by-step prep workflow using the Camelot wheel and key detection tools before you even get behind the decks."
+  },
+  {
+    slug: "rekordbox-vs-serato-key-detection",
+    title: "Rekordbox vs Serato for Key Detection: Which Is More Accurate?",
+    excerpt: "Both Rekordbox and Serato include key detection — but they're not equally accurate, and neither is perfect. Here's an honest comparison, and when you should use something else entirely.",
+    content: `If you're building a harmonically organized DJ library, the key detection in your software matters. Rekordbox and Serato are the two dominant DJ platforms, and both include key analysis — but they're not equally accurate.
+
+## How DJ Software Key Detection Works
+
+Both platforms analyze audio using algorithms that detect the dominant pitch and mode (major or minor) in a track. The challenge: a full mix has multiple pitched elements — bassline, melody, pads, vocals. The algorithm has to determine which one represents the actual key.
+
+## Rekordbox Key Detection
+
+**Where it performs well:** Clean, well-arranged electronic music with clear melodic content and simple chord structure.
+
+**Where it struggles:** Dense mixes with layered elements, tracks that modulate mid-song, hip hop with heavy vocal processing.
+
+**Rekordbox's key notation** uses a system like "2m" (which corresponds to E♭ Minor / \`2A\` in Camelot). Not always intuitive if you're used to standard key names.
+
+## Serato Key Detection
+
+**Where it performs well:** Competitive with Rekordbox on clean, melodically strong tracks.
+
+**Where it struggles:** Similar weaknesses — complex audio and anything with competing tonal elements.
+
+**A known issue:** Serato has historically had more inconsistency on tracks where the bassline dominates, sometimes picking the bass root instead of the actual key.
+
+## Head-to-Head: Where They Agree and Disagree
+
+Both platforms will agree on the key for most clean electronic tracks. Disagreements show up on complex audio.
+
+When Rekordbox and Serato give different keys for the same track, that's a signal that neither one is certain. The most common error both make: identifying the key as the relative major when the track is minor, or vice versa. This breaks harmonic mixing even though the Camelot code looks plausible.
+
+## Why Dedicated Key Detection Is Often More Accurate
+
+DJ software key detection is a convenience feature built into a much larger application. Dedicated detection tools are built specifically to solve this problem.
+
+**Low End Candy's Key & BPM Detector** is purpose-built for producers and DJs who need accurate key data. Because key accuracy is the core use case, it handles complex audio better than either Rekordbox or Serato on tracks where the software disagrees.
+
+[→ Verify the key of any track with a dedicated detector](https://lowendcandy.com)
+
+## The Recommended Workflow
+
+For casual use: trust Rekordbox or Serato. They're right most of the time on common electronic music.
+
+For tracks that matter — the ones you play every gig, the ones you're planning key transitions around — verify with a dedicated tool. If the software and the detector disagree, trust the detector.
+
+## Setting Up Camelot in Rekordbox and Serato
+
+**In Rekordbox:** Go to Preferences → Analysis to find key display options. You can set key display to Camelot notation.
+
+**In Serato:** Key is displayed in the library view in both standard and Camelot format.
+
+## Summary
+
+Rekordbox and Serato both detect key and are accurate most of the time. On complex or ambiguous tracks, neither is fully reliable. For tracks you play regularly and plan transitions around, verify with a dedicated detection tool.
+
+[→ Verify track keys with a dedicated detector — Low End Candy](https://lowendcandy.com)`,
+    date: "2026-04-23",
+    readTime: "5 min read",
+    tags: ["DJing", "Rekordbox", "Serato", "key detection", "harmonic mixing"],
+    metaDescription: "Rekordbox vs Serato key detection compared — which DJ software is more accurate, where both fall short, and why dedicated key detectors often beat both."
+  },
+  {
+    slug: "analyze-sample-library-key-bpm",
+    title: "How to Analyze Your Whole Sample Library for Key and BPM",
+    excerpt: "Most producers have a sample library problem: too many samples, not enough information about them. Here's how to fix that systematically.",
+    content: `Most producers have a sample library problem: too many samples, not enough information about them. If you can't tell what key or BPM a sample is in without auditioning it, building beats becomes a slow process of trial and error.
+
+Here's how to fix that systematically.
+
+## Why an Untagged Library Is a Slow Library
+
+An unlabeled sample requires you to preview it, try to match it with what you're building, figure out the key by ear or trial and error, and potentially pitch-shift it before you even know if it works.
+
+A labeled library flips this. When every sample has its key, Camelot code, and BPM in the filename or metadata, you filter and search by those values. Building a beat becomes: "I need a loop in \`8A\` around 90 BPM" → search → audition a few pre-qualified candidates → done.
+
+## Step 1: Audit What You Have
+
+Sort your library by folder and count:
+- Loops and full recordings (need key + BPM analysis)
+- One-shots, hits, and percussion without pitch (no key analysis needed)
+- Pre-tagged samples from the pack (already have key/BPM)
+
+Focus analysis time on melodic and harmonic content: bass loops, chord loops, melody loops, vocal samples, 808 samples.
+
+## Step 2: Set Up a Tagging System
+
+**Filename tagging (simplest):** Rename files to include key and BPM. Example: \`piano_loop_01.wav\` → \`piano_loop_01_Amin_8A_95bpm.wav\`.
+
+**Metadata tagging:** Write key and BPM into the file's metadata fields using a tool like Mp3tag, Rekordbox, or Serato. Lets software filter and sort directly.
+
+**Both:** Embed in metadata AND include in filename for maximum portability.
+
+## Step 3: Analyze in Batches
+
+Don't try to do your entire library in one session.
+
+**Batch by genre or type:** Start with your most-used category (e.g., chord loops or bass loops).
+
+**Batch by sample pack:** Go through one pack at a time. Check pack documentation for included key information first.
+
+**Set a daily target:** 50-100 samples per day is achievable. At that rate, a 5,000-sample library is tagged in 2-3 months.
+
+## Step 4: Use the Right Detection Tool
+
+**Low End Candy's Key & BPM Detector** returns the key, BPM, and Camelot code for any uploaded audio file.
+
+[→ Analyze any sample for key and BPM](https://lowendcandy.com)
+
+For your DAW's built-in tools: these work for a first pass but verify anything ambiguous with a dedicated tool.
+
+## Step 5: Prioritize Your Core Samples First
+
+You don't need to tag everything at once. In most libraries, you reach for 20% of your samples 80% of the time. Identify your most-used packs and tag those first.
+
+## Maintaining the Library Going Forward
+
+**Tag new samples when you download them.** Don't let the backlog grow.
+
+**Check sample pack documentation first.** Many packs include key information in folder names or a readme.
+
+**When you use a sample in a project, tag it if it isn't already.** The samples making it into beats always stay current.
+
+## What a Tagged Library Feels Like
+
+You start a beat with a loop. You check its code: \`9A\`, 90 BPM. You search for bass loops in \`8A\`, \`10A\`, or \`9B\` around the same BPM. Three options come up — they all work harmonically before you even play them. You pick the best one. You're building instead of troubleshooting.
+
+[→ Start analyzing your samples — Low End Candy Key & BPM Detector](https://lowendcandy.com)`,
+    date: "2026-04-22",
+    readTime: "6 min read",
+    tags: ["sample library", "organization", "key detection", "BPM", "workflow"],
+    metaDescription: "How to systematically analyze your entire sample library for key and BPM — a practical workflow for producers who are tired of guessing what works with what."
+  },
+  {
+    slug: "what-bpm-is-trap-music",
+    title: "What BPM Is Trap Music? (And How to Match It)",
+    excerpt: "Trap runs at two tempos simultaneously — and that's the source of most producer confusion. Here's the real answer, and how to match samples to your trap beat.",
+    content: `Trap is one of the most misunderstood genres when it comes to tempo. Ask a producer what BPM trap runs at and you'll get a range of answers — 60 BPM, 70 BPM, 140 BPM, 160 BPM. They're all correct, and here's why.
+
+## The Half-Time Confusion
+
+Trap is almost always produced in a half-time feel:
+
+- **Project tempo** in the DAW: typically **140-160 BPM**
+- **Felt tempo** — how the music actually feels: **70-80 BPM** (half of the project tempo)
+
+This happens because the kick and snare pattern in trap is spaced at half-time, creating a slow, heavy feel at a technically fast BPM. Hi-hat patterns run at the full BPM, which is why trap hi-hats feel frantic against the slow kick.
+
+"Trap is 70 BPM" = the felt tempo. "Trap is 140 BPM" = the project tempo. Both are right — they're describing the same track from different reference points.
+
+## Standard BPM Ranges for Trap
+
+| Type | Project BPM | Felt Tempo |
+|---|---|---|
+| Traditional trap | 140-150 | 70-75 |
+| Dark/melodic trap | 130-145 | 65-72 |
+| Hard trap / drill-influenced | 140-160 | 70-80 |
+| Modern melodic trap | 140-160 | 70-80 |
+
+## How to Figure Out the BPM of a Trap Sample
+
+If you pull a trap sample and the filename says \`130bpm\`, you need to decide: is that the project tempo or the felt tempo? If you set your project to 130 and the sample feels twice as fast, it's at the project tempo and your project is running at double speed relative to the sample.
+
+The safest approach: use a BPM detector to get the raw technical BPM of the audio file. Then decide whether to work at that tempo or half of it based on how the kick sits in your project.
+
+**Low End Candy's Key & BPM Detector** returns the exact BPM alongside the key and Camelot code.
+
+[→ Find the exact BPM of your trap sample](https://lowendcandy.com)
+
+## Matching a Sample to Your Trap Beat
+
+**If the BPMs match:** Drop it in and it locks to the grid.
+
+**If the BPMs don't match:** Time-stretch in your DAW. For large differences (more than 10-15%), use a high-quality algorithm (Complex Pro in Ableton, elastique in FL Studio).
+
+**Half-time vs full-time mismatch:** If your project is at 140 and the sample is at 70, stretch the sample to 140. The rhythmic feel will double. Alternatively, set your project to 70 and stretch everything else. Match the feel you want.
+
+## Making Your Own Trap Beats: BPM Recommendations
+
+**Traditional, heavy trap:** Start at 140 BPM. The half-time feel gives you the slow, rolling kick energy.
+
+**Slower and darker:** Try 130 BPM. The felt tempo is around 65, which adds extra weight.
+
+**More aggressive:** 150-160 BPM. Hi-hats feel more frantic at this tempo.
+
+**Melodic/emo trap:** 135-145 is a common range. Slightly slower gives melodies more space.
+
+## Summary
+
+Trap runs at 140-160 BPM at the project level, with a felt tempo of 70-80 BPM due to the half-time feel. Always detect the actual BPM of your sample before setting your project tempo — then choose half or full time based on the feel you want.
+
+[→ Find the BPM and key of any trap sample — Low End Candy](https://lowendcandy.com)`,
+    date: "2026-04-21",
+    readTime: "4 min read",
+    tags: ["trap", "BPM", "music production", "sampling", "tempo"],
+    metaDescription: "What BPM is trap music? Here's the real answer — why trap runs at two tempos simultaneously, the typical ranges, and how to match samples to your trap beat."
+  },
+  {
+    slug: "what-bpm-is-hip-hop",
+    title: "What BPM Is Hip Hop? A Producer's Quick Reference Guide",
+    excerpt: "Hip hop doesn't have one BPM — it has a range that varies by era, subgenre, and regional style. Here's the quick reference every producer needs.",
+    content: `Hip hop doesn't have one BPM. It has a range that varies by era, subgenre, and regional style. Here's the quick reference every producer needs.
+
+## Hip Hop BPM Ranges by Subgenre
+
+| Subgenre | Typical BPM | Notes |
+|---|---|---|
+| Classic hip hop (90s) | 90-100 | Samples pitched up, snappy kick/snare |
+| Boom bap | 85-100 | Emphasis on the 2 and 4 |
+| East Coast rap | 85-100 | Similar to boom bap |
+| West Coast / G-funk | 85-105 | Laid-back swing feel |
+| Southern rap / crunk | 70-90 | Slow BPM, heavy kick patterns |
+| Trap (project BPM) | 130-160 | Half-time feel; felt tempo is 65-80 |
+| Drill | 140-150 | Similar to trap, darker vibe |
+| Lo-fi hip hop | 70-90 | Relaxed, downtempo feel |
+| Phonk | 130-160 | Heavy swing, similar to trap |
+| Emo rap / SoundCloud | 130-150 | Melodic trap territory |
+| Club rap / hip house | 120-130 | Closer to house tempo |
+
+## Why Hip Hop BPM Has Such a Wide Range
+
+Hip hop is primarily defined by its vocal style, flow, and attitude — not its tempo. This is different from genres like house (almost always 120-130) or drum & bass (almost always 160-180) where the tempo is part of the genre definition.
+
+## Half-Time vs Full-Time BPM
+
+In trap and drill, the project BPM (set in the DAW) is typically 140-160, but the felt tempo is half of that — around 70-80. Classic hip hop and boom bap usually don't use half-time patterns — project BPM and felt tempo are the same.
+
+When working with samples:
+- A boom bap sample at "90 BPM" means the project tempo is 90 and it feels like 90
+- A trap sample at "90 BPM" might mean the felt tempo is 90, but the project BPM is 180
+
+Always detect the actual BPM of the audio file before assuming.
+
+## Finding the BPM of Any Hip Hop Sample
+
+**Low End Candy's Key & BPM Detector** returns the exact BPM of any audio file, along with the musical key and Camelot code.
+
+[→ Find the BPM of any hip hop sample](https://lowendcandy.com)
+
+## Choosing a BPM When Making Beats from Scratch
+
+**Classic/boom bap:** Start at 90 BPM. This tempo has a long history and tends to lock in a specific pocket feel.
+
+**Trap:** Start at 140 BPM with a half-time kick pattern.
+
+**Mid-tempo:** Try 105-115 BPM for something between boom bap and trap.
+
+**Lo-fi or chill beats:** 75-85 BPM creates a natural downtempo atmosphere.
+
+Your loops and samples should guide the final choice. If you're sampling something with a natural feel at a certain BPM, set your project to match.
+
+## Summary
+
+Hip hop BPM ranges from around 70 (lo-fi, southern rap) to 160 (trap project tempo). The most reliable approach: detect the exact BPM of any sample before building around it. Then set your project to match the feel you want.
+
+[→ Detect the BPM and key of any sample — Low End Candy](https://lowendcandy.com)`,
+    date: "2026-04-20",
+    readTime: "4 min read",
+    tags: ["hip hop", "BPM", "music production", "trap", "boom bap", "tempo"],
+    metaDescription: "What BPM is hip hop? Here's a quick reference covering all the main subgenres — boom bap, trap, drill, lo-fi, and more — plus how to find the exact BPM of any sample."
+  },
+  {
+    slug: "find-key-bpm-youtube-video",
+    title: "How to Find the Key and BPM of a YouTube Video (Without Downloading It)",
+    excerpt: "You found a track on YouTube that's not in any database. You need the key and BPM. Here's the fastest legal workflow.",
+    content: `You found a track on YouTube. It's not on Spotify. It's not in any database. You want to sample it, cover it, or mix with it — and you need to know the key and BPM.
+
+Here's the fastest legal workflow.
+
+## The Problem With YouTube Audio
+
+YouTube doesn't display key or BPM data, and you can't upload audio directly from a YouTube URL to a detection tool. The solution is to get the audio into a format you can work with.
+
+## Option 1: Find It on a Music Platform First
+
+Before anything else, check if the track exists somewhere more accessible. If it's an official release, it's probably on Spotify, Apple Music, or SoundCloud.
+
+From there:
+- Use Tunebat to look up the key and BPM by song name
+- Or download from a legitimate source and upload to a key detector
+
+## Option 2: Record the Audio Yourself
+
+The most reliable and fully legal method: use audio recording software to capture what's playing through your system.
+
+**On Mac:** BlackHole is a free virtual audio driver that lets you route audio from one app into another. Run YouTube audio through BlackHole, record it in your DAW, export the clip, upload to a detector.
+
+**On Windows:** VB-Audio Virtual Cable works the same way.
+
+**With an interface:** If your audio interface has a loopback feature, you can record system audio directly.
+
+## Option 3: Use a Screen Recorder
+
+A screen recorder that captures system audio (OBS, QuickTime on Mac, Windows built-in) can capture YouTube audio as a video or audio file. Trim it before uploading to a detector.
+
+## Once You Have the Audio: Detect Key and BPM
+
+**Low End Candy's Key & BPM Detector** accepts any MP3, WAV, FLAC, or similar audio file and returns the key, BPM, and Camelot code in seconds. A 30-60 second excerpt is enough for accurate detection.
+
+[→ Upload and detect key + BPM now](https://lowendcandy.com)
+
+## What About Ear Training?
+
+If you have a decent ear and a keyboard:
+
+1. Play the YouTube video
+2. Listen for the bass note that feels like "home"
+3. Hum it and find it on a keyboard
+4. Determine major or minor by feel
+
+For BPM: tap along using a tap tempo tool and get an estimate.
+
+This is slower and less accurate than a detection tool, but it works if you can't capture the audio.
+
+## Important Note on Fair Use and Sampling
+
+Using audio from YouTube for personal reference is different from using it in a released commercial product. If you're sampling audio in music you'll release, you need proper clearance for the original composition regardless of where you heard it.
+
+## Summary
+
+To find the key and BPM of a YouTube video:
+
+1. Check if the track is available on a streaming platform first
+2. If not, record the audio using system audio routing software
+3. Upload the audio file to a key detection tool
+4. Note the key, BPM, and Camelot code
+
+A 30-60 second clip is enough for accurate analysis.
+
+[→ Detect key and BPM from any audio file — Low End Candy](https://lowendcandy.com)`,
+    date: "2026-04-19",
+    readTime: "4 min read",
+    tags: ["key detection", "BPM", "YouTube", "workflow", "sampling"],
+    metaDescription: "Need to find the key or BPM of a song you found on YouTube? Here's the fastest workflow — no illegal downloads required, no guessing involved."
+  },
+  {
+    slug: "producer-toolkit-free-tools",
+    title: "Producer's Toolkit: 10 Free Tools Every Beatmaker Needs in 2026",
+    excerpt: "You don't need to spend thousands on software to make professional music. Here are 10 genuinely useful free tools every producer should have in their workflow.",
+    content: `You don't need to spend thousands on software to make professional music. The free tools available to producers in 2026 are genuinely good — not watered-down demos, but full-featured utilities that belong in a real workflow.
+
+Here are 10 that belong in yours.
+
+## 1. Low End Candy — Key & BPM Detector
+
+**lowendcandy.com** | Free
+
+The first step in any sample-based workflow is knowing the key and BPM of your audio. Low End Candy's Key & BPM Detector uploads any audio file (MP3, WAV, FLAC) and returns the key, BPM, and Camelot code in seconds.
+
+This removes the first bottleneck in every beat session: not knowing what key your sample is in. Once you have the key and Camelot code, every other decision — what to layer, what to write, how to pitch — becomes instant.
+
+No account required. No download. Just upload and get the information.
+
+[→ Try the Key & BPM Detector](https://lowendcandy.com)
+
+## 2. Splice Sounds — Free Sample Credits
+
+**splice.com** | Free credits on signup
+
+Splice gives new users a number of free credits to download samples from their massive library. Worth creating an account just for the free samples. Download a few packs, run them through the LEC detector, tag them with key and BPM, and you have a labeled starting library.
+
+## 3. LANDR — Free Mastering Preview
+
+**landr.com** | Free preview
+
+LANDR's AI mastering is paid, but the free tier lets you preview what a mastered version of your track sounds like. Useful for reference — hearing the rough master helps identify mixing issues before they're baked in.
+
+## 4. Looperman — Free Royalty-Free Loops
+
+**looperman.com** | Free
+
+A community-driven platform where producers upload royalty-free loops for anyone to download. Massive library across genres. Many loops have key information listed; run unlabeled ones through a key detector before using.
+
+## 5. BBC Sound Effects Library
+
+**sound-effects.bbcrewind.co.uk** | Free for personal/non-commercial use
+
+The BBC has released thousands of archive sound effects for free personal use. For atmospheric samples, unusual textures, and found sounds to chop and layer, this is an underused resource.
+
+## 6. Vital — Free Synthesizer
+
+**vital.audio** | Free
+
+A spectral warping wavetable synthesizer that competes with paid synths at $200+. The free version is fully functional. One of the better "genuinely free" plugins in recent memory — not a trial, not crippled.
+
+## 7. OcenAudio — Free Audio Editor
+
+**ocenaudio.com** | Free
+
+A lightweight, fast audio editor for trimming, editing, and exporting audio files. Useful for quick sample edits before importing them into your project, without loading a full DAW.
+
+## 8. Plugin Boutique — Free Plugins of the Month
+
+**pluginboutique.com/free** | Free (rotating)
+
+Plugin Boutique regularly offers paid plugins for free for a limited time — full licenses, not demos. Worth checking monthly. Some giveaways are genuinely high-quality plugins worth $50-100 at full price.
+
+## 9. YouCompress — Free Audio Converter
+
+**youcompress.com** | Free
+
+Browser-based audio format conversion. Useful when you need to compress a large WAV to MP3 or convert between formats for compatibility before uploading to a key detector.
+
+## 10. Soundsnap — Free Sound Effects Search
+
+**soundsnap.com** | Limited free tier
+
+A searchable library of sound effects and audio. The search alone is useful for finding reference sounds, atmospheric textures, and unusual audio to sample, even on the free tier.
+
+## Building Your Free Toolkit
+
+Start with the tools that solve your current bottleneck:
+
+- **Can't figure out what key samples are in?** → Low End Candy Key & BPM Detector
+- **Need more samples?** → Splice free credits + Looperman
+- **Need a synth?** → Vital
+- **Want better plugins for free?** → Plugin Boutique free monthly offers
+
+The tools don't make the music — you do. But removing friction from the parts that aren't creative gives you more time for the parts that are.
+
+[→ Start with the Key & BPM Detector — Low End Candy](https://lowendcandy.com)`,
+    date: "2026-04-18",
+    readTime: "6 min read",
+    tags: ["free tools", "music production", "producer workflow", "resources"],
+    metaDescription: "10 free tools every beatmaker needs in 2026 — from key and BPM detection to plugin resources and mixing references. No paid subscriptions required."
+  },
+
+  {
     slug: "major-vs-minor-keys",
     title: "Major vs Minor Keys: How to Tell the Difference by Ear",
     excerpt: "Major sounds bright and resolved. Minor sounds darker and tense. Here's the actual difference — and how to tell which one your sample or track is in.",
