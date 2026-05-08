@@ -38,10 +38,9 @@ const lessonOptions: LessonOption[] = [
     price: 99,
     description: "Perfect for focused feedback or tackling specific production challenges",
     features: [
-      "One-on-one video call",
-      "Screen sharing & live feedback",
-      "Recording of session provided",
-      "Follow-up notes & resources",
+      "A personalized 1-hour Zoom call built around you and your goals",
+      "The full session recording sent straight to your inbox",
+      "All project files from the session + a written recap of everything we covered",
     ],
   },
   {
