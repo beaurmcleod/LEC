@@ -35,13 +35,6 @@ const Index = () => {
 
   const links = [
     {
-      title: "Join The Collective",
-      description: "Join our production community & level up",
-      preview: previewSkool,
-      url: "/collective",
-      highlighted: true,
-    },
-    {
       title: "The Candy Store",
       description: "Premium samples, presets & Ableton racks",
       preview: previewCandyStore,
@@ -55,6 +48,14 @@ const Index = () => {
       url: "https://www.30dayedmproducer.com/",
       external: true,
       highlightRed: true,
+    },
+    {
+      title: "Join The Collective",
+      description: "Join our production community & level up",
+      preview: previewSkool,
+      url: "https://www.skool.com/low-end-candy-collective-1686/about?ref=0475f2cfd1a94b63a5a389be8a3cb450",
+      external: true,
+      highlighted: true,
     },
     {
       title: "Crux Chords Ableton AI Chord Device",
