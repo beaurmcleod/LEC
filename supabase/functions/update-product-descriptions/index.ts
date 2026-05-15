@@ -88,7 +88,8 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Skip auth check - this is an admin utility function
+  if (!(await isAdminOrServiceRole(req))) return unauthorized("Admin access required");
+
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
