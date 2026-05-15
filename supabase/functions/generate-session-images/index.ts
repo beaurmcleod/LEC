@@ -59,6 +59,8 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  if (!(await isAdminOrServiceRole(req))) return unauthorized("Admin access required");
+
   try {
     const { productIndex } = await req.json();
     
