@@ -25,6 +25,29 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Validate date range: must be valid dates, max 90 days, end after start, not too far in past/future
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const now = Date.now();
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return new Response(JSON.stringify({ error: "Invalid date format" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const rangeMs = end.getTime() - start.getTime();
+    const maxRangeMs = 90 * 24 * 60 * 60 * 1000;
+    const oneYearMs = 365 * 24 * 60 * 60 * 1000;
+    if (rangeMs <= 0 || rangeMs > maxRangeMs) {
+      return new Response(JSON.stringify({ error: "Date range must be 1-90 days" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (start.getTime() < now - 7 * 24 * 60 * 60 * 1000 || end.getTime() > now + oneYearMs) {
+      return new Response(JSON.stringify({ error: "Date range out of bounds" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // Get the first admin's calendar tokens (you can adjust this to a specific admin if needed)
