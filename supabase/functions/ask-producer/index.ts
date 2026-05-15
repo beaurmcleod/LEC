@@ -322,15 +322,53 @@ ${KNOWLEDGE_BASE}
 
 Always be helpful and share your knowledge freely. Reference specific techniques from the knowledge base when answering questions. If someone asks about something outside music production, gently steer them back to what you know best.`;
 
+// In-memory per-IP rate limiter: max 20 requests per 10 minutes
+const RATE_WINDOW_MS = 10 * 60 * 1000;
+const RATE_MAX = 20;
+const ipHits = new Map<string, number[]>();
+
+function rateLimited(ip: string): boolean {
+  const now = Date.now();
+  const arr = (ipHits.get(ip) || []).filter((t) => now - t < RATE_WINDOW_MS);
+  if (arr.length >= RATE_MAX) return true;
+  arr.push(now);
+  ipHits.set(ip, arr);
+  return false;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    if (rateLimited(ip)) {
+      return new Response(JSON.stringify({ error: "Too many requests. Try again shortly." }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { messages } = await req.json();
+    if (!Array.isArray(messages) || messages.length === 0 || messages.length > 30) {
+      return new Response(JSON.stringify({ error: "Invalid messages payload" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    // Cap individual message size
+    for (const m of messages) {
+      if (typeof m?.content !== "string" || m.content.length > 4000) {
+        return new Response(JSON.stringify({ error: "Message too large" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-    
+
     if (!OPENAI_API_KEY) {
       throw new Error("OPENAI_API_KEY is not configured");
     }
