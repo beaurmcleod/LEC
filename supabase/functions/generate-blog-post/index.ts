@@ -1,10 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders, isAdminOrServiceRole, unauthorized } from "../_shared/auth-guard.ts";
 
 const TOPICS = [
   "Latest Ableton Live tips and hidden features producers don't know about",
@@ -33,6 +29,8 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  if (!(await isAdminOrServiceRole(req))) return unauthorized("Admin access required");
 
   try {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
