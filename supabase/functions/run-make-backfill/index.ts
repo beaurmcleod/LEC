@@ -13,6 +13,8 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  if (!(await isAdminOrServiceRole(req))) return unauthorized("Admin access required");
+
   try {
     console.log("Starting Make.com backfill for all purchases...");
 
