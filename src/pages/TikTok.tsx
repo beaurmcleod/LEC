@@ -1,23 +1,24 @@
 import { Link } from "react-router-dom";
-import { Headphones } from "lucide-react";
+import { Headphones, Compass } from "lucide-react";
 import previewEdmCourse from "@/assets/preview-edm-course-new.jpg";
 import previewLesson from "@/assets/preview-lesson.jpg";
-import previewCruxChords from "@/assets/preview-crux-chords-new.png";
+import previewCandyStore from "@/assets/preview-candy-store-new.png";
 
 const TikTok = () => {
   const links = [
     {
-      title: "Key & BPM Finder",
-      description: "Instantly detect the key and BPM of any sample or track",
-      preview: "/lovable-uploads/key-bpm-finder.png",
-      url: "/product/key-bpm-finder",
+      title: "The Candy Store",
+      description: "Premium samples, presets & Ableton racks",
+      preview: previewCandyStore,
+      url: "/shop",
       highlighted: true,
     },
     {
-      title: "Crux Chords – AI Chord Device",
-      description: "AI-powered chord generation for Ableton Live",
-      preview: previewCruxChords,
-      url: "https://promptmidi.shop/",
+      title: "Producer Operating System",
+      description: "Resources for building a music production career",
+      icon: Compass,
+      iconGradient: "from-secondary via-primary to-accent",
+      url: "https://producerframework.com/",
       external: true,
     },
     {
@@ -64,8 +65,12 @@ const TikTok = () => {
           {links.map((link, index) => {
             const linkContent = (
               <div className="flex items-center gap-3">
-                <div className="w-16 h-16 rounded-lg overflow-hidden shadow-lg flex-shrink-0 flex items-center justify-center bg-primary/20">
-                  {link.preview ? (
+                <div className={`w-16 h-16 rounded-lg overflow-hidden shadow-lg flex-shrink-0 flex items-center justify-center ${
+                  link.icon ? `bg-gradient-to-br ${link.iconGradient || 'from-primary to-primary/70'}` : 'bg-primary/20'
+                }`}>
+                  {link.icon ? (
+                    <link.icon className="w-8 h-8 text-foreground" />
+                  ) : link.preview ? (
                     <img
                       src={link.preview}
                       alt={link.title}
