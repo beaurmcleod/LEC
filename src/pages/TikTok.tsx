@@ -65,8 +65,12 @@ const TikTok = () => {
           {links.map((link, index) => {
             const linkContent = (
               <div className="flex items-center gap-3">
-                <div className="w-16 h-16 rounded-lg overflow-hidden shadow-lg flex-shrink-0 flex items-center justify-center bg-primary/20">
-                  {link.preview ? (
+                <div className={`w-16 h-16 rounded-lg overflow-hidden shadow-lg flex-shrink-0 flex items-center justify-center ${
+                  link.icon ? `bg-gradient-to-br ${link.iconGradient || 'from-primary to-primary/70'}` : 'bg-primary/20'
+                }`}>
+                  {link.icon ? (
+                    <link.icon className="w-8 h-8 text-foreground" />
+                  ) : link.preview ? (
                     <img
                       src={link.preview}
                       alt={link.title}
