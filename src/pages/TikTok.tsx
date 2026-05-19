@@ -1,23 +1,24 @@
 import { Link } from "react-router-dom";
-import { Headphones } from "lucide-react";
+import { Headphones, Compass } from "lucide-react";
 import previewEdmCourse from "@/assets/preview-edm-course-new.jpg";
 import previewLesson from "@/assets/preview-lesson.jpg";
-import previewCruxChords from "@/assets/preview-crux-chords-new.png";
+import previewCandyStore from "@/assets/preview-candy-store-new.png";
 
 const TikTok = () => {
   const links = [
     {
-      title: "Key & BPM Finder",
-      description: "Instantly detect the key and BPM of any sample or track",
-      preview: "/lovable-uploads/key-bpm-finder.png",
-      url: "/product/key-bpm-finder",
+      title: "The Candy Store",
+      description: "Premium samples, presets & Ableton racks",
+      preview: previewCandyStore,
+      url: "/shop",
       highlighted: true,
     },
     {
-      title: "Crux Chords – AI Chord Device",
-      description: "AI-powered chord generation for Ableton Live",
-      preview: previewCruxChords,
-      url: "https://promptmidi.shop/",
+      title: "Producer Operating System",
+      description: "Resources for building a music production career",
+      icon: Compass,
+      iconGradient: "from-secondary via-primary to-accent",
+      url: "https://producerframework.com/",
       external: true,
     },
     {
