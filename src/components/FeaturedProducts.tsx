@@ -47,11 +47,11 @@ export const FeaturedProducts = ({ heading = "Quick Picks", className = "" }: Fe
           {heading}
         </h2>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2 max-w-md mx-auto">
         {featured.map((p) => {
           const inner = (
-            <div className="group bg-card border border-border rounded-lg overflow-hidden hover:border-primary/60 hover:shadow-glow-primary transition-all duration-200 h-full flex flex-col">
-              <div className="aspect-square bg-muted overflow-hidden flex items-center justify-center">
+            <div className="group bg-card border border-border rounded-lg overflow-hidden hover:border-primary/60 hover:shadow-glow-primary transition-all duration-200 h-full flex items-center gap-2 p-1.5">
+              <div className="w-12 h-12 bg-muted rounded overflow-hidden flex items-center justify-center flex-shrink-0">
                 <img
                   src={p.image}
                   alt={p.title}
@@ -59,11 +59,11 @@ export const FeaturedProducts = ({ heading = "Quick Picks", className = "" }: Fe
                   loading="lazy"
                 />
               </div>
-              <div className="p-2.5 flex items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold text-foreground leading-tight line-clamp-2">
+              <div className="flex-1 min-w-0 flex items-center justify-between gap-1">
+                <h3 className="text-xs font-semibold text-foreground leading-tight line-clamp-2">
                   {p.title}
                 </h3>
-                <div className="text-sm font-bold text-primary whitespace-nowrap">{p.price}</div>
+                <div className="text-xs font-bold text-primary whitespace-nowrap">{p.price}</div>
               </div>
             </div>
           );
