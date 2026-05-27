@@ -43,15 +43,15 @@ export const FeaturedProducts = ({ heading = "Quick Picks", className = "" }: Fe
   return (
     <section className={`w-full ${className}`}>
       {heading && (
-        <h2 className="text-lg sm:text-xl font-bold text-foreground mb-3 text-center">
+        <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-4 text-center">
           {heading}
         </h2>
       )}
-      <div className="grid grid-cols-2 gap-2 max-w-md mx-auto">
+      <div className="grid grid-cols-2 gap-3">
         {featured.map((p) => {
           const inner = (
-            <div className="group bg-card border border-border rounded-lg overflow-hidden hover:border-primary/60 hover:shadow-glow-primary transition-all duration-200 h-full flex items-center gap-2 p-1.5">
-              <div className="w-12 h-12 bg-muted rounded overflow-hidden flex items-center justify-center flex-shrink-0">
+            <div className="group bg-card border border-border rounded-lg overflow-hidden hover:border-primary/60 hover:shadow-glow-primary transition-all duration-200 h-full flex flex-col">
+              <div className="aspect-square bg-muted overflow-hidden flex items-center justify-center">
                 <img
                   src={p.image}
                   alt={p.title}
@@ -59,11 +59,11 @@ export const FeaturedProducts = ({ heading = "Quick Picks", className = "" }: Fe
                   loading="lazy"
                 />
               </div>
-              <div className="flex-1 min-w-0 flex items-center justify-between gap-1">
-                <h3 className="text-xs font-semibold text-foreground leading-tight line-clamp-2">
+              <div className="p-2.5 flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-foreground leading-tight line-clamp-2">
                   {p.title}
                 </h3>
-                <div className="text-xs font-bold text-primary whitespace-nowrap">{p.price}</div>
+                <div className="text-sm font-bold text-primary whitespace-nowrap">{p.price}</div>
               </div>
             </div>
           );
