@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Headphones, Compass, Music2 } from "lucide-react";
+import { FeaturedProducts } from "@/components/FeaturedProducts";
 import previewEdmCourse from "@/assets/preview-edm-course-new.jpg";
 import previewLesson from "@/assets/preview-lesson.jpg";
 import previewCandyStore from "@/assets/preview-candy-store-new.png";
@@ -65,6 +66,11 @@ const TikTok = () => {
           <p className="text-sm text-muted-foreground">
             Tools & courses for music producers 🎧
           </p>
+        </div>
+
+        {/* Featured product quick-buy */}
+        <div className="mb-5">
+          <FeaturedProducts heading="Shop the Essentials" />
         </div>
 
         {/* Links */}
