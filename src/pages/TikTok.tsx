@@ -1,11 +1,18 @@
 import { Link } from "react-router-dom";
-import { Headphones, Compass } from "lucide-react";
+import { Headphones, Compass, Music2 } from "lucide-react";
 import previewEdmCourse from "@/assets/preview-edm-course-new.jpg";
 import previewLesson from "@/assets/preview-lesson.jpg";
 import previewCandyStore from "@/assets/preview-candy-store-new.png";
 
 const TikTok = () => {
   const links = [
+    {
+      title: "Key & BPM Detector",
+      description: "Drop any audio file. Get the key + BPM instantly. $14.99",
+      icon: Music2,
+      iconGradient: "from-accent via-primary to-secondary",
+      url: "/product/key-bpm-finder",
+    },
     {
       title: "The Candy Store",
       description: "Premium samples, presets & Ableton racks",

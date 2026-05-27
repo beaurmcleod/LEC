@@ -1174,6 +1174,36 @@ export type Database = {
         }
         Relationships: []
       }
+      pos_link_clicks: {
+        Row: {
+          captured_at: string
+          clicks: number
+          id: number
+          kind: string
+          label: string
+          scope: string
+          sessions: number
+        }
+        Insert: {
+          captured_at?: string
+          clicks?: number
+          id?: never
+          kind: string
+          label: string
+          scope?: string
+          sessions?: number
+        }
+        Update: {
+          captured_at?: string
+          clicks?: number
+          id?: never
+          kind?: string
+          label?: string
+          scope?: string
+          sessions?: number
+        }
+        Relationships: []
+      }
       pos_products: {
         Row: {
           billing_period: string | null
