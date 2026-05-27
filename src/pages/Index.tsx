@@ -94,14 +94,6 @@ const Index = () => {
       external: true,
     },
     {
-      title: "Producer Operating System",
-      description: "Resources for building a music production career",
-      icon: BookOpen,
-      iconGradient: "from-samples to-samples/70",
-      url: "https://producerframework.com/",
-      external: true,
-    },
-    {
       title: "About Bohemyth",
       description: "Learn more about my background & credentials",
       icon: User,
