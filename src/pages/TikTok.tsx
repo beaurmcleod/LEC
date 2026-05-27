@@ -7,6 +7,13 @@ import previewCandyStore from "@/assets/preview-candy-store-new.png";
 const TikTok = () => {
   const links = [
     {
+      title: "Key & BPM Detector",
+      description: "Drop any audio file. Get the key + BPM instantly. $14.99",
+      icon: Music2,
+      iconGradient: "from-accent via-primary to-secondary",
+      url: "/product/key-bpm-finder",
+    },
+    {
       title: "The Candy Store",
       description: "Premium samples, presets & Ableton racks",
       preview: previewCandyStore,
