@@ -127,6 +127,9 @@ const Index = () => {
           </p>
         </div>
 
+        {/* Featured Products */}
+        <FeaturedProducts heading="Shop the Essentials" className="mb-12" />
+
         {/* Links */}
         <div className="space-y-4">
           {links.map((link, index) => {
