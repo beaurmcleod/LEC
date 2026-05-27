@@ -36,6 +36,14 @@ const Index = () => {
 
   const links = [
     {
+      title: "Producer Operating System",
+      description: "Resources for building a music production career",
+      icon: BookOpen,
+      iconGradient: "from-samples to-samples/70",
+      url: "https://producerframework.com/",
+      external: true,
+    },
+    {
       title: "The Candy Store",
       description: "Premium samples, presets & Ableton racks",
       preview: previewCandyStore,
@@ -63,13 +71,6 @@ const Index = () => {
       description: "One-on-one music production coaching",
       preview: previewLesson,
       url: "/lessons",
-    },
-    {
-      title: "Ask a Producer",
-      description: "AI powered by 10+ years of professional production curriculum",
-      icon: HelpCircle,
-      iconGradient: "from-accent to-accent/70",
-      url: "/ask",
     },
     {
       title: "Free Ableton Live Course",
