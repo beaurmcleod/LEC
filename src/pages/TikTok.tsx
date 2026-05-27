@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Headphones, Compass } from "lucide-react";
+import { Headphones, Compass, Music2 } from "lucide-react";
 import previewEdmCourse from "@/assets/preview-edm-course-new.jpg";
 import previewLesson from "@/assets/preview-lesson.jpg";
 import previewCandyStore from "@/assets/preview-candy-store-new.png";
