@@ -10,6 +10,7 @@ import previewBohemyth from "@/assets/preview-bohemyth.png";
 import previewCruxChords from "@/assets/preview-crux-chords-new.png";
 import previewSkool from "@/assets/preview-skool.png";
 import { ReviewsSection } from "@/components/ReviewsSection";
+import { FeaturedProducts } from "@/components/FeaturedProducts";
 
 const Index = () => {
   // Track clicks only for authenticated users (RLS requires authentication)
@@ -56,12 +57,6 @@ const Index = () => {
       url: "https://www.skool.com/low-end-candy-collective-1686/about?ref=0475f2cfd1a94b63a5a389be8a3cb450",
       external: true,
       highlighted: true,
-    },
-    {
-      title: "Crux Chords Ableton AI Chord Device",
-      description: "AI-powered chord generation for Ableton",
-      preview: previewCruxChords,
-      url: "/crux-chords",
     },
     {
       title: "Book a Private Lesson With me",
@@ -131,6 +126,9 @@ const Index = () => {
             Listen ⚡️ Learn ⚡️ Party
           </p>
         </div>
+
+        {/* Featured Products */}
+        <FeaturedProducts heading="Shop the Essentials" className="mb-12" />
 
         {/* Links */}
         <div className="space-y-4">
