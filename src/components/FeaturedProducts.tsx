@@ -1,4 +1,6 @@
 import { Link } from "react-router-dom";
+import edmCourseImg from "@/assets/preview-edm-course-new.jpg";
+
 
 const featured = [
   {
@@ -26,7 +28,7 @@ const featured = [
     title: "30 Day EDM Production Course",
     description: "Beginner to confident producer in 30 days",
     price: "Course",
-    image: "/src/assets/preview-edm-course-new.jpg",
+    image: edmCourseImg,
     url: "https://www.30dayedmproducer.com/",
     external: true,
   },
