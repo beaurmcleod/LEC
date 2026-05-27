@@ -47,26 +47,23 @@ export const FeaturedProducts = ({ heading = "Quick Picks", className = "" }: Fe
           {heading}
         </h2>
       )}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         {featured.map((p) => {
           const inner = (
             <div className="group bg-card border border-border rounded-lg overflow-hidden hover:border-primary/60 hover:shadow-glow-primary transition-all duration-200 h-full flex flex-col">
-              <div className="aspect-square bg-muted overflow-hidden">
+              <div className="aspect-square bg-muted overflow-hidden flex items-center justify-center">
                 <img
                   src={p.image}
                   alt={p.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
                   loading="lazy"
                 />
               </div>
-              <div className="p-2.5 flex-1 flex flex-col">
+              <div className="p-2.5 flex items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-foreground leading-tight line-clamp-2">
                   {p.title}
                 </h3>
-                <p className="text-xs text-muted-foreground mt-1 line-clamp-2 flex-1">
-                  {p.description}
-                </p>
-                <div className="mt-2 text-sm font-bold text-primary">{p.price}</div>
+                <div className="text-sm font-bold text-primary whitespace-nowrap">{p.price}</div>
               </div>
             </div>
           );
