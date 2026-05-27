@@ -59,12 +59,6 @@ const Index = () => {
       highlighted: true,
     },
     {
-      title: "Crux Chords Ableton AI Chord Device",
-      description: "AI-powered chord generation for Ableton",
-      preview: previewCruxChords,
-      url: "/crux-chords",
-    },
-    {
       title: "Book a Private Lesson With me",
       description: "One-on-one music production coaching",
       preview: previewLesson,
