@@ -10,6 +10,7 @@ import previewBohemyth from "@/assets/preview-bohemyth.png";
 import previewCruxChords from "@/assets/preview-crux-chords-new.png";
 import previewSkool from "@/assets/preview-skool.png";
 import { ReviewsSection } from "@/components/ReviewsSection";
+import { FeaturedProducts } from "@/components/FeaturedProducts";
 
 const Index = () => {
   // Track clicks only for authenticated users (RLS requires authentication)
