@@ -20,14 +20,14 @@ const featured = [
   {
     title: "Serum 2 Randomizer Rack",
     description: "Refined randomization for usable sounds",
-    price: "$5",
+    price: "$9.99",
     image: "/lovable-uploads/randomizer-rack.png",
     url: "/product/serum-2-randomizer-rack",
   },
   {
     title: "30 Day EDM Production Course",
     description: "Beginner to confident producer in 30 days",
-    price: "Course",
+    price: "$39",
     image: edmCourseImg,
     url: "https://www.30dayedmproducer.com/",
     external: true,
