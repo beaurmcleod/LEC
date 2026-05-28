@@ -35,8 +35,21 @@ export const trackLandingClick = async (
   }
 };
 
+type LandingLink = {
+  title: string;
+  description: string;
+  url: string;
+  preview?: string;
+  icon?: typeof User;
+  iconGradient?: string;
+  external?: boolean;
+  highlighted?: boolean;
+  highlightBlue?: boolean;
+  highlightRed?: boolean;
+};
+
 export const LandingContent = ({ source }: LandingContentProps) => {
-  const links = [
+  const links: LandingLink[] = [
     {
       title: "30-Day EDM Producer Course",
       description: "A structured curriculum for electronic music production",
@@ -94,7 +107,7 @@ export const LandingContent = ({ source }: LandingContentProps) => {
       iconGradient: "from-secondary to-secondary/70",
       url: "/bio",
     },
-  ] as const;
+  ];
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
