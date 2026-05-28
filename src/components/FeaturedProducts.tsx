@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import previewPos from "@/assets/preview-pos.png";
+import { trackLandingClick } from "@/components/LandingContent";
 
 const featured = [
   {
@@ -36,9 +37,11 @@ const featured = [
 interface FeaturedProductsProps {
   heading?: string;
   className?: string;
+  /** Landing-page identifier for click attribution (e.g. "home", "tiktok"). */
+  source?: string;
 }
 
-export const FeaturedProducts = ({ heading = "Quick Picks", className = "" }: FeaturedProductsProps) => {
+export const FeaturedProducts = ({ heading = "Quick Picks", className = "", source = "home" }: FeaturedProductsProps) => {
   return (
     <section className={`w-full ${className}`}>
       {heading && (
@@ -66,12 +69,13 @@ export const FeaturedProducts = ({ heading = "Quick Picks", className = "" }: Fe
               </div>
             </div>
           );
+          const handleClick = () => trackLandingClick(source, p.title, p.url);
           return p.external ? (
-            <a key={p.title} href={p.url} target="_blank" rel="noopener noreferrer">
+            <a key={p.title} href={p.url} target="_blank" rel="noopener noreferrer" onClick={handleClick}>
               {inner}
             </a>
           ) : (
-            <Link key={p.title} to={p.url}>
+            <Link key={p.title} to={p.url} onClick={handleClick}>
               {inner}
             </Link>
           );

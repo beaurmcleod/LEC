@@ -974,6 +974,7 @@ export type Database = {
           id: string
           link_title: string
           link_url: string
+          source: string | null
           user_id: string | null
         }
         Insert: {
@@ -982,6 +983,7 @@ export type Database = {
           id?: string
           link_title: string
           link_url: string
+          source?: string | null
           user_id?: string | null
         }
         Update: {
@@ -990,6 +992,7 @@ export type Database = {
           id?: string
           link_title?: string
           link_url?: string
+          source?: string | null
           user_id?: string | null
         }
         Relationships: []
