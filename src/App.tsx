@@ -77,7 +77,7 @@ const App = () => (
           <Route path="/download" element={<Download />} />
           <Route path="/cancel-lesson" element={<CancelLesson />} />
           <Route path="/tiktok" element={<TikTok />} />
-          <Route path="/instagram" element={<Instagram />} />
+          <Route path="/ig" element={<Instagram />} />
           <Route path="/blog" element={<Blog />} />
           <Route path="/blog/:slug" element={<BlogPost />} />
           <Route path="/crux-chords" element={<CruxChords />} />
