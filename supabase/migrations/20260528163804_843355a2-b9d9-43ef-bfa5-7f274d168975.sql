@@ -1,0 +1,1 @@
+UPDATE products SET price = '$9.99' WHERE id = '0706739f-1577-44df-8757-a46e20989d13';
