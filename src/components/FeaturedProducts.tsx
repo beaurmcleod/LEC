@@ -26,7 +26,7 @@ const featured = [
   {
     title: "Producer Operating System",
     description: "Resources for building a music production career",
-    price: "Free",
+    price: "$27",
     image: previewPos,
     url: "https://producerframework.com/",
     external: true,
