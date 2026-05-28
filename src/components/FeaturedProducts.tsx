@@ -1,14 +1,13 @@
 import { Link } from "react-router-dom";
-import edmCourseImg from "@/assets/preview-edm-course-new.jpg";
-
+import previewPos from "@/assets/preview-pos.png";
 
 const featured = [
   {
-    title: "CRUX Chords 2.1",
-    description: "AI chord progression generator for Ableton",
-    price: "$39",
-    image: "/lovable-uploads/crux-chords-mockup.png",
-    url: "/crux-chords",
+    title: "Serum 2 Randomizer Rack",
+    description: "Refined randomization for usable sounds",
+    price: "$9.99",
+    image: "/lovable-uploads/randomizer-rack.png",
+    url: "/product/serum-2-randomizer-rack",
   },
   {
     title: "Key & BPM Finder",
@@ -18,18 +17,18 @@ const featured = [
     url: "/product/key-bpm-finder",
   },
   {
-    title: "Serum 2 Randomizer Rack",
-    description: "Refined randomization for usable sounds",
-    price: "$9.99",
-    image: "/lovable-uploads/randomizer-rack.png",
-    url: "/product/serum-2-randomizer-rack",
+    title: "CRUX Chords 2.1",
+    description: "AI chord progression generator for Ableton",
+    price: "$39",
+    image: "/lovable-uploads/crux-chords-mockup.png",
+    url: "/crux-chords",
   },
   {
-    title: "30 Day EDM Production Course",
-    description: "Beginner to confident producer in 30 days",
-    price: "$39",
-    image: edmCourseImg,
-    url: "https://www.30dayedmproducer.com/",
+    title: "Producer Operating System",
+    description: "Resources for building a music production career",
+    price: "Free",
+    image: previewPos,
+    url: "https://producerframework.com/",
     external: true,
   },
 ];

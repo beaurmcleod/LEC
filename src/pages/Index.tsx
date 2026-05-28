@@ -7,8 +7,6 @@ import previewLesson from "@/assets/preview-lesson.jpg";
 import previewFreeCourse from "@/assets/preview-free-course.jpg";
 import previewYoutube from "@/assets/preview-youtube.jpg";
 import previewBohemyth from "@/assets/preview-bohemyth.png";
-import previewPos from "@/assets/preview-pos.png";
-import previewCruxChords from "@/assets/preview-crux-chords-new.png";
 import previewSkool from "@/assets/preview-skool.png";
 import { ReviewsSection } from "@/components/ReviewsSection";
 import { FeaturedProducts } from "@/components/FeaturedProducts";
@@ -37,11 +35,12 @@ const Index = () => {
 
   const links = [
     {
-      title: "Producer Operating System",
-      description: "Resources for building a music production career",
-      preview: previewPos,
-      url: "https://producerframework.com/",
+      title: "30-Day EDM Producer Course",
+      description: "A structured curriculum for electronic music production",
+      preview: previewEdmCourse,
+      url: "https://www.30dayedmproducer.com/",
       external: true,
+      highlightRed: true,
     },
     {
       title: "The Candy Store",
@@ -49,14 +48,6 @@ const Index = () => {
       preview: previewCandyStore,
       url: "/shop",
       highlightBlue: true,
-    },
-    {
-      title: "30 Day EDM Production Course",
-      description: "A structured curriculum for electronic music production",
-      preview: previewEdmCourse,
-      url: "https://www.30dayedmproducer.com/",
-      external: true,
-      highlightRed: true,
     },
     {
       title: "Join The Collective",
