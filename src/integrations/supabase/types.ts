@@ -559,6 +559,21 @@ export type Database = {
         }
         Relationships: []
       }
+      cron_auth: {
+        Row: {
+          created_at: string | null
+          token: string
+        }
+        Insert: {
+          created_at?: string | null
+          token: string
+        }
+        Update: {
+          created_at?: string | null
+          token?: string
+        }
+        Relationships: []
+      }
       download_tokens: {
         Row: {
           created_at: string | null
