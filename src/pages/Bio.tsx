@@ -108,7 +108,7 @@ const Bio = () => {
         {/* Footer */}
         <div className="mt-16 text-center">
           <p className="text-sm text-muted-foreground">
-            © 2024 Low End Candy. All rights reserved.
+            © {new Date().getFullYear()} Low End Candy. All rights reserved.
           </p>
         </div>
       </div>
