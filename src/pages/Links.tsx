@@ -54,9 +54,9 @@ const Links = () => {
       title: "Crux Chords Ableton AI Chord Device",
       description: "AI-powered chord generation for Ableton",
       icon: Music,
-      url: "https://www.promptmidi.online",
+      url: "/crux-chords",
       gradient: "from-green-500 to-emerald-500",
-      external: true,
+      external: false,
     },
   ];
 
