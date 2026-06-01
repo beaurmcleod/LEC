@@ -54,7 +54,7 @@ export const FeaturedProducts = ({ heading = "Quick Picks", className = "", sour
           const eager = idx < 2;
           const inner = (
             <div className="group bg-card border border-border rounded-lg overflow-hidden hover:border-primary/60 hover:shadow-glow-primary transition-all duration-200 h-full flex flex-col">
-              <div className="aspect-square bg-gradient-to-br from-muted via-card to-muted/50 animate-pulse-slow overflow-hidden flex items-center justify-center">
+              <div className="aspect-square bg-gradient-to-br from-muted via-card to-muted/50 animate-pulse overflow-hidden flex items-center justify-center">
                 <img
                   src={p.image}
                   alt={p.title}
@@ -62,7 +62,7 @@ export const FeaturedProducts = ({ heading = "Quick Picks", className = "", sour
                   loading={eager ? "eager" : "lazy"}
                   fetchPriority={eager ? "high" : "auto"}
                   decoding={eager ? "sync" : "async"}
-                  onLoad={(e) => e.currentTarget.parentElement?.classList.remove("animate-pulse-slow")}
+                  onLoad={(e) => e.currentTarget.parentElement?.classList.remove("animate-pulse")}
                 />
               </div>
               <div className="p-2.5 flex items-center justify-between gap-2">
