@@ -50,15 +50,19 @@ export const FeaturedProducts = ({ heading = "Quick Picks", className = "", sour
         </h2>
       )}
       <div className="grid grid-cols-2 gap-3">
-        {featured.map((p) => {
+        {featured.map((p, idx) => {
+          const eager = idx < 2;
           const inner = (
             <div className="group bg-card border border-border rounded-lg overflow-hidden hover:border-primary/60 hover:shadow-glow-primary transition-all duration-200 h-full flex flex-col">
-              <div className="aspect-square bg-muted overflow-hidden flex items-center justify-center">
+              <div className="aspect-square bg-gradient-to-br from-muted via-card to-muted/50 animate-pulse overflow-hidden flex items-center justify-center">
                 <img
                   src={p.image}
                   alt={p.title}
                   className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
-                  loading="lazy"
+                  loading={eager ? "eager" : "lazy"}
+                  fetchPriority={eager ? "high" : "auto"}
+                  decoding={eager ? "sync" : "async"}
+                  onLoad={(e) => e.currentTarget.parentElement?.classList.remove("animate-pulse")}
                 />
               </div>
               <div className="p-2.5 flex items-center justify-between gap-2">
