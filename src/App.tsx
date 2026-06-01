@@ -40,6 +40,10 @@ import FreeConsultation from "./pages/FreeConsultation";
 import CruxChords from "./pages/CruxChords";
 import CruxApiGuide from "./pages/CruxApiGuide";
 import CruxDownload from "./pages/CruxDownload";
+import Terms from "./pages/Terms";
+import Privacy from "./pages/Privacy";
+import License from "./pages/License";
+import Cookies from "./pages/Cookies";
 
 const queryClient = new QueryClient();
 
@@ -84,6 +88,10 @@ const App = () => (
           <Route path="/crux-chords/api-guide" element={<CruxApiGuide />} />
           <Route path="/crux-chords/download" element={<CruxDownload />} />
           <Route path="/skool" element={<SkoolRedirect />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/license" element={<License />} />
+          <Route path="/cookies" element={<Cookies />} />
           <Route path="/admin/setup" element={<AdminSetup />} />
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

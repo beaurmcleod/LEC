@@ -45,11 +45,11 @@ export const Footer = () => {
           <div>
             <h4 className="font-semibold mb-4">Products</h4>
             <ul className="space-y-2 text-muted-foreground">
-              <li><a href="#" className="hover:text-primary transition-colors">Sample Packs</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Preset Libraries</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Loop Collections</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">MIDI Packs</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Free Downloads</a></li>
+              <li><a href="/shop" className="hover:text-primary transition-colors">Sample Packs</a></li>
+              <li><a href="/racks" className="hover:text-primary transition-colors">Preset Libraries</a></li>
+              <li><a href="/shop" className="hover:text-primary transition-colors">Loop Collections</a></li>
+              <li><a href="/shop" className="hover:text-primary transition-colors">MIDI Packs</a></li>
+              <li><a href="/free" className="hover:text-primary transition-colors">Free Downloads</a></li>
             </ul>
           </div>
 
@@ -57,11 +57,12 @@ export const Footer = () => {
           <div>
             <h4 className="font-semibold mb-4">Support</h4>
             <ul className="space-y-2 text-muted-foreground">
-              <li><a href="#" className="hover:text-primary transition-colors">Help Center</a></li>
+              <li><a href="/ask" className="hover:text-primary transition-colors">Help Center</a></li>
               <li><a href="mailto:beau@lowendcandy.com" className="hover:text-primary transition-colors">Contact Us</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">License Agreement</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Downloads</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Terms of Service</a></li>
+              <li><a href="/license" className="hover:text-primary transition-colors">License Agreement</a></li>
+              <li><a href="/my-purchases" className="hover:text-primary transition-colors">Downloads</a></li>
+              <li><a href="/terms" className="hover:text-primary transition-colors">Terms of Service</a></li>
+              <li><a href="/privacy" className="hover:text-primary transition-colors">Privacy Policy</a></li>
             </ul>
           </div>
 
@@ -89,9 +90,9 @@ export const Footer = () => {
             © {new Date().getFullYear()} Low End Candy. All rights reserved.
           </p>
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <a href="#" className="hover:text-primary transition-colors">Privacy Policy</a>
-            <a href="#" className="hover:text-primary transition-colors">Terms</a>
-            <a href="#" className="hover:text-primary transition-colors">Cookies</a>
+            <a href="/privacy" className="hover:text-primary transition-colors">Privacy Policy</a>
+            <a href="/terms" className="hover:text-primary transition-colors">Terms</a>
+            <a href="/cookies" className="hover:text-primary transition-colors">Cookies</a>
           </div>
         </div>
       </div>
