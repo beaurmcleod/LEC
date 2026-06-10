@@ -44,6 +44,7 @@ import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import License from "./pages/License";
 import Cookies from "./pages/Cookies";
+import Preverb from "./pages/Preverb";
 
 const queryClient = new QueryClient();
 
@@ -87,6 +88,7 @@ const App = () => (
           <Route path="/crux-chords" element={<CruxChords />} />
           <Route path="/crux-chords/api-guide" element={<CruxApiGuide />} />
           <Route path="/crux-chords/download" element={<CruxDownload />} />
+          <Route path="/preverb" element={<Preverb />} />
           <Route path="/skool" element={<SkoolRedirect />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/privacy" element={<Privacy />} />

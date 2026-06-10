@@ -354,10 +354,43 @@ serve(async (req) => {
           } else {
             console.log("Download token created successfully, expires:", expiresAt.toISOString());
 
+            // Preverb only: mint an offline RSA license key (raw pow(h,d,n), identical
+            // to issue_license.py so it validates against the public key in the plugin),
+            // record it, and include it in the email. Gated so no other product is touched.
+            let preverbLicenseKey: string | undefined;
+            if ((productTitle || "").toLowerCase().includes("preverb")) {
+              try {
+                const dHex = Deno.env.get("PREVERB_LICENSE_D");
+                const nHex = Deno.env.get("PREVERB_LICENSE_N");
+                if (dHex && nHex) {
+                  const payload = `Preverb|${email}|v1`;
+                  const hashBuf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(payload));
+                  const h = BigInt("0x" + Array.from(new Uint8Array(hashBuf)).map((b) => b.toString(16).padStart(2, "0")).join(""));
+                  let base = h % BigInt(nHex), e2 = BigInt(dHex), mod = BigInt(nHex), r = 1n;
+                  while (e2 > 0n) { if (e2 & 1n) r = (r * base) % mod; e2 >>= 1n; base = (base * base) % mod; }
+                  preverbLicenseKey = r.toString(16) + "." + payload;
+                  const { error: licErr } = await supabase.from("licenses").insert({
+                    license_key: preverbLicenseKey, product: "preverb", customer_email: email,
+                    user_id: userId, status: "active", site: EXPECTED_SITE,
+                    subscription_id: null, expires_at: null,
+                  });
+                  if (licErr) console.error("Preverb license insert error:", licErr);
+                  console.log("Preverb license minted for", email);
+                } else {
+                  await sendAdminAlert("Preverb license mint failed",
+                    `PREVERB_LICENSE_D/N secrets missing — no key for <strong>${email}</strong> on ${paymentIntent.id}. Customer got the download but NOT a key; issue manually.`);
+                }
+              } catch (e) {
+                await sendAdminAlert("Preverb license mint error",
+                  `Minting failed for <strong>${email}</strong> on ${paymentIntent.id}: ${String(e)}. Issue the key manually.`);
+              }
+            }
+
             const { error: emailError } = await supabase.functions.invoke("send-purchase-email", {
               body: {
                 to: email, productTitle, amount,
                 paymentIntentId: paymentIntent.id, productId, downloadToken,
+                licenseKey: preverbLicenseKey,
               },
             });
 

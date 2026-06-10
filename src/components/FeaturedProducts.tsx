@@ -1,8 +1,16 @@
 import { Link } from "react-router-dom";
 import previewPos from "@/assets/preview-pos.png";
+import previewPreverb from "@/assets/preview-preverb.png";
 import { trackLandingClick } from "@/components/LandingContent";
 
 const featured = [
+  {
+    title: "Preverb",
+    description: "Reverse-reverb plugin — swell into any sound",
+    price: "$29",
+    image: previewPreverb,
+    url: "/preverb",
+  },
   {
     title: "Serum 2 Randomizer Rack",
     description: "Refined randomization for usable sounds",

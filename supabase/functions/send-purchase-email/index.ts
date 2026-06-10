@@ -21,7 +21,8 @@ serve(async (req) => {
       amount: z.number().nonnegative(),
       paymentIntentId: z.string().min(1),
       productId: z.string().uuid(),
-      downloadToken: z.string().min(32).max(255)
+      downloadToken: z.string().min(32).max(255),
+      licenseKey: z.string().max(2048).optional()
     });
 
     const validation = emailSchema.safeParse(body);
@@ -33,7 +34,7 @@ serve(async (req) => {
       );
     }
 
-    const { to, productTitle, amount, paymentIntentId, productId, downloadToken } = validation.data;
+    const { to, productTitle, amount, paymentIntentId, productId, downloadToken, licenseKey } = validation.data;
     console.log("Sending purchase email to:", to);
 
     const siteUrl = "https://low-end-beats-boutique.lovable.app";
@@ -68,6 +69,13 @@ serve(async (req) => {
             <div style="text-align: center;">
               <a href="${downloadUrl}" class="download-button">Download ${productTitle}</a>
             </div>
+            ${licenseKey ? `
+            <div class="product-info" style="margin-top: 24px;">
+              <h3>🔑 Your License Key</h3>
+              <p>Install the plugin, open it, click <strong>"● DEMO — ACTIVATE"</strong> (bottom‑right), then paste this key and click Activate. One key works on both Mac and Windows.</p>
+              <p style="font-family: 'Courier New', monospace; font-size: 12px; word-break: break-all; background: #f1f1f4; padding: 12px; border-radius: 8px; user-select: all;">${licenseKey}</p>
+            </div>
+            ` : ''}
             <p style="margin-top: 30px; font-size: 14px; color: #666;">
               <strong>Important:</strong> This download link expires in 7 days and allows up to 5 downloads. Please save this email for future reference.
             </p>
