@@ -1,0 +1,21 @@
+{
+  "_note": "Items to APPEND to your desktop dashboard (~/.dashboard_hitlist.json). Do NOT overwrite your whole board with this file. Easiest: run `python3 dashboard-file.py` on your Mac — it merges these in, de-duped, via the live helper on 127.0.0.1:7891.",
+  "doneByClaude": [
+    {
+      "id": "d-20260718-seofix-done",
+      "headline": "Fixed the Google Search Console \"duplicate canonical\" SEO error on lowendcandy.com",
+      "summary": "GSC flagged \"Duplicate, Google chose different canonical than user.\" Root cause: the site is a client-rendered SPA that served the same index.html for every route with no <link rel=\"canonical\">, so Google picked its own canonical. Fix is in draft PR #1 (branch claude/fix-this-liqgkq): new src/components/Seo.tsx writes a per-route self-referencing canonical + matching og:url and noindexes utility/404 pages; added a homepage canonical to index.html; added public/sitemap.xml plus a Sitemap: line in robots.txt. Production build passes and behavior was verified in a headless browser. PR: https://github.com/beaurmcleod/LEC/pull/1",
+      "ts": "2026-07-18T15:30:00Z"
+    }
+  ],
+  "needsBeau": [
+    {
+      "id": "d-20260718-seofix-needsbeau",
+      "text": "Review/merge SEO PR #1, then re-validate in Search Console after it deploys",
+      "desc": "Review and merge the SEO fix: https://github.com/beaurmcleod/LEC/pull/1 (draft, branch claude/fix-this-liqgkq). After it deploys, open Search Console -> the \"Duplicate, Google chose different canonical\" report -> click Validate Fix, and re-submit https://lowendcandy.com/sitemap.xml so Google re-crawls.",
+      "reason": "Needs your GitHub merge decision and your Search Console login.",
+      "done": false,
+      "addedAt": "2026-07-18T15:30:00Z"
+    }
+  ]
+}
