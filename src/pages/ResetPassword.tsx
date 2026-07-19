@@ -13,23 +13,38 @@ const ResetPassword = () => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [isRecovery, setIsRecovery] = useState(false);
+  const [status, setStatus] = useState<"checking" | "ready" | "invalid">("checking");
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") {
-        setIsRecovery(true);
+    let active = true;
+
+    // The recovery link carries its token in the URL. Supabase's detectSessionInUrl
+    // consumes that token at client-init time — usually BEFORE this component mounts —
+    // which establishes a session, emits PASSWORD_RECOVERY, and strips the token from
+    // the URL. So by the time we get here the event has often already fired and the
+    // hash is gone. Relying only on catching the event / reading the hash therefore
+    // shows a false "Invalid Reset Link" for perfectly valid links. The reliable
+    // signal is the session the link left behind, so we check that first.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!active) return;
+      // Covers the rarer case where detection completes AFTER we've mounted.
+      if (event === "PASSWORD_RECOVERY" || (event === "SIGNED_IN" && session)) {
+        setStatus("ready");
       }
     });
 
-    // Check hash for recovery token
-    const hash = window.location.hash;
-    if (hash.includes("type=recovery")) {
-      setIsRecovery(true);
-    }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!active) return;
+      // getSession() awaits client initialization (including URL token detection), so
+      // if the recovery link was valid a session exists here regardless of timing.
+      setStatus(session ? "ready" : "invalid");
+    });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -75,7 +90,18 @@ const ResetPassword = () => {
     );
   }
 
-  if (!isRecovery) {
+  if (status === "checking") {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="p-8 max-w-md w-full text-center">
+          <Loader2 className="h-8 w-8 text-muted-foreground mx-auto mb-4 animate-spin" />
+          <p className="text-muted-foreground">Verifying your reset link…</p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (status === "invalid") {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="p-8 max-w-md w-full text-center">
