@@ -1,4 +1,4 @@
-import { app, BrowserWindow, WebContentsView, clipboard, ipcMain, session, shell, systemPreferences } from 'electron';
+import { app, BrowserWindow, clipboard, ipcMain, screen, session, shell, systemPreferences } from 'electron';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -9,7 +9,6 @@ import { speak } from './src/voice.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const IG_BASE = (process.env.IG_BASE || 'https://www.instagram.com').replace(/\/$/, '');
-const PANEL_WIDTH = 460;
 const run = promisify(execFile);
 
 // Instagram gets a plain Chrome user agent, not one that advertises Electron.
@@ -18,7 +17,10 @@ app.userAgentFallback = app.userAgentFallback
   .replace(/ Electron\/\S+/, '');
 
 let win;
-let igView;
+let igWin;
+let injected;
+// The clip currently loaded into Instagram's mic. Re-sent after any full page load so a reload doesn't drop it.
+let pendingArm = null;
 
 const isInstagram = (url) => {
   try {
@@ -29,26 +31,44 @@ const isInstagram = (url) => {
   }
 };
 
-function layout() {
-  const [w, h] = win.getContentSize();
-  igView.setBounds({ x: PANEL_WIDTH, y: 0, width: Math.max(0, w - PANEL_WIDTH), height: h });
-}
+const toRecorder = (m) => win && !win.isDestroyed() && win.webContents.send('ig:status', m);
 
-async function createWindow() {
-  const injected = await fs.readFile(path.join(dir, 'src/ig-main.js'), 'utf8');
-
+// Recorder on the left edge of the screen; Instagram fills the rest.
+function createRecorderWindow() {
+  const area = screen.getPrimaryDisplay().workArea;
   win = new BrowserWindow({
-    width: 1440,
-    height: 920,
-    minWidth: 1000,
-    minHeight: 640,
+    x: area.x,
+    y: area.y,
+    width: 500,
+    height: Math.min(900, area.height),
+    minWidth: 420,
+    minHeight: 600,
     title: 'Torrey Voice Notes',
     backgroundColor: '#111114',
     webPreferences: { preload: path.join(dir, 'preload.cjs'), contextIsolation: true, sandbox: true },
   });
   win.loadFile(path.join(dir, 'src/index.html'));
+  win.on('closed', () => {
+    win = null;
+    if (igWin && !igWin.isDestroyed()) igWin.close();
+  });
+}
 
-  igView = new WebContentsView({
+function createInstagramWindow({ show = true } = {}) {
+  const b = win.getBounds();
+  const area = screen.getDisplayMatching(b).workArea;
+  const left = b.x + b.width + 8;
+  const width = Math.min(area.width, Math.max(700, Math.min(1200, area.x + area.width - left)));
+  igWin = new BrowserWindow({
+    width,
+    height: b.height,
+    x: Math.min(left, area.x + area.width - width),
+    y: b.y,
+    minWidth: 700,
+    minHeight: 600,
+    show,
+    title: 'Instagram',
+    backgroundColor: '#000000',
     webPreferences: {
       partition: 'persist:instagram',
       preload: path.join(dir, 'ig-preload.cjs'),
@@ -56,13 +76,11 @@ async function createWindow() {
       sandbox: true,
     },
   });
-  win.contentView.addChildView(igView);
-  layout();
-  win.on('resize', layout);
-
-  const ig = igView.webContents;
-  ig.on('dom-ready', () => {
-    if (isInstagram(ig.getURL())) ig.executeJavaScript(injected).catch(() => {});
+  const ig = igWin.webContents;
+  ig.on('dom-ready', async () => {
+    if (!isInstagram(ig.getURL())) return;
+    await ig.executeJavaScript(injected).catch(() => {});
+    if (pendingArm) ig.send('ivn:arm', pendingArm);
   });
   // Facebook / Instagram login popups stay in the app; everything else opens in the browser.
   ig.setWindowOpenHandler(({ url }) => {
@@ -70,8 +88,15 @@ async function createWindow() {
     shell.openExternal(url);
     return { action: 'deny' };
   });
+  igWin.on('closed', () => {
+    igWin = null;
+    toRecorder({ state: 'closed' });
+  });
   ig.loadURL(`${IG_BASE}/direct/inbox/`);
+  return igWin;
 }
+
+const instagram = (opts) => (igWin && !igWin.isDestroyed() ? igWin : createInstagramWindow(opts));
 
 const GRAB = `(() => {
   const skip = /^(follow|following|message|edit profile|view archive|contact|email|call|options|more|\\d[\\d.,]*[km]?\\s+(posts?|followers?|following))$/i;
@@ -99,11 +124,31 @@ function copyFileToClipboard(file) {
   }
 }
 
-ipcMain.handle('ig:arm', (_e, wav, meta) => igView.webContents.send('ivn:arm', { wav, ...meta }));
-ipcMain.handle('ig:disarm', () => igView.webContents.send('ivn:disarm'));
-ipcMain.handle('ig:open', (_e, handle) => igView.webContents.loadURL(`${IG_BASE}/${encodeURIComponent(handle)}/`));
-ipcMain.handle('ig:grab', () => igView.webContents.executeJavaScript(GRAB));
-ipcMain.on('ig:status', (_e, m) => win?.webContents.send('ig:status', m));
+ipcMain.handle('ig:arm', (_e, wav, meta) => {
+  pendingArm = { wav, ...meta };
+  const ig = instagram().webContents;
+  if (!ig.isLoading()) ig.send('ivn:arm', pendingArm);
+});
+ipcMain.handle('ig:disarm', () => {
+  pendingArm = null;
+  if (igWin && !igWin.isDestroyed()) igWin.webContents.send('ivn:disarm');
+});
+ipcMain.handle('ig:open', (_e, handle) => {
+  const w = instagram({ show: false });
+  if (!w.isVisible() || w.isMinimized()) w.showInactive();
+  return w.webContents.loadURL(`${IG_BASE}/${encodeURIComponent(handle)}/`);
+});
+ipcMain.handle('ig:show', () => {
+  const w = instagram();
+  if (w.isMinimized()) w.restore();
+  w.show();
+  w.focus();
+});
+ipcMain.handle('ig:grab', () => instagram().webContents.executeJavaScript(GRAB));
+ipcMain.on('ig:status', (_e, m) => {
+  if (['done', 'stopped', 'idle'].includes(m.state)) pendingArm = null;
+  toRecorder(m);
+});
 
 ipcMain.handle('clip:save', async (_e, wav, name) => {
   const outDir = path.join(app.getPath('music'), 'Torrey Voice Notes');
@@ -132,7 +177,15 @@ app.whenReady().then(async () => {
   const onlyMedia = (_wc, permission, cb) => cb(permission === 'media');
   session.defaultSession.setPermissionRequestHandler(onlyMedia);
   session.fromPartition('persist:instagram').setPermissionRequestHandler(onlyMedia);
-  await createWindow();
+  injected = await fs.readFile(path.join(dir, 'src/ig-main.js'), 'utf8');
+  createRecorderWindow();
+  createInstagramWindow();
 });
 
+app.on('activate', () => {
+  if (!win) {
+    createRecorderWindow();
+    createInstagramWindow();
+  }
+});
 app.on('window-all-closed', () => app.quit());

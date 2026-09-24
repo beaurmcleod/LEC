@@ -14,6 +14,7 @@ const DEFAULT_SETTINGS = {
   leadInMs: 300,
   monitor: true,
   autoOpen: true,
+  focusIg: true,
   airtable: {
     token: '',
     baseId: 'appdAJbStcwrV2bq5',
@@ -275,7 +276,8 @@ const STATUS_TEXT = {
 window.api.onStatus((msg) => {
   if (!S.send.pid) return;
   let text = STATUS_TEXT[msg.state] || '';
-  if (msg.state === 'armed') text = `Loaded into Instagram's mic (${fmt(msg.seconds)}). Open their DM on the right and click the mic.`;
+  if (msg.state === 'armed') text = `Loaded into Instagram's mic (${fmt(msg.seconds)}). In the Instagram window, open their DM and click the mic.`;
+  if (msg.state === 'closed') text = 'Instagram window closed. Click Instagram at the top to reopen it with the clip still loaded.';
   if (msg.state === 'error') text = msg.message;
   setSend(S.send.pid, msg.state, text);
 });
@@ -315,6 +317,7 @@ async function makeClip(p) {
   }
   if (seconds > MAX_SECONDS) toast('Heads up: this clip is over 60 seconds. Instagram may cut it off.', 7000);
   render();
+  if (S.settings.focusIg) window.api.showInstagram();
 }
 
 async function grab() {
@@ -324,7 +327,7 @@ async function grab() {
   } catch (e) {
     return toast(errText(e));
   }
-  if (!info?.handle) return toast("Open the person's profile on the right, then grab.");
+  if (!info?.handle) return toast("Open the person's profile in the Instagram window, then grab.");
   let p = S.prospects.find((x) => x.handle.toLowerCase() === info.handle.toLowerCase());
   if (!p) {
     p = leads.makeProspect({ handle: info.handle, business: info.displayName, bio: info.bio, source: 'instagram' });
@@ -484,7 +487,12 @@ function meter(key) {
 function header() {
   const tab = (id, label) =>
     h('button', { class: `tab ${S.view === id ? 'on' : ''}`, onclick: () => ((S.view = id), render()) }, label);
-  return h('header', { class: 'top' }, h('h1', {}, 'Torrey Voice Notes'), h('div', { class: 'tabs' }, tab('leads', 'Leads'), tab('setup', 'Setup')));
+  return h(
+    'header',
+    { class: 'top' },
+    h('h1', {}, 'Torrey Voice Notes'),
+    h('div', { class: 'tabs' }, tab('leads', 'Leads'), tab('setup', 'Setup'), h('button', { class: 'tab', onclick: () => window.api.showInstagram() }, 'Instagram')),
+  );
 }
 
 function leadsView() {
@@ -515,7 +523,7 @@ function leadsView() {
     h('div', { class: 'row-flex' }, chip('todo', `To do (${count('todo')})`), chip('sent', `Sent (${count('sent')})`), chip('skipped', `Skipped (${count('skipped')})`), chip('all', 'All')),
     list.length
       ? h('div', { class: 'list' }, list.map(leadRow))
-      : h('p', { class: 'muted' }, S.prospects.length ? 'Nothing here.' : 'No leads yet. Pull them from Airtable, import a CSV, or open a profile on the right and hit Grab from IG.'),
+      : h('p', { class: 'muted' }, S.prospects.length ? 'Nothing here.' : 'No leads yet. Pull them from Airtable, import a CSV, or open a profile in the Instagram window and hit Grab from IG.'),
   );
 }
 
@@ -581,7 +589,7 @@ function detailView(p) {
     h(
       'div',
       { class: 'card' },
-      h('div', { class: 'lead-title' }, h('b', {}, p.name || '(no name)'), p.handle ? h('button', { class: 'link', onclick: () => window.api.openProfile(p.handle) }, `@${p.handle}`) : null),
+      h('div', { class: 'lead-title' }, h('b', {}, p.name || '(no name)'), p.handle ? h('button', { class: 'link', onclick: () => window.api.openProfile(p.handle).catch(() => {}) }, `@${p.handle}`) : null),
       h('div', { class: 'grid2' }, field('Name to say', p.name, edit('name')), field('Role', p.role, edit('role'), { placeholder: 'e.g. owner, head coach' })),
       h('div', { class: 'grid2' }, field('Business', p.business, edit('business')), field('Instagram', p.handle, edit('handle'), { placeholder: 'handle' })),
       field('What they do', p.note, edit('note'), { placeholder: 'e.g. small group training' }),
@@ -699,9 +707,9 @@ function setupView() {
       'ol',
       { class: 'steps' },
       h('li', {}, 'Record your pitch parts below once. Use the same mic and spot you will use for the custom lines.'),
-      h('li', {}, 'Pull your leads from Airtable. Opening a lead opens their Instagram on the right.'),
+      h('li', {}, 'Pull your leads from Airtable. Opening a lead opens their profile in the Instagram window.'),
       h('li', {}, 'Record the custom lines (Space), then press Enter. The clip is spliced, saved, copied, and loaded into Instagram.'),
-      h('li', {}, 'Open their DM on the right, click the mic, and hit send when it finishes.'),
+      h('li', {}, 'In the Instagram window, open their DM, click the mic, and hit send when it finishes. It arrives as a normal voice note.'),
     ),
     h('h2', {}, 'Your voice note, in order'),
     S.template.map(segmentCard),
@@ -716,6 +724,7 @@ function setupView() {
       h('label', { class: 'field' }, 'Silence before the clip starts in Instagram (ms)', h('input', { type: 'number', min: 0, max: 2000, value: st.leadInMs, onchange: num(st, 'leadInMs') })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.monitor, onchange: check(st, 'monitor') }), 'Play the clip out loud while it goes into Instagram'),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.autoOpen, onchange: check(st, 'autoOpen') }), "Open the lead's Instagram profile when I open a lead"),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.focusIg, onchange: check(st, 'focusIg') }), 'Bring the Instagram window to the front after I press Enter'),
     ),
 
     h('h2', {}, 'Airtable'),
