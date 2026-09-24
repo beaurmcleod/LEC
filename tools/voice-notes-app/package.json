@@ -1,0 +1,17 @@
+{
+  "name": "torrey-voice-notes",
+  "productName": "Torrey Voice Notes",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Record a personal line per lead, splice it into your pitch, and send it as an Instagram voice note.",
+  "type": "module",
+  "main": "main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "build:mac": "node build-mac.mjs"
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "electron": "^44.4.5"
+  }
+}

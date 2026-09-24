@@ -48,6 +48,7 @@ export function makeProspect(f) {
     id: uid(),
     airtableId: f.airtableId || '',
     first: f.first || '',
+    role: f.role || '',
     business: f.business || '',
     handle: cleanHandle(f.handle),
     category: f.category || '',
@@ -81,6 +82,7 @@ export function fromFields(obj, extra = {}) {
   return makeProspect({
     ...extra,
     first: pick(obj, 'first name', 'first'),
+    role: pick(obj, 'role', 'position', 'title', 'job title'),
     business: pick(obj, 'business', 'business name', 'company', 'name'),
     handle: pick(obj, 'instagram', 'instagram handle', 'handle', 'ig', 'username', 'instagram url', 'ig url'),
     category: pick(obj, 'category'),

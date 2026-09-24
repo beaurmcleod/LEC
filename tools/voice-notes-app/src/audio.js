@@ -90,15 +90,25 @@ export function processTake(samples, { chopStartMs = 0, chopEndMs = 0 } = {}) {
   return trimmed.length ? fade(normalize(trimmed)) : trimmed;
 }
 
-export function concat(parts, gapMs) {
+// With no extra gap, parts overlap by an equal-power crossfade so the trimmed room tone flows across the joins.
+export function concat(parts, gapMs = 0, xfadeMs = 30) {
   const gap = ms(gapMs);
-  const total = parts.reduce((n, p) => n + p.length, 0) + gap * Math.max(0, parts.length - 1);
+  const xf = gap > 0 ? 0 : ms(xfadeMs);
+  const overlap = (i) => (i ? Math.min(xf, parts[i].length, parts[i - 1].length) : 0);
+  let total = 0;
+  parts.forEach((p, i) => (total = (i ? total + gap - overlap(i) : 0) + p.length));
   const out = new Float32Array(total);
-  let o = 0;
-  for (const p of parts) {
-    out.set(p, o);
-    o += p.length + gap;
-  }
+  let end = 0;
+  parts.forEach((p, i) => {
+    const ov = overlap(i);
+    const start = i ? end + gap - ov : 0;
+    for (let k = 0; k < ov; k++) {
+      const t = ((k + 0.5) / ov) * (Math.PI / 2);
+      out[start + k] = out[start + k] * Math.cos(t) + p[k] * Math.sin(t);
+    }
+    out.set(ov ? p.subarray(ov) : p, start + ov);
+    end = start + p.length;
+  });
   return out;
 }
 
