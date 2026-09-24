@@ -14,7 +14,9 @@ const DEFAULT_SETTINGS = {
   leadInMs: 300,
   monitor: true,
   autoOpen: true,
-  focusIg: true,
+  autoSend: true,
+  autoSync: true,
+  readyOnly: true,
   airtable: {
     token: '',
     baseId: 'appdAJbStcwrV2bq5',
@@ -43,8 +45,10 @@ const MODELS = [
 ];
 
 const PLACEHOLDERS = ['name', 'first', 'role', 'business', 'handle', 'note', 'hook', 'category'];
-const REFRESH_FIELDS = ['first', 'role', 'business', 'category', 'hook', 'bio', 'research', 'notes'];
+// Refreshed from Airtable on every sync, unless you've edited that field here.
+const REFRESH_FIELDS = ['first', 'role', 'business', 'category', 'hook', 'bio', 'research', 'notes', 'atStatus'];
 const MAX_SECONDS = 59;
+const SYNC_MS = 15 * 60 * 1000;
 
 const S = {
   view: 'leads',
@@ -56,8 +60,10 @@ const S = {
   lens: {},
   rec: null,
   busy: '',
-  clip: null,
+  armed: null,
+  sending: null,
   send: { pid: null, state: '', text: '' },
+  sync: { at: 0, error: '', running: false },
 };
 
 const $app = document.getElementById('app');
@@ -102,6 +108,7 @@ function setBusy(text) {
 
 const fixedKey = (seg) => `fixed:${seg.id}`;
 const slotKey = (p, seg) => `slot:${p.id}:${seg.id}`;
+const partKey = (p, seg) => (seg.kind === 'fixed' ? fixedKey(seg) : slotKey(p, seg));
 const slots = () => S.template.filter((s) => s.kind === 'slot');
 const current = () => S.prospects.find((p) => p.id === S.currentId);
 
@@ -152,17 +159,30 @@ function missingFixed() {
 }
 
 function missingParts(p) {
-  return S.template.filter((s) => !S.lens[s.kind === 'fixed' ? fixedKey(s) : slotKey(p, s)]);
+  return S.template.filter((s) => !S.lens[partKey(p, s)]);
 }
 
+const clipSeconds = (p) => S.template.reduce((n, s) => n + (S.lens[partKey(p, s)] || 0), 0);
+
+// "Ready only" hides leads Make hasn't finished researching. Leads added by hand or CSV have no Airtable status and always show.
+const shown = (p) => !S.settings.readyOnly || !p.atStatus || p.atStatus === 'Ready';
+const todoList = () => S.prospects.filter((p) => p.status === 'todo' && shown(p));
+const newCount = () => todoList().filter((p) => p.isNew).length;
+
 function filtered() {
-  if (S.filter === 'all') return S.prospects;
-  return S.prospects.filter((p) => p.status === S.filter);
+  const list = S.prospects.filter(shown);
+  return S.filter === 'all' ? list : list.filter((p) => p.status === S.filter);
 }
 
 // ---------- audio ----------
 
 let player = null;
+
+// Play buttons flip to Stop while their audio plays, without a full re-render.
+function syncPlayButtons() {
+  for (const el of document.querySelectorAll('[data-play]')) el.textContent = player?.key === el.dataset.play ? el.dataset.stop : el.dataset.label;
+}
+
 function stopPlay() {
   if (!player) return;
   try {
@@ -170,9 +190,10 @@ function stopPlay() {
   } catch {}
   player.ctx.close();
   player = null;
+  syncPlayButtons();
 }
 
-function play(samples) {
+function play(samples, key = '') {
   stopPlay();
   const ctx = new AudioContext({ sampleRate: audio.SR });
   const buf = ctx.createBuffer(1, samples.length, audio.SR);
@@ -182,12 +203,21 @@ function play(samples) {
   src.connect(ctx.destination);
   src.onended = () => player?.src === src && stopPlay();
   src.start();
-  player = { ctx, src };
+  player = { ctx, src, key };
+  syncPlayButtons();
 }
 
-async function playKey(key) {
-  const s = await getAudio(key);
-  if (s) play(s);
+function playButton(key, label, getSamples, attrs = {}, stopLabel = 'Stop') {
+  const onclick = async () => {
+    if (player?.key === key) return stopPlay();
+    try {
+      const samples = await getSamples();
+      if (samples) play(samples, key);
+    } catch (e) {
+      toast(e.message);
+    }
+  };
+  return h('button', { 'data-play': key, 'data-label': label, 'data-stop': stopLabel, onclick, ...attrs }, player?.key === key ? stopLabel : label);
 }
 
 let meterTimer;
@@ -196,6 +226,7 @@ async function toggleRecord(key) {
     if (S.rec.key !== key) return toast('Finish the current recording first.');
     return stopRecording();
   }
+  if (S.sending) return toast('Wait for the send to finish.');
   stopPlay();
   const recorder = new audio.MicRecorder();
   try {
@@ -223,9 +254,10 @@ async function stopRecording() {
     if (samples.length < audio.SR * 0.25) toast("Didn't catch that. Check your mic and try again.");
     else {
       await setAudio(key, samples, { source: 'mic' });
-      if (S.clip && key.includes(`:${S.clip.pid}:`)) {
-        S.clip = null;
+      // A re-take makes any clip already loaded into Instagram out of date.
+      if (S.armed && key.includes(`:${S.armed}:`)) {
         window.api.disarm();
+        setSend(S.armed, '', '');
       }
     }
   } catch {
@@ -267,7 +299,7 @@ async function autoVoiceOne(p, seg) {
 
 async function autoVoiceAll() {
   const jobs = [];
-  for (const p of S.prospects.filter((x) => x.status === 'todo')) {
+  for (const p of todoList()) {
     for (const seg of slots()) if (!S.lens[slotKey(p, seg)]) jobs.push([p, seg]);
   }
   if (!jobs.length) return toast('Every to-do lead already has its lines.');
@@ -287,24 +319,43 @@ async function buildClip(p) {
   const missing = missingParts(p);
   if (missing.length) throw new Error(`Still needs: ${missing.map((s) => s.label).join(', ')}`);
   const parts = [];
-  for (const seg of S.template) parts.push(await getAudio(seg.kind === 'fixed' ? fixedKey(seg) : slotKey(p, seg)));
+  for (const seg of S.template) parts.push(await getAudio(partKey(p, seg)));
   return audio.concat(parts, S.settings.gapMs);
 }
 
-// ---------- the Enter step: splice, save + copy, load into Instagram ----------
+// ---------- Send: open their DM, play the clip into the mic, hit send ----------
+
+// Status updates from the Instagram window. Send waits on these; otherwise they drive the status line.
+const waiters = new Set();
+function waitForStatus(states, ms) {
+  return new Promise((resolve) => {
+    const w = {
+      states: [...states, 'error', 'closed'],
+      resolve: (m) => {
+        clearTimeout(timer);
+        waiters.delete(w);
+        resolve(m);
+      },
+    };
+    const timer = setTimeout(() => w.resolve({ state: 'timeout' }), ms);
+    waiters.add(w);
+  });
+}
 
 const STATUS_TEXT = {
   playing: 'Playing into Instagram...',
   done: 'Clip finished. Hit send in Instagram, then Mark sent.',
-  stopped: 'Recording stopped. If it sent, hit Mark sent.',
-  idle: 'Unloaded from Instagram.',
+  stopped: 'Instagram stopped recording. If it sent, hit Mark sent.',
+  idle: '',
 };
 
 window.api.onStatus((msg) => {
-  if (!S.send.pid) return;
-  let text = STATUS_TEXT[msg.state] || '';
-  if (msg.state === 'armed') text = `Loaded into Instagram's mic (${fmt(msg.seconds)}). In the Instagram window, open their DM and click the mic.`;
-  if (msg.state === 'closed') text = 'Instagram window closed. Click Instagram at the top to reopen it with the clip still loaded.';
+  for (const w of [...waiters]) if (w.states.includes(msg.state)) w.resolve(msg);
+  if (['done', 'stopped', 'idle'].includes(msg.state)) S.armed = null;
+  if (S.sending || !S.send.pid) return;
+  let text = STATUS_TEXT[msg.state] ?? '';
+  if (msg.state === 'armed') text = `Clip loaded (${fmt(msg.seconds)}). Open their DM in Instagram and click the mic.`;
+  if (msg.state === 'closed') text = S.armed ? 'Instagram window closed. Click Instagram at the top to reopen it; the clip stays loaded.' : '';
   if (msg.state === 'error') text = msg.message;
   setSend(S.send.pid, msg.state, text);
 });
@@ -319,32 +370,87 @@ function setSend(pid, state, text) {
   }
 }
 
-async function makeClip(p) {
-  if (S.rec) return;
+async function sendNow(p) {
+  if (S.rec || S.sending) return;
+  if (!p.handle) return toast('Add their Instagram handle first (Edit details).');
   let samples;
   try {
     samples = await buildClip(p);
   } catch (e) {
     return toast(e.message);
   }
+  stopPlay();
   const seconds = samples.length / audio.SR;
-  const wav = audio.encodeWav(samples);
-  S.clip = { pid: p.id, seconds, file: null };
-  setSend(p.id, 'armed', 'Loading into Instagram...');
-  render();
-  try {
-    S.clip.file = await window.api.saveClip(wav, p.handle || p.name);
-  } catch (e) {
-    toast(`Couldn't save the clip: ${errText(e)}`);
-  }
-  try {
-    await window.api.arm(wav, { label: p.name, leadInMs: S.settings.leadInMs, monitor: S.settings.monitor });
-  } catch (e) {
-    setSend(p.id, 'error', errText(e));
-  }
   if (seconds > MAX_SECONDS) toast('Heads up: this clip is over 60 seconds. Instagram may cut it off.', 7000);
+  const say = (text, state = 'working') => setSend(p.id, state, text);
+  // Anything the app can't do by itself is left for you with the clip still loaded, so one click finishes it.
+  const handOff = (text) => {
+    say(text, 'armed');
+    window.api.showInstagram();
+  };
+  S.sending = p.id;
   render();
-  if (S.settings.focusIg) window.api.showInstagram();
+  try {
+    say('Opening their DM...');
+    const dmOpen = await window.api.igDo('openDm', p.handle).then(
+      () => true,
+      () => false,
+    );
+
+    say('Loading the clip...');
+    const armed = waitForStatus(['armed'], 10000);
+    await window.api.arm(audio.encodeWav(samples), { label: p.name, leadInMs: S.settings.leadInMs, monitor: S.settings.monitor });
+    const a = await armed;
+    if (a.state !== 'armed') throw new Error(a.message || "Instagram didn't take the clip. Try Send again.");
+    S.armed = p.id;
+    if (!dmOpen) return handOff("Couldn't open their DM by itself. The clip is loaded: open their DM in Instagram and click the mic.");
+
+    say(`Recording into their DM (${fmt(seconds)})...`);
+    const playing = waitForStatus(['playing'], 8000);
+    const micClicked = await window.api.igDo('clickMic').then(
+      () => true,
+      () => false,
+    );
+    const pl = micClicked ? await playing : { state: 'timeout' };
+    if (pl.state === 'error') throw new Error(pl.message);
+    if (pl.state !== 'playing') return handOff('The clip is loaded. Click the mic in their DM and it plays in.');
+
+    const done = await waitForStatus(['done', 'armed'], (seconds + 15) * 1000);
+    if (done.state === 'armed') return handOff('Instagram stopped recording early. The clip is reloaded: click the mic to try again.');
+    if (done.state !== 'done') throw new Error(done.message || 'The clip never finished playing. Check the Instagram window.');
+
+    if (!S.settings.autoSend) return handOff('Clip is in their DM. Hit send in Instagram, then Mark sent.');
+    say('Sending...');
+    const stopped = waitForStatus(['stopped'], 8000);
+    const sendClicked = await window.api.igDo('clickSend').then(
+      () => true,
+      () => false,
+    );
+    const st = sendClicked ? await stopped : { state: 'timeout' };
+    if (st.state !== 'stopped') return handOff('Clip is in their DM. Hit send in Instagram, then Mark sent.');
+
+    say('Sent ✓', 'done');
+    toast(`Sent to @${p.handle} ✓`);
+    S.sending = null;
+    await setStatus(p, 'sent', { advance: S.currentId === p.id });
+  } catch (e) {
+    say(errText(e), 'error');
+  } finally {
+    if (S.sending === p.id) {
+      S.sending = null;
+      render();
+    }
+  }
+}
+
+async function saveFile(p) {
+  try {
+    const file = await window.api.saveClip(audio.encodeWav(await buildClip(p)), p.handle || p.name);
+    toast(`Saved to Music > Torrey Voice Notes and copied. Paste it anywhere.`);
+    return file;
+  } catch (e) {
+    toast(errText(e));
+  }
 }
 
 async function grab() {
@@ -368,7 +474,7 @@ async function grab() {
 
 // ---------- leads ----------
 
-async function merge(incoming) {
+async function merge(incoming, { markNew = false } = {}) {
   let added = 0;
   let refreshed = 0;
   for (const inc of incoming) {
@@ -378,10 +484,17 @@ async function merge(incoming) {
         (inc.handle && p.handle && p.handle.toLowerCase() === inc.handle.toLowerCase()),
     );
     if (ex) {
-      for (const k of REFRESH_FIELDS) if (inc[k]) ex[k] = inc[k];
+      // Name and "what they do" follow Airtable only while they're still the auto-filled ones, so edits made
+      // before edits were tracked survive too.
+      const autoName = !ex.edited?.name && ex.name === leads.deriveName(ex);
+      const autoNote = !ex.edited?.note && ex.note === leads.deriveNote(ex);
+      for (const k of REFRESH_FIELDS) if (inc[k] && !ex.edited?.[k]) ex[k] = inc[k];
+      if (autoName && inc.name) ex.name = inc.name;
+      if (autoNote && inc.note) ex.note = inc.note;
       ex.airtableId ||= inc.airtableId;
       refreshed++;
     } else {
+      if (markNew) inc.isNew = true;
       S.prospects.push(inc);
       added++;
     }
@@ -390,21 +503,57 @@ async function merge(incoming) {
   return { added, refreshed };
 }
 
-async function pullAirtable() {
+function syncText() {
+  if (!S.settings.airtable.token) return 'Airtable not connected.';
+  if (S.sync.running) return 'Checking Airtable for new leads...';
+  if (S.sync.error) return `Airtable: ${S.sync.error}`;
+  if (!S.sync.at) return 'Not synced yet.';
+  const min = Math.round((Date.now() - S.sync.at) / 60000);
+  const n = newCount();
+  return `Synced ${min < 1 ? 'just now' : `${min} min ago`}${n ? ` · ${n} new` : ''}`;
+}
+
+// Updates the sync line and the new-leads badge in place, so a background sync never interrupts recording or typing.
+function paintSync() {
+  const n = newCount();
+  const badge = document.getElementById('new-badge');
+  if (badge) {
+    badge.textContent = n;
+    badge.hidden = !n;
+  }
+  const line = document.getElementById('sync-line');
+  if (line) {
+    line.textContent = syncText();
+    line.className = `grow small ${S.sync.error ? 'bad' : 'muted'}`;
+  }
+}
+
+// Pulls new and updated leads from Airtable (where Make drops them). Runs on launch, every 15 minutes, and on Sync now.
+async function sync({ quiet = false } = {}) {
   const at = S.settings.airtable;
   if (!at.token) {
+    if (quiet) return;
     S.view = 'setup';
     render();
     return toast('Add your Airtable token first (Setup > Airtable).');
   }
-  setBusy('Pulling leads from Airtable...');
+  if (S.sync.running) return;
+  S.sync.running = true;
+  paintSync();
   try {
-    const { added, refreshed } = await merge(await window.api.pullAirtable(at));
-    toast(`${added} new lead${added === 1 ? '' : 's'}, ${refreshed} refreshed.`);
+    // The first pull brings in the whole list, so nothing is flagged new until the second.
+    const firstPull = !S.prospects.some((p) => p.airtableId);
+    const { added, refreshed } = await merge(await window.api.pullAirtable(at), { markNew: !firstPull });
+    S.sync.at = Date.now();
+    S.sync.error = '';
+    if (!quiet) toast(`${added} new lead${added === 1 ? '' : 's'}, ${refreshed} refreshed.`);
   } catch (e) {
-    toast(`Airtable: ${errText(e)}`, 8000);
+    S.sync.error = errText(e);
+    if (!quiet) toast(`Airtable: ${S.sync.error}`, 8000);
   }
-  setBusy('');
+  S.sync.running = false;
+  if (S.view === 'leads' && !S.currentId && !S.rec) render();
+  else paintSync();
 }
 
 async function importCSV(file) {
@@ -429,20 +578,23 @@ async function addManual() {
 function openLead(id, openProfile = true) {
   S.currentId = id;
   S.view = 'leads';
-  if (S.clip?.pid !== id) S.clip = null;
+  const p = current();
+  if (p?.isNew) {
+    delete p.isNew;
+    saveProspects();
+  }
   render();
   window.scrollTo(0, 0);
-  const p = current();
   if (openProfile && S.settings.autoOpen && p?.handle) window.api.openProfile(p.handle).catch(() => {});
 }
 
 function nextTodo(fromId) {
-  const list = S.prospects.filter((p) => p.status === 'todo' && p.id !== fromId);
+  const list = todoList().filter((p) => p.id !== fromId);
   const i = S.prospects.findIndex((p) => p.id === fromId);
   return list.find((p) => S.prospects.indexOf(p) > i) || list[0] || null;
 }
 
-async function setStatus(p, status) {
+async function setStatus(p, status, { advance = true } = {}) {
   p.status = status;
   p.sentAt = status === 'sent' ? Date.now() : null;
   await saveProspects();
@@ -450,7 +602,7 @@ async function setStatus(p, status) {
   if (status === 'sent' && at.writeBack && at.token && p.airtableId) {
     window.api.markSent(at, p.airtableId).catch((e) => toast(`Marked sent here, but Airtable said: ${errText(e)}`, 8000));
   }
-  if (status === 'todo') return render();
+  if (status === 'todo' || !advance) return render();
   const next = nextTodo(p.id);
   if (next) openLead(next.id);
   else {
@@ -502,7 +654,7 @@ function recButton(key, label = 'Record') {
   const on = S.rec?.key === key;
   return h(
     'button',
-    { class: on ? 'rec' : '', onclick: () => toggleRecord(key), disabled: !!S.rec && !on },
+    { class: on ? 'rec' : '', onclick: () => toggleRecord(key), disabled: (!!S.rec && !on) || !!S.sending },
     on ? ['Stop ', h('span', { id: 'rec-timer' }, '0.0s')] : S.lens[key] ? 'Redo' : label,
   );
 }
@@ -511,46 +663,102 @@ function meter(key) {
   return S.rec?.key === key ? h('div', { class: 'meter' }, h('div', { id: 'rec-meter' })) : null;
 }
 
+const goSetup = () => {
+  S.view = 'setup';
+  render();
+};
+
 function header() {
-  const tab = (id, label) =>
-    h('button', { class: `tab ${S.view === id ? 'on' : ''}`, onclick: () => ((S.view = id), render()) }, label);
+  const n = newCount();
+  const leadsTab = () => {
+    // Clicking Leads while already there goes back to the list.
+    if (S.view === 'leads') S.currentId = null;
+    S.view = 'leads';
+    render();
+  };
   return h(
     'header',
     { class: 'top' },
     h('h1', {}, 'Torrey Voice Notes'),
-    h('div', { class: 'tabs' }, tab('leads', 'Leads'), tab('setup', 'Setup'), h('button', { class: 'tab', onclick: () => window.api.showInstagram() }, 'Instagram')),
+    h(
+      'div',
+      { class: 'tabs' },
+      h('button', { class: `tab ${S.view === 'leads' ? 'on' : ''}`, onclick: leadsTab }, 'Leads', h('span', { id: 'new-badge', class: 'badge', hidden: !n }, n)),
+      h('button', { class: `tab ${S.view === 'setup' ? 'on' : ''}`, onclick: goSetup }, 'Setup'),
+      h('button', { class: 'tab', onclick: () => window.api.showInstagram() }, 'Instagram'),
+    ),
   );
 }
 
 function leadsView() {
-  const count = (st) => S.prospects.filter((p) => p.status === st).length;
+  const all = S.prospects.filter(shown);
+  const count = (st) => all.filter((p) => p.status === st).length;
   const chip = (id, label) =>
     h('button', { class: `tab ${S.filter === id ? 'on' : ''}`, onclick: () => ((S.filter = id), render()) }, label);
   const file = h('input', { type: 'file', accept: '.csv,text/csv', hidden: true, onchange: (e) => e.target.files[0] && importCSV(e.target.files[0]) });
   const list = filtered();
   const need = missingFixed();
+  const next = todoList()[0];
+  const connected = !!S.settings.airtable.token;
+  const hidden = S.prospects.length - all.length;
 
   return h(
     'main',
     {},
-    need.length
-      ? h('div', { class: 'status error' }, `Record your pitch first: ${need.map((s) => s.label).join(', ')}. `, h('button', { class: 'link', onclick: () => ((S.view = 'setup'), render()) }, 'Go to Setup'))
-      : null,
+    need.length ? h('div', { class: 'status error' }, `Record your pitch first: ${need.map((s) => s.label).join(', ')}. `, h('button', { class: 'link', onclick: goSetup }, 'Go to Setup')) : null,
+    h(
+      'div',
+      { class: 'card sync' },
+      h(
+        'div',
+        { class: 'row-flex' },
+        h('span', { id: 'sync-line', class: `grow small ${S.sync.error ? 'bad' : 'muted'}` }, syncText()),
+        connected ? h('button', { onclick: () => sync(), disabled: S.sync.running }, 'Sync now') : h('button', { onclick: goSetup }, 'Connect Airtable'),
+      ),
+    ),
+    h(
+      'button',
+      { class: 'enter', onclick: () => next && openLead(next.id), disabled: !next },
+      next ? `Start next lead: ${next.name || `@${next.handle}`}` : 'Nothing left to do',
+      next ? h('span', {}, 'Enter') : null,
+    ),
     h(
       'div',
       { class: 'row-flex' },
-      h('button', { class: 'primary', onclick: pullAirtable, disabled: !!S.busy }, 'Pull from Airtable'),
+      chip('todo', `To do (${count('todo')})`),
+      chip('sent', `Sent (${count('sent')})`),
+      chip('skipped', `Skipped (${count('skipped')})`),
+      chip('all', 'All'),
+      h('span', { class: 'grow' }),
+      h(
+        'label',
+        { class: 'check inline', title: 'Only leads Make has finished researching (Status = Ready in Airtable)' },
+        h('input', {
+          type: 'checkbox',
+          checked: S.settings.readyOnly,
+          onchange: (e) => {
+            S.settings.readyOnly = e.target.checked;
+            saveSettings();
+            render();
+          },
+        }),
+        'Ready only',
+      ),
+    ),
+    list.length
+      ? h('div', { class: 'list' }, list.map(leadRow))
+      : h('p', { class: 'muted' }, S.prospects.length ? 'Nothing here.' : 'No leads yet. Connect Airtable in Setup, import a CSV, or open a profile in the Instagram window and hit Grab from IG.'),
+    hidden && S.settings.readyOnly ? h('p', { class: 'muted small' }, `${hidden} lead${hidden === 1 ? ' is' : 's are'} still being researched (hidden).`) : null,
+    h(
+      'div',
+      { class: 'row-flex small-actions' },
       h('button', { onclick: () => file.click() }, 'Import CSV'),
       h('button', { onclick: grab }, 'Grab from IG'),
       h('button', { onclick: addManual }, '+ Add'),
+      ttsReady() ? h('button', { onclick: autoVoiceAll, disabled: !!S.busy }, 'Auto-voice all missing lines') : null,
       file,
     ),
-    ttsReady() ? h('button', { onclick: autoVoiceAll, disabled: !!S.busy }, 'Auto-voice all missing lines') : null,
     S.busy ? h('p', { class: 'muted small' }, S.busy) : null,
-    h('div', { class: 'row-flex' }, chip('todo', `To do (${count('todo')})`), chip('sent', `Sent (${count('sent')})`), chip('skipped', `Skipped (${count('skipped')})`), chip('all', 'All')),
-    list.length
-      ? h('div', { class: 'list' }, list.map(leadRow))
-      : h('p', { class: 'muted' }, S.prospects.length ? 'Nothing here.' : 'No leads yet. Pull them from Airtable, import a CSV, or open a profile in the Instagram window and hit Grab from IG.'),
   );
 }
 
@@ -560,7 +768,7 @@ function leadRow(p) {
   let pill;
   if (p.status === 'sent') pill = h('span', { class: 'tag ok' }, 'sent');
   else if (p.status === 'skipped') pill = h('span', { class: 'tag' }, 'skipped');
-  else if (done === total) pill = h('span', { class: 'tag ok' }, 'ready');
+  else if (done === total) pill = h('span', { class: 'tag ok' }, 'ready to send');
   else pill = h('span', { class: 'tag warn' }, `${done}/${total} parts`);
   return h(
     'button',
@@ -571,6 +779,7 @@ function leadRow(p) {
       h('span', {}, h('b', {}, p.name || '(no name)')),
       h('span', { class: 'muted small' }, [p.handle ? `@${p.handle}` : 'no handle', p.role, p.business !== p.name ? p.business : ''].filter(Boolean).join(' · ')),
     ),
+    p.isNew ? h('span', { class: 'tag new' }, 'new') : null,
     pill,
   );
 }
@@ -579,28 +788,68 @@ function field(label, value, onInput, attrs = {}) {
   return h('label', { class: 'field' }, label, h('input', { value, oninput: (e) => onInput(e.target.value), ...attrs }));
 }
 
+// One line of the voice note: your custom lines get Record / Play, the pitch parts just show they're there.
+function lineRow(p, seg) {
+  if (seg.kind === 'fixed') {
+    const key = fixedKey(seg);
+    const len = S.lens[key];
+    return h(
+      'div',
+      { class: 'line fixed' },
+      h('span', { class: 'grow' }, seg.label),
+      len ? h('span', { class: 'tag' }, secs(len)) : h('button', { class: 'link warn', onclick: goSetup }, 'Record it in Setup'),
+      len ? playButton(key, 'Play', () => getAudio(key), { class: 'icon' }) : null,
+    );
+  }
+  const key = slotKey(p, seg);
+  const len = S.lens[key];
+  const live = S.rec?.key === key;
+  return h(
+    'div',
+    { class: `line slot ${live ? 'live' : ''}` },
+    h('div', { class: 'script', 'data-seg': seg.id }, renderScript(seg.script, p)),
+    meter(key),
+    h(
+      'div',
+      { class: 'row-flex' },
+      recButton(key),
+      playButton(key, 'Play', () => getAudio(key), { disabled: !len || live }),
+      ttsReady() ? h('button', { onclick: () => autoVoiceOne(p, seg), disabled: !!S.busy || !!S.rec || !!S.sending }, 'Auto-voice') : null,
+      h('span', { class: 'grow' }),
+      len ? h('span', { class: 'tag ok' }, `✓ ${secs(len)}`) : h('span', { class: 'tag warn' }, 'not recorded'),
+    ),
+  );
+}
+
+const step = (n, title) => h('h2', { class: 'step' }, h('span', { class: 'n' }, n), title);
+
 function detailView(p) {
   const list = filtered();
   const idx = list.indexOf(p);
   const go = (d) => list[idx + d] && openLead(list[idx + d].id);
+  const todo = todoList();
+  const pos = todo.indexOf(p);
   const edit = (k) => (v) => {
     p[k] = k === 'handle' ? leads.cleanHandle(v) : v;
+    // Your edits win over later Airtable syncs.
+    p.edited = { ...p.edited, [k]: true };
     saveProspects();
-    if (S.clip?.pid === p.id) S.clip.stale = true;
     for (const el of document.querySelectorAll('[data-seg]')) {
       el.textContent = renderScript(S.template.find((s) => s.id === el.dataset.seg).script, p);
     }
   };
   const ref = [
-    ['Category', p.category],
     ['Personal hook', p.hook],
+    ['Category', p.category],
     ['IG bio', p.bio],
     ['Research', p.research],
     ['Notes', p.notes],
   ].filter(([, v]) => v);
   const missing = missingParts(p);
   const sendStatus = S.send.pid === p.id ? S.send : { state: '', text: '' };
-  const clip = S.clip?.pid === p.id ? S.clip : null;
+  const sending = S.sending === p.id;
+  const blocked = !!missing.length || !!S.rec || !!S.sending;
+  const who = [p.role, p.business && p.business !== p.name ? p.business : ''].filter(Boolean).join(' at ');
 
   return h(
     'main',
@@ -609,68 +858,74 @@ function detailView(p) {
       'div',
       { class: 'row-flex' },
       h('button', { onclick: () => ((S.currentId = null), render()) }, '< All leads'),
-      h('span', { class: 'grow' }),
+      h('span', { class: 'grow muted small center' }, pos >= 0 ? `Lead ${pos + 1} of ${todo.length}` : ''),
       h('button', { onclick: () => go(-1), disabled: idx <= 0 }, 'Prev'),
       h('button', { onclick: () => go(1), disabled: idx < 0 || idx >= list.length - 1 }, 'Next'),
     ),
     h(
       'div',
       { class: 'card' },
-      h('div', { class: 'lead-title' }, h('b', {}, p.name || '(no name)'), p.handle ? h('button', { class: 'link', onclick: () => window.api.openProfile(p.handle).catch(() => {}) }, `@${p.handle}`) : null),
-      h('div', { class: 'grid2' }, field('Name to say', p.name, edit('name')), field('Role', p.role, edit('role'), { placeholder: 'e.g. owner, head coach' })),
-      h('div', { class: 'grid2' }, field('Business', p.business, edit('business')), field('Instagram', p.handle, edit('handle'), { placeholder: 'handle' })),
-      field('What they do', p.note, edit('note'), { placeholder: 'e.g. small group training' }),
-      ref.length ? h('details', { class: 'ref' }, h('summary', {}, 'Lead info'), h('dl', {}, ref.map(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]))) : null,
-    ),
-    h('h2', {}, 'Record the custom part'),
-    slots().map((seg) => {
-      const key = slotKey(p, seg);
-      const len = S.lens[key];
-      return h(
+      h(
         'div',
-        { class: `card rec-box ${S.rec?.key === key ? 'live' : ''}` },
-        h('div', { class: 'row-flex' }, h('span', { class: 'tag' }, seg.label), len ? h('span', { class: 'tag ok' }, secs(len)) : h('span', { class: 'tag warn' }, 'not recorded')),
-        h('div', { class: 'script', 'data-seg': seg.id }, renderScript(seg.script, p)),
-        meter(key),
+        { class: 'lead-title' },
+        h('b', {}, p.name || '(no name)'),
+        p.handle
+          ? h('button', { class: 'link', title: 'Open their profile in the Instagram window', onclick: () => window.api.openProfile(p.handle).catch(() => {}) }, `@${p.handle}`)
+          : h('span', { class: 'tag warn' }, 'no Instagram'),
+      ),
+      who ? h('p', { class: 'muted' }, who) : null,
+      p.hook ? h('p', { class: 'small clamp', title: p.hook }, p.hook) : null,
+      h(
+        'details',
+        { class: 'ref' },
+        h('summary', {}, 'Edit details'),
         h(
           'div',
-          { class: 'row-flex' },
-          recButton(key),
-          h('button', { onclick: () => playKey(key), disabled: !len }, 'Play'),
-          ttsReady() ? h('button', { onclick: () => autoVoiceOne(p, seg), disabled: !!S.busy || !!S.rec }, 'Auto-voice') : null,
+          { class: 'edit' },
+          h('div', { class: 'grid2' }, field('Name to say', p.name, edit('name')), field('Role', p.role, edit('role'), { placeholder: 'e.g. owner, head coach' })),
+          h('div', { class: 'grid2' }, field('Business', p.business, edit('business')), field('Instagram', p.handle, edit('handle'), { placeholder: 'handle' })),
+          field('What they do', p.note, edit('note'), { placeholder: 'e.g. small group training' }),
         ),
-      );
-    }),
-    h('p', { class: 'muted small' }, 'Space records the next missing line and stops it. Enter makes the clip.'),
+      ),
+      ref.length ? h('details', { class: 'ref' }, h('summary', {}, 'Lead info'), h('dl', {}, ref.map(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]))) : null,
+    ),
+
+    step('1', 'Record your lines'),
+    h('div', { class: 'card lines' }, S.template.map((seg) => lineRow(p, seg))),
+    h('p', { class: 'muted small' }, 'Space records the next line. Enter previews. ⌘ Enter sends.'),
     S.busy ? h('p', { class: 'muted small' }, S.busy) : null,
+
+    step('2', 'Listen'),
+    missing.length
+      ? h('button', { class: 'big', disabled: true }, `Record ${missing.map((s) => s.label).join(', ')} first`)
+      : playButton(`preview:${p.id}`, `▶ Preview the whole clip (${fmt(clipSeconds(p))})`, () => buildClip(p), { class: 'big', disabled: !!S.rec || !!S.sending }, '■ Stop preview'),
+
+    step('3', 'Send'),
     h(
       'button',
-      { class: 'enter', onclick: () => makeClip(p), disabled: !!missing.length || !!S.rec, title: missing.length ? `Still needs: ${missing.map((s) => s.label).join(', ')}` : '' },
-      h('span', {}, 'Enter'),
-      missing.length ? ` Still needs: ${missing.map((s) => s.label).join(', ')}` : ' Make the clip',
+      { class: 'enter', onclick: () => sendNow(p), disabled: blocked || !p.handle },
+      sending ? 'Sending...' : p.handle ? `Send to @${p.handle}` : 'Add their Instagram to send',
+      sending ? null : h('span', {}, '⌘ Enter'),
     ),
-    clip
-      ? h(
-          'div',
-          { class: 'card clip' },
-          h('div', { class: 'row-flex' }, h('b', { class: 'grow' }, `Clip ready (${fmt(clip.seconds)})`), clip.file ? h('span', { class: 'tag ok' }, 'copied') : null),
-          clip.stale ? h('p', { class: 'warn small' }, 'You changed details after making this. Press Enter again if the lines changed.') : null,
-          h(
-            'div',
-            { class: 'row-flex' },
-            h('button', { onclick: () => buildClip(p).then(play).catch((e) => toast(e.message)) }, 'Play'),
-            h('button', { onclick: stopPlay }, 'Stop'),
-            clip.file ? h('button', { onclick: () => makeClip(p) }, 'Copy again') : null,
-            clip.file ? h('button', { onclick: () => window.api.reveal(clip.file) }, 'Show in Finder') : null,
-            h('button', { onclick: () => window.api.disarm() }, 'Unload'),
-          ),
-        )
-      : null,
     h('p', { id: 'send-status', class: `status ${sendStatus.state}`, hidden: !sendStatus.text }, sendStatus.text),
     p.status === 'todo'
-      ? h('div', { class: 'row-flex' }, h('button', { class: 'primary', onclick: () => setStatus(p, 'sent') }, 'Mark sent, next lead'), h('button', { onclick: () => setStatus(p, 'skipped') }, 'Skip'))
-      : h('div', { class: 'row-flex' }, h('span', { class: 'tag' }, p.status), h('button', { onclick: () => setStatus(p, 'todo') }, 'Move back to to-do')),
-    h('button', { class: 'link', onclick: () => deleteLead(p) }, 'Delete this lead'),
+      ? h(
+          'div',
+          { class: 'row-flex small' },
+          h('button', { class: 'link', onclick: () => setStatus(p, 'sent'), disabled: sending }, 'Mark sent'),
+          h('button', { class: 'link', onclick: () => setStatus(p, 'skipped'), disabled: sending }, 'Skip'),
+          h('button', { class: 'link', onclick: () => saveFile(p), disabled: !!missing.length }, 'Save as file'),
+          h('span', { class: 'grow' }),
+          h('button', { class: 'link', onclick: () => deleteLead(p), disabled: sending }, 'Delete'),
+        )
+      : h(
+          'div',
+          { class: 'row-flex' },
+          h('span', { class: 'tag' }, p.status),
+          h('button', { onclick: () => setStatus(p, 'todo') }, 'Move back to to-do'),
+          h('span', { class: 'grow' }),
+          h('button', { class: 'link', onclick: () => deleteLead(p) }, 'Delete'),
+        ),
   );
 }
 
@@ -698,7 +953,7 @@ function segmentCard(seg, i) {
             'div',
             { class: 'row-flex' },
             recButton(key),
-            h('button', { onclick: () => playKey(key), disabled: !S.lens[key] }, 'Play'),
+            playButton(key, 'Play', () => getAudio(key), { disabled: !S.lens[key] }),
             h('button', { onclick: () => file.click() }, 'Upload file'),
             S.lens[key] ? h('span', { class: 'tag ok' }, secs(S.lens[key])) : h('span', { class: 'tag warn' }, 'empty'),
             file,
@@ -774,16 +1029,16 @@ function setupView() {
       'ol',
       { class: 'steps' },
       h('li', {}, 'Record your pitch parts below once. Use the same mic and spot you will use for the custom lines.'),
-      h('li', {}, 'Pull your leads from Airtable. Opening a lead opens their profile in the Instagram window.'),
-      h('li', {}, 'Record the custom lines (Space), then press Enter. The clip is spliced, saved, copied, and loaded into Instagram.'),
-      h('li', {}, 'In the Instagram window, open their DM, click the mic, and hit send when it finishes. It arrives as a normal voice note.'),
+      h('li', {}, 'Connect Airtable. New leads from Make show up by themselves (checked on launch and every 15 minutes).'),
+      h('li', {}, 'Hit Start next lead. You get a short script, and their profile opens in the Instagram window.'),
+      h('li', {}, 'Record your lines (Space), Preview to listen (Enter), then Send (⌘ Enter). The app opens their DM, plays the clip into the mic, and hits send. It arrives as a normal voice note.'),
     ),
     h('h2', {}, 'Your voice note, in order'),
     S.template.map(segmentCard),
     h('div', { class: 'row-flex' }, h('button', { onclick: () => addSegment('fixed') }, '+ Recorded-once part'), h('button', { onclick: () => addSegment('slot') }, '+ Custom line')),
     h('p', { class: 'muted small' }, `Custom lines can use: ${PLACEHOLDERS.map((k) => `{${k}}`).join(' ')}. Recorded parts total ${secs(total)}; keep the whole note under 60s.`),
 
-    h('h2', {}, 'Splicing'),
+    h('h2', {}, 'Splicing and sending'),
     h(
       'div',
       { class: 'card' },
@@ -791,7 +1046,7 @@ function setupView() {
       h('label', { class: 'field' }, 'Silence before the clip starts in Instagram (ms)', h('input', { type: 'number', min: 0, max: 2000, value: st.leadInMs, oninput: num(st, 'leadInMs') })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.monitor, onchange: check(st, 'monitor') }), 'Play the clip out loud while it goes into Instagram'),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.autoOpen, onchange: check(st, 'autoOpen') }), "Open the lead's Instagram profile when I open a lead"),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.focusIg, onchange: check(st, 'focusIg') }), 'Bring the Instagram window to the front after I press Enter'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.autoSend, onchange: check(st, 'autoSend') }), "Send hits Instagram's send button for me (off: it stops after recording so I can check it and send myself)"),
     ),
 
     h('h2', {}, 'Airtable'),
@@ -803,8 +1058,9 @@ function setupView() {
       h('label', { class: 'field' }, 'Base ID', h('input', { value: at.baseId, oninput: txt(at, 'baseId') })),
       h('label', { class: 'field' }, 'Table', h('input', { value: at.table, oninput: txt(at, 'table') })),
       h('label', { class: 'field' }, 'Which leads to pull (Airtable formula)', h('textarea', { oninput: txt(at, 'formula') }, at.formula)),
-      h('label', { class: 'field' }, 'Max leads per pull', h('input', { type: 'number', min: 1, max: 1000, value: at.max, oninput: num(at, 'max') })),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: at.writeBack, onchange: check(at, 'writeBack') }), 'When I hit Mark sent, update Airtable: Status = Sent, Channel = Instagram, Sent at = today'),
+      h('label', { class: 'field' }, 'Max leads per sync', h('input', { type: 'number', min: 1, max: 1000, value: at.max, oninput: num(at, 'max') })),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.autoSync, onchange: check(st, 'autoSync') }), 'Check for new leads on launch and every 15 minutes'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: at.writeBack, onchange: check(at, 'writeBack') }), 'When a note is sent, update Airtable: Status = Sent, Channel = Instagram, Sent at = today'),
     ),
 
     h('h2', {}, 'Auto-voice (optional)'),
@@ -853,7 +1109,7 @@ function render() {
 // ---------- keyboard ----------
 
 document.addEventListener('keydown', (e) => {
-  if (e.repeat || e.target.closest?.('input, textarea, select, button')) return;
+  if (e.repeat || e.target.closest?.('input, textarea, select, button, summary')) return;
   const p = current();
   if (e.code === 'Space') {
     e.preventDefault();
@@ -861,9 +1117,13 @@ document.addEventListener('keydown', (e) => {
     if (S.view !== 'leads' || !p) return;
     const seg = slots().find((s) => !S.lens[slotKey(p, s)]);
     if (seg) toggleRecord(slotKey(p, seg));
-  } else if (e.key === 'Enter' && S.view === 'leads' && p) {
+  } else if (e.key === 'Enter' && S.view === 'leads') {
     e.preventDefault();
-    makeClip(p);
+    if (!p) {
+      const next = todoList()[0];
+      if (next) openLead(next.id);
+    } else if (e.metaKey || e.ctrlKey) sendNow(p);
+    else document.querySelector(`[data-play="preview:${p.id}"]`)?.click();
   }
 });
 
@@ -883,4 +1143,7 @@ document.addEventListener('keydown', (e) => {
   const fixedSegs = S.template.filter((s) => s.kind === 'fixed');
   if (fixedSegs.length && fixedSegs.every((s) => !S.lens[fixedKey(s)])) S.view = 'setup';
   render();
+  if (S.settings.autoSync) sync({ quiet: true });
+  setInterval(() => S.settings.autoSync && sync({ quiet: true }), SYNC_MS);
+  setInterval(paintSync, 60 * 1000);
 })();

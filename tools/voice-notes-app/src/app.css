@@ -115,7 +115,47 @@ label.check input { width: auto; margin-top: 3px; }
 .lead-title { display: flex; align-items: baseline; gap: 10px; font-size: 18px; }
 .lead-title .link { font-size: 13px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.rec-box.live { border-color: var(--bad); box-shadow: 0 0 0 2px color-mix(in srgb, var(--bad) 25%, transparent); }
+.center { text-align: center; }
+.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+details.ref .edit { display: grid; gap: 8px; margin-top: 8px; }
+
+h2.step { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+h2.step .n {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.card.lines { padding: 0; gap: 0; overflow: hidden; }
+.line { display: grid; gap: 8px; padding: 12px; border-top: 1px solid var(--line); }
+.line:first-child { border-top: 0; }
+.line.fixed { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--bg); color: var(--muted); font-size: 12px; }
+.line.slot.live { background: color-mix(in srgb, var(--bad) 8%, transparent); }
+
+button.big { width: 100%; padding: 12px; border-radius: 12px; font-size: 15px; font-weight: 600; }
+.badge {
+  margin-left: 5px;
+  padding: 0 6px;
+  border-radius: 99px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 11px;
+  font-weight: 700;
+}
+.badge[hidden] { display: none; }
+.tag.new { background: var(--accent); color: var(--accent-text); }
+.card.sync { padding: 8px 12px; }
+label.check.inline { align-items: center; font-size: 12px; color: var(--muted); }
+label.check.inline input { margin-top: 0; }
+.small-actions button { font-size: 12px; padding: 4px 8px; }
+.status.working { color: var(--text); }
+.status.armed { color: var(--warn); }
 
 button.enter {
   display: flex;

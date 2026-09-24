@@ -74,6 +74,8 @@ function createInstagramWindow({ show = true } = {}) {
       preload: path.join(dir, 'ig-preload.cjs'),
       contextIsolation: true,
       sandbox: true,
+      // Send runs while this window sits behind the recorder, so keep its timers and audio at full speed.
+      backgroundThrottling: false,
     },
   });
   const ig = igWin.webContents;
@@ -112,6 +114,91 @@ const GRAB = `(() => {
   return { handle, displayName, bio };
 })()`;
 
+// Runs inside Instagram for the Send button. Finds things by button text and accessible labels
+// rather than class names, since Instagram's markup changes often. 'dm' waits for a DM to be open;
+// the others return the point to click on the target, or null when it never shows up.
+async function igPage(action) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const shown = (el) => {
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  };
+  const buttons = () => [...document.querySelectorAll('button, [role=button]')].filter(shown);
+  const byText = (re) => buttons().find((el) => re.test(el.textContent.trim()));
+  const byLabel = (re, not) =>
+    [...document.querySelectorAll('[aria-label]')].find((el) => {
+      const label = el.getAttribute('aria-label');
+      return shown(el) && re.test(label) && !not?.test(label);
+    });
+  const waitFor = async (fn, ms) => {
+    for (const end = Date.now() + ms; ; await sleep(200)) {
+      const found = fn();
+      if (found || Date.now() > end) return found;
+    }
+  };
+  // "Turn on notifications?" and similar prompts cover the DM the first time it opens.
+  const dismiss = () => byText(/^not now$/i)?.click();
+  const inDm = () => location.pathname.startsWith('/direct/t/') || !!document.querySelector('[role=textbox][contenteditable=true]');
+
+  if (action === 'dm') {
+    const ok = await waitFor(inDm, 12000);
+    await sleep(600);
+    dismiss();
+    return ok;
+  }
+  dismiss();
+  const finders = {
+    message: () => byText(/^message$/i),
+    mic: () => byLabel(/voice|audio clip/i, /call|video/i),
+    send: () => byText(/^send$/i) || byLabel(/^send$/i),
+  };
+  const el = await waitFor(finders[action], action === 'send' ? 5000 : 10000);
+  if (!el) return null;
+  const target = el.closest('button, [role=button], a') || el;
+  target.scrollIntoView({ block: 'center', inline: 'center' });
+  await sleep(150);
+  const r = target.getBoundingClientRect();
+  const x = r.left + r.width / 2;
+  const y = r.top + r.height / 2;
+  const hit = document.elementFromPoint(x, y);
+  if (hit && target.contains(hit)) return { x, y };
+  target.click();
+  return { clicked: true };
+}
+
+// A real mouse click where possible, so Instagram sees the same events as a person clicking.
+async function igClick(wc, what) {
+  const pt = await wc.executeJavaScript(`(${igPage})(${JSON.stringify(what)})`, true);
+  if (!pt) return false;
+  if (!pt.clicked) {
+    const z = wc.getZoomFactor();
+    const x = Math.round(pt.x * z);
+    const y = Math.round(pt.y * z);
+    wc.sendInputEvent({ type: 'mouseMove', x, y });
+    wc.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
+    wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
+  }
+  return true;
+}
+
+const pathOf = (url) => {
+  try {
+    return decodeURIComponent(new URL(url).pathname).toLowerCase().replace(/\/+$/, '');
+  } catch {
+    return '';
+  }
+};
+
+async function openDm(wc, handle) {
+  if (pathOf(wc.getURL()) !== `/${handle.toLowerCase()}`) {
+    await wc.loadURL(`${IG_BASE}/${encodeURIComponent(handle)}/`).catch(() => {});
+  } else if (wc.isLoading()) {
+    await new Promise((r) => wc.once('did-stop-loading', r));
+  }
+  if (!(await igClick(wc, 'message'))) throw new Error("Couldn't find the Message button on their profile.");
+  if (!(await wc.executeJavaScript(`(${igPage})('dm')`, true))) throw new Error("Their DM didn't open.");
+}
+
 const safeName = (s) => String(s || 'clip').replace(/[^\w .@-]+/g, '').trim().slice(0, 60) || 'clip';
 const xml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -145,6 +232,14 @@ ipcMain.handle('ig:show', () => {
   w.focus();
 });
 ipcMain.handle('ig:grab', () => instagram().webContents.executeJavaScript(GRAB));
+ipcMain.handle('ig:do', async (_e, action, handle) => {
+  const w = instagram({ show: false });
+  if (!w.isVisible() || w.isMinimized()) w.showInactive();
+  const wc = w.webContents;
+  if (action === 'openDm') return openDm(wc, handle);
+  if (action === 'clickMic' && !(await igClick(wc, 'mic'))) throw new Error("Couldn't find the mic button in the DM.");
+  if (action === 'clickSend' && !(await igClick(wc, 'send'))) throw new Error("Couldn't find Instagram's send button.");
+});
 ipcMain.on('ig:status', (_e, m) => {
   if (['done', 'stopped', 'idle'].includes(m.state)) pendingArm = null;
   toRecorder(m);

@@ -57,6 +57,7 @@ export function makeProspect(f) {
     research: f.research || '',
     notes: f.notes || '',
     source: f.source || 'manual',
+    atStatus: f.atStatus || '',
     status: 'todo',
     sentAt: null,
     createdAt: Date.now(),
@@ -92,6 +93,7 @@ export function fromFields(obj, extra = {}) {
     notes: pick(obj, 'notes'),
     note: pick(obj, 'what they do', 'specialty', 'note'),
     name: pick(obj, 'name to say', 'spoken name'),
+    atStatus: pick(obj, 'status'),
   });
 }
 
@@ -143,8 +145,11 @@ function airtableError(body, status) {
   return typeof e === 'string' ? e : e.message || e.type || `HTTP ${status}`;
 }
 
+// AIRTABLE_API lets tests point the app at a local stand-in.
+const AIRTABLE_API = globalThis.process?.env?.AIRTABLE_API || 'https://api.airtable.com/v0';
+
 function tableUrl({ baseId, table }) {
-  return `https://api.airtable.com/v0/${encodeURIComponent(baseId)}/${encodeURIComponent(table)}`;
+  return `${AIRTABLE_API}/${encodeURIComponent(baseId)}/${encodeURIComponent(table)}`;
 }
 
 export async function pullAirtable(at) {
