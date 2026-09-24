@@ -23,8 +23,24 @@ const DEFAULT_SETTINGS = {
     max: 100,
     writeBack: true,
   },
-  eleven: { key: '', voiceId: '', model: 'eleven_multilingual_v2' },
+  eleven: {
+    key: '',
+    voiceId: '',
+    model: 'eleven_v3',
+    stability: 0.5,
+    similarity: 0.75,
+    style: 0,
+    speed: 1,
+    speakerBoost: true,
+  },
 };
+
+const VOICE_DEFAULTS = { stability: 0.5, similarity: 0.75, style: 0, speed: 1, speakerBoost: true };
+const MODELS = [
+  ['eleven_v3', 'Eleven v3 (most expressive)'],
+  ['eleven_v4', 'Eleven v4 (newest)'],
+  ['eleven_multilingual_v2', 'Multilingual v2 (steadiest, all sliders apply)'],
+];
 
 const PLACEHOLDERS = ['name', 'first', 'role', 'business', 'handle', 'note', 'hook', 'category'];
 const REFRESH_FIELDS = ['first', 'role', 'business', 'category', 'hook', 'bio', 'research', 'notes'];
@@ -692,6 +708,46 @@ function segmentCard(seg, i) {
   );
 }
 
+function slider(obj, k, label, min, max, step, lo, hi) {
+  const out = h('span', { class: 'tag' }, Number(obj[k]).toFixed(2));
+  return h(
+    'div',
+    { class: 'slider' },
+    h('div', { class: 'row-flex' }, h('b', { class: 'grow' }, label), out),
+    h('input', {
+      type: 'range',
+      min,
+      max,
+      step,
+      value: obj[k],
+      'aria-label': label,
+      oninput: (e) => {
+        obj[k] = Number(e.target.value);
+        out.textContent = obj[k].toFixed(2);
+        saveSettings().then(flashSaved);
+      },
+    }),
+    h('div', { class: 'row-flex muted small' }, h('span', { class: 'grow' }, lo), h('span', {}, hi)),
+  );
+}
+
+async function testVoice() {
+  setBusy('Generating a test line...');
+  try {
+    const raw = await audio.decodeToMono(toArrayBuffer(await window.api.speak("Hey, it's me. Quick test of how my voice notes sound.", S.settings.eleven)));
+    play(audio.processTake(raw));
+  } catch (e) {
+    toast(errText(e), 8000);
+  }
+  setBusy('');
+}
+
+function resetVoice() {
+  Object.assign(S.settings.eleven, VOICE_DEFAULTS);
+  saveSettings().then(flashSaved);
+  render();
+}
+
 function setupView() {
   const st = S.settings;
   const at = st.airtable;
@@ -758,7 +814,31 @@ function setupView() {
       h('p', { class: 'muted small' }, "Skip recording each lead's lines: an ElevenLabs clone of your voice says them instead. Leave blank to record them yourself."),
       h('label', { class: 'field' }, 'ElevenLabs API key', h('input', { type: 'password', value: el.key, oninput: txt(el, 'key') })),
       h('label', { class: 'field' }, 'Voice ID (your cloned voice)', h('input', { value: el.voiceId, oninput: txt(el, 'voiceId') })),
-      h('label', { class: 'field' }, 'Model', h('input', { value: el.model, oninput: txt(el, 'model') })),
+      h(
+        'label',
+        { class: 'field' },
+        'Model',
+        h(
+          'select',
+          { onchange: txt(el, 'model') },
+          (MODELS.some(([id]) => id === el.model) ? MODELS : [...MODELS, [el.model, el.model]]).map(([id, label]) =>
+            h('option', { value: id, selected: id === el.model }, label),
+          ),
+        ),
+      ),
+      slider(el, 'speed', 'Speed', 0.7, 1.2, 0.01, 'Slower', 'Faster'),
+      slider(el, 'stability', 'Stability', 0, 1, 0.01, 'More variable', 'More stable'),
+      slider(el, 'similarity', 'Similarity', 0, 1, 0.01, 'Low', 'High'),
+      slider(el, 'style', 'Style exaggeration', 0, 1, 0.01, 'None', 'Exaggerated'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: el.speakerBoost, onchange: check(el, 'speakerBoost') }), 'Speaker boost (closer to your real voice)'),
+      h('p', { class: 'muted small' }, 'Multilingual v2 uses every slider. v3 and v4 mostly listen to Stability (v3 rounds it to 0, 0.5 or 1).'),
+      h(
+        'div',
+        { class: 'row-flex' },
+        h('button', { onclick: testVoice, disabled: !ttsReady() || !!S.busy }, 'Test voice'),
+        h('button', { class: 'link', onclick: resetVoice }, 'Reset sliders'),
+      ),
+      S.busy ? h('p', { class: 'muted small' }, S.busy) : null,
     ),
   );
 }
