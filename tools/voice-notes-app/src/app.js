@@ -325,12 +325,12 @@ async function buildClip(p) {
 
 // ---------- Send: open their DM, play the clip into the mic, hit send ----------
 
-// Status updates from the Instagram window. Send waits on these; otherwise they drive the status line.
+// Status updates from the Instagram pane. Send waits on these; otherwise they drive the status line.
 const waiters = new Set();
 function waitForStatus(states, ms) {
   return new Promise((resolve) => {
     const w = {
-      states: [...states, 'error', 'closed'],
+      states: [...states, 'error'],
       resolve: (m) => {
         clearTimeout(timer);
         waiters.delete(w);
@@ -355,7 +355,6 @@ window.api.onStatus((msg) => {
   if (S.sending || !S.send.pid) return;
   let text = STATUS_TEXT[msg.state] ?? '';
   if (msg.state === 'armed') text = `Clip loaded (${fmt(msg.seconds)}). Open their DM in Instagram and click the mic.`;
-  if (msg.state === 'closed') text = S.armed ? 'Instagram window closed. Click Instagram at the top to reopen it; the clip stays loaded.' : '';
   if (msg.state === 'error') text = msg.message;
   setSend(S.send.pid, msg.state, text);
 });
@@ -417,7 +416,7 @@ async function sendNow(p) {
 
     const done = await waitForStatus(['done', 'armed'], (seconds + 15) * 1000);
     if (done.state === 'armed') return handOff('Instagram stopped recording early. The clip is reloaded: click the mic to try again.');
-    if (done.state !== 'done') throw new Error(done.message || 'The clip never finished playing. Check the Instagram window.');
+    if (done.state !== 'done') throw new Error(done.message || 'The clip never finished playing. Check Instagram on the right.');
 
     if (!S.settings.autoSend) return handOff('Clip is in their DM. Hit send in Instagram, then Mark sent.');
     say('Sending...');
@@ -460,7 +459,7 @@ async function grab() {
   } catch (e) {
     return toast(errText(e));
   }
-  if (!info?.handle) return toast("Open the person's profile in the Instagram window, then grab.");
+  if (!info?.handle) return toast("Open the person's profile in Instagram on the right, then grab.");
   let p = S.prospects.find((x) => x.handle.toLowerCase() === info.handle.toLowerCase());
   if (!p) {
     p = leads.makeProspect({ handle: info.handle, business: info.displayName, bio: info.bio, source: 'instagram' });
@@ -685,7 +684,6 @@ function header() {
       { class: 'tabs' },
       h('button', { class: `tab ${S.view === 'leads' ? 'on' : ''}`, onclick: leadsTab }, 'Leads', h('span', { id: 'new-badge', class: 'badge', hidden: !n }, n)),
       h('button', { class: `tab ${S.view === 'setup' ? 'on' : ''}`, onclick: goSetup }, 'Setup'),
-      h('button', { class: 'tab', onclick: () => window.api.showInstagram() }, 'Instagram'),
     ),
   );
 }
@@ -747,7 +745,7 @@ function leadsView() {
     ),
     list.length
       ? h('div', { class: 'list' }, list.map(leadRow))
-      : h('p', { class: 'muted' }, S.prospects.length ? 'Nothing here.' : 'No leads yet. Connect Airtable in Setup, import a CSV, or open a profile in the Instagram window and hit Grab from IG.'),
+      : h('p', { class: 'muted' }, S.prospects.length ? 'Nothing here.' : 'No leads yet. Connect Airtable in Setup, import a CSV, or open a profile in Instagram on the right and hit Grab from IG.'),
     hidden && S.settings.readyOnly ? h('p', { class: 'muted small' }, `${hidden} lead${hidden === 1 ? ' is' : 's are'} still being researched (hidden).`) : null,
     h(
       'div',
@@ -870,7 +868,7 @@ function detailView(p) {
         { class: 'lead-title' },
         h('b', {}, p.name || '(no name)'),
         p.handle
-          ? h('button', { class: 'link', title: 'Open their profile in the Instagram window', onclick: () => window.api.openProfile(p.handle).catch(() => {}) }, `@${p.handle}`)
+          ? h('button', { class: 'link', title: 'Open their profile in Instagram', onclick: () => window.api.openProfile(p.handle).catch(() => {}) }, `@${p.handle}`)
           : h('span', { class: 'tag warn' }, 'no Instagram'),
       ),
       who ? h('p', { class: 'muted' }, who) : null,
@@ -1030,7 +1028,7 @@ function setupView() {
       { class: 'steps' },
       h('li', {}, 'Record your pitch parts below once. Use the same mic and spot you will use for the custom lines.'),
       h('li', {}, 'Connect Airtable. New leads from Make show up by themselves (checked on launch and every 15 minutes).'),
-      h('li', {}, 'Hit Start next lead. You get a short script, and their profile opens in the Instagram window.'),
+      h('li', {}, 'Hit Start next lead. You get a short script, and their profile opens in Instagram on the right.'),
       h('li', {}, 'Record your lines (Space), Preview to listen (Enter), then Send (⌘ Enter). The app opens their DM, plays the clip into the mic, and hits send. It arrives as a normal voice note.'),
     ),
     h('h2', {}, 'Your voice note, in order'),
