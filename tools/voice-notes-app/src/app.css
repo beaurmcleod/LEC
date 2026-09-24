@@ -168,6 +168,21 @@ details.ref dd { margin: 0; white-space: pre-wrap; max-height: 140px; overflow: 
 
 ol.steps { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }
 
+#saved {
+  position: fixed;
+  top: 60px;
+  right: 12px;
+  z-index: 5;
+  padding: 5px 12px;
+  border-radius: 99px;
+  background: var(--ok);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .2);
+}
+@media (prefers-color-scheme: dark) { #saved { color: #0b1a10; } }
+
 #toast {
   position: fixed;
   left: 12px;

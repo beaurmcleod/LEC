@@ -91,6 +91,17 @@ const current = () => S.prospects.find((p) => p.id === S.currentId);
 
 const saveTemplate = () => store.put('kv', 'template', S.template);
 const saveSettings = () => store.put('kv', 'settings', S.settings);
+
+let savedTimer;
+// Shows a short "Saved" pill once typing pauses, so it's clear Setup changes stuck.
+function flashSaved() {
+  const el = document.getElementById('saved');
+  clearTimeout(savedTimer);
+  savedTimer = setTimeout(() => {
+    el.hidden = false;
+    savedTimer = setTimeout(() => (el.hidden = true), 1500);
+  }, 350);
+}
 const saveProspects = () => store.put('kv', 'prospects', S.prospects);
 const saveLens = () => store.put('kv', 'lens', S.lens);
 
@@ -663,7 +674,7 @@ function segmentCard(seg, i) {
       h('button', { class: 'icon', title: 'Move down', onclick: () => moveSegment(i, 1), disabled: i === S.template.length - 1 }, '↓'),
       h('button', { class: 'icon', title: 'Remove', onclick: () => removeSegment(seg) }, '×'),
     ),
-    h('input', { value: seg.label, 'aria-label': 'Part name', oninput: (e) => ((seg.label = e.target.value), saveTemplate()) }),
+    h('input', { value: seg.label, 'aria-label': 'Part name', oninput: (e) => ((seg.label = e.target.value), saveTemplate().then(flashSaved)) }),
     fixed
       ? [
           meter(key),
@@ -677,7 +688,7 @@ function segmentCard(seg, i) {
             file,
           ),
         ]
-      : h('label', { class: 'field' }, 'What you say (per lead)', h('input', { value: seg.script, placeholder: 'Hi {name}!', oninput: (e) => ((seg.script = e.target.value), saveTemplate()) })),
+      : h('label', { class: 'field' }, 'What you say (per lead)', h('input', { value: seg.script, placeholder: 'Hi {name}!', oninput: (e) => ((seg.script = e.target.value), saveTemplate().then(flashSaved)) })),
   );
 }
 
@@ -687,15 +698,15 @@ function setupView() {
   const el = st.eleven;
   const num = (obj, k) => (e) => {
     obj[k] = Math.max(0, parseInt(e.target.value, 10) || 0);
-    saveSettings();
+    saveSettings().then(flashSaved);
   };
   const txt = (obj, k) => (e) => {
     obj[k] = e.target.value.trim();
-    saveSettings();
+    saveSettings().then(flashSaved);
   };
   const check = (obj, k) => (e) => {
     obj[k] = e.target.checked;
-    saveSettings();
+    saveSettings().then(flashSaved);
   };
   const total = S.template.filter((s) => s.kind === 'fixed').reduce((n, s) => n + (S.lens[fixedKey(s)] || 0), 0);
 
@@ -720,8 +731,8 @@ function setupView() {
     h(
       'div',
       { class: 'card' },
-      h('label', { class: 'field' }, 'Extra pause between parts (ms, 0 = seamless crossfade)', h('input', { type: 'number', min: 0, max: 1000, value: st.gapMs, onchange: num(st, 'gapMs') })),
-      h('label', { class: 'field' }, 'Silence before the clip starts in Instagram (ms)', h('input', { type: 'number', min: 0, max: 2000, value: st.leadInMs, onchange: num(st, 'leadInMs') })),
+      h('label', { class: 'field' }, 'Extra pause between parts (ms, 0 = seamless crossfade)', h('input', { type: 'number', min: 0, max: 1000, value: st.gapMs, oninput: num(st, 'gapMs') })),
+      h('label', { class: 'field' }, 'Silence before the clip starts in Instagram (ms)', h('input', { type: 'number', min: 0, max: 2000, value: st.leadInMs, oninput: num(st, 'leadInMs') })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.monitor, onchange: check(st, 'monitor') }), 'Play the clip out loud while it goes into Instagram'),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.autoOpen, onchange: check(st, 'autoOpen') }), "Open the lead's Instagram profile when I open a lead"),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.focusIg, onchange: check(st, 'focusIg') }), 'Bring the Instagram window to the front after I press Enter'),
@@ -732,11 +743,11 @@ function setupView() {
       'div',
       { class: 'card' },
       h('p', { class: 'muted small' }, 'Make a personal access token at airtable.com/create/tokens with data.records:read and data.records:write, limited to the Torrey Labs base.'),
-      h('label', { class: 'field' }, 'Token', h('input', { type: 'password', value: at.token, placeholder: 'pat...', onchange: txt(at, 'token') })),
-      h('label', { class: 'field' }, 'Base ID', h('input', { value: at.baseId, onchange: txt(at, 'baseId') })),
-      h('label', { class: 'field' }, 'Table', h('input', { value: at.table, onchange: txt(at, 'table') })),
-      h('label', { class: 'field' }, 'Which leads to pull (Airtable formula)', h('textarea', { onchange: txt(at, 'formula') }, at.formula)),
-      h('label', { class: 'field' }, 'Max leads per pull', h('input', { type: 'number', min: 1, max: 1000, value: at.max, onchange: num(at, 'max') })),
+      h('label', { class: 'field' }, 'Token', h('input', { type: 'password', value: at.token, placeholder: 'pat...', oninput: txt(at, 'token') })),
+      h('label', { class: 'field' }, 'Base ID', h('input', { value: at.baseId, oninput: txt(at, 'baseId') })),
+      h('label', { class: 'field' }, 'Table', h('input', { value: at.table, oninput: txt(at, 'table') })),
+      h('label', { class: 'field' }, 'Which leads to pull (Airtable formula)', h('textarea', { oninput: txt(at, 'formula') }, at.formula)),
+      h('label', { class: 'field' }, 'Max leads per pull', h('input', { type: 'number', min: 1, max: 1000, value: at.max, oninput: num(at, 'max') })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: at.writeBack, onchange: check(at, 'writeBack') }), 'When I hit Mark sent, update Airtable: Status = Sent, Channel = Instagram, Sent at = today'),
     ),
 
@@ -745,9 +756,9 @@ function setupView() {
       'div',
       { class: 'card' },
       h('p', { class: 'muted small' }, "Skip recording each lead's lines: an ElevenLabs clone of your voice says them instead. Leave blank to record them yourself."),
-      h('label', { class: 'field' }, 'ElevenLabs API key', h('input', { type: 'password', value: el.key, onchange: txt(el, 'key') })),
-      h('label', { class: 'field' }, 'Voice ID (your cloned voice)', h('input', { value: el.voiceId, onchange: txt(el, 'voiceId') })),
-      h('label', { class: 'field' }, 'Model', h('input', { value: el.model, onchange: txt(el, 'model') })),
+      h('label', { class: 'field' }, 'ElevenLabs API key', h('input', { type: 'password', value: el.key, oninput: txt(el, 'key') })),
+      h('label', { class: 'field' }, 'Voice ID (your cloned voice)', h('input', { value: el.voiceId, oninput: txt(el, 'voiceId') })),
+      h('label', { class: 'field' }, 'Model', h('input', { value: el.model, oninput: txt(el, 'model') })),
     ),
   );
 }
