@@ -114,7 +114,7 @@ const S = {
   armed: null,
   sending: null,
   send: { pid: null, state: '', text: '' },
-  sync: { at: 0, error: '', running: false },
+  sync: { at: 0, error: '', running: false, pulled: null },
   follow: null,
 };
 
@@ -566,14 +566,18 @@ async function merge(incoming, { markNew = false } = {}) {
   return { added, refreshed };
 }
 
+// Errors that already name Airtable don't need the prefix.
+const atError = (m) => (/^airtable\b/i.test(m) ? m : `Airtable: ${m}`);
+
 function syncText() {
   if (!S.settings.airtable.token) return 'Airtable not connected.';
   if (S.sync.running) return 'Checking Airtable for new leads...';
-  if (S.sync.error) return `Airtable: ${S.sync.error}`;
+  if (S.sync.error) return atError(S.sync.error);
   if (!S.sync.at) return 'Not synced yet.';
   const min = Math.round((Date.now() - S.sync.at) / 60000);
   const n = newCount();
-  return `Synced ${min < 1 ? 'just now' : `${min} min ago`}${n ? ` · ${n} new` : ''}`;
+  const got = S.sync.pulled === 0 ? ' · Airtable sent 0 leads (check the formula in Setup)' : S.sync.pulled ? ` · ${S.sync.pulled} leads from Airtable` : '';
+  return `Synced ${min < 1 ? 'just now' : `${min} min ago`}${got}${n ? ` · ${n} new` : ''}`;
 }
 
 // Updates the sync line and the new-leads badge in place, so a background sync never interrupts recording or typing.
@@ -606,13 +610,15 @@ async function sync({ quiet = false } = {}) {
   try {
     // The first pull brings in the whole list, so nothing is flagged new until the second.
     const firstPull = !S.prospects.some((p) => p.airtableId);
-    const { added, refreshed } = await merge(await window.api.pullAirtable(at), { markNew: !firstPull });
+    const pulled = await window.api.pullAirtable(at);
+    S.sync.pulled = pulled.length;
+    const { added, refreshed } = await merge(pulled, { markNew: !firstPull });
     S.sync.at = Date.now();
     S.sync.error = '';
     if (!quiet) toast(`${added} new lead${added === 1 ? '' : 's'}, ${refreshed} refreshed.`);
   } catch (e) {
     S.sync.error = errText(e);
-    if (!quiet) toast(`Airtable: ${S.sync.error}`, 8000);
+    if (!quiet) toast(atError(S.sync.error), 8000);
   }
   S.sync.running = false;
   if (S.view === 'leads' && !S.currentId && !S.rec) render();
@@ -1170,10 +1176,17 @@ function setupView() {
     h(
       'div',
       { class: 'card' },
-      h('p', { class: 'muted small' }, 'Make a personal access token at airtable.com/create/tokens with data.records:read and data.records:write, limited to the Torrey Labs base.'),
+      h(
+        'p',
+        { class: 'muted small' },
+        'Make a personal access token at ',
+        h('a', { href: 'https://airtable.com/create/tokens', target: '_blank' }, 'airtable.com/create/tokens'),
+        ': add the scopes data.records:read and data.records:write, and add the Torrey Labs base under Access. Copy it once it shows, since Airtable only shows it once.',
+      ),
       h('label', { class: 'field' }, 'Token', h('input', { type: 'password', value: at.token, placeholder: 'pat...', oninput: txt(at, 'token') })),
       h('label', { class: 'field' }, 'Base ID', h('input', { value: at.baseId, oninput: txt(at, 'baseId') })),
       h('label', { class: 'field' }, 'Table', h('input', { value: at.table, oninput: txt(at, 'table') })),
+      h('div', { class: 'row-flex' }, h('button', { id: 'at-test-btn', onclick: testAirtable }, 'Test connection'), h('span', { id: 'at-test', class: 'grow small muted' }, '')),
       h('label', { class: 'field' }, 'Which leads to pull (Airtable formula)', h('textarea', { oninput: txt(at, 'formula') }, at.formula)),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.followGate, onchange: check(st, 'followGate') }), 'Only DM leads the app followed at least a day ago (recommended). Off: Ready leads can be messaged right away.'),
       h('label', { class: 'field' }, 'Max leads per sync', h('input', { type: 'number', min: 1, max: 1000, value: at.max, oninput: num(at, 'max') })),
@@ -1248,6 +1261,27 @@ function followStatus(f) {
       error: 'Hit a snag (see Recent below). Trying again in 10 minutes.',
     }[kind] || 'Running.'
   );
+}
+
+// Setup's Test connection: pulls the leads, says what came back or exactly what's wrong, and syncs on success.
+async function testAirtable() {
+  const out = document.getElementById('at-test');
+  const at = S.settings.airtable;
+  const say = (text, cls) => {
+    out.textContent = text;
+    out.className = `grow small ${cls}`;
+  };
+  if (!at.token) return say('Paste your token above first.', 'bad');
+  say('Checking...', 'muted');
+  try {
+    const got = await window.api.pullAirtable(at);
+    const ready = got.filter((p) => p.atStatus === 'Ready').length;
+    if (!got.length) return say('Connected, but no leads match the formula below.', 'bad');
+    say(`Connected: ${got.length} leads match, ${ready} marked Ready.`, 'ok');
+    sync({ quiet: true });
+  } catch (e) {
+    say(errText(e), 'bad');
+  }
 }
 
 // Turns the follow wait off from the Leads screen; Setup > Airtable turns it back on.

@@ -141,17 +141,38 @@ export function fromCSV(text) {
     .filter((p) => p.handle || p.business || p.first);
 }
 
+// Airtable's error codes, in words that say what to fix.
 function airtableError(body, status) {
-  const e = body && body.error;
-  if (!e) return `HTTP ${status}`;
-  return typeof e === 'string' ? e : e.message || e.type || `HTTP ${status}`;
+  const e = body?.error;
+  const type = typeof e === 'string' ? e : e?.type || '';
+  const msg = typeof e === 'object' && e?.message ? e.message : '';
+  if (status === 401 || type === 'AUTHENTICATION_REQUIRED')
+    return "Airtable didn't accept the token. Make a new one at airtable.com/create/tokens and paste it in Setup.";
+  if (/FILTER_BY_FORMULA/.test(type)) return `The "Which leads to pull" formula in Setup has a mistake: ${msg || type}`;
+  if (/UNKNOWN_FIELD_NAME/.test(type)) return `Airtable doesn't have a field the app asked for: ${msg || type}`;
+  if (status === 403 || status === 404 || /PERMISSIONS|NOT_FOUND/.test(type))
+    return "The token can't open the Leads table. When you make the token, add both scopes (data.records:read and data.records:write) and add the Torrey Labs base under Access. Also check Base ID and Table in Setup.";
+  return msg || type || `HTTP ${status}`;
+}
+
+// One Airtable request, with network failures and error replies turned into plain messages.
+async function call(url, init = {}, at) {
+  let res;
+  try {
+    res = await fetch(url, { ...init, headers: { Authorization: `Bearer ${String(at.token || '').trim()}`, ...init.headers } });
+  } catch (e) {
+    throw new Error(`Couldn't reach Airtable (${e.cause?.code || e.message}). Check the internet connection.`);
+  }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(airtableError(body, res.status));
+  return body;
 }
 
 // AIRTABLE_API lets tests point the app at a local stand-in.
 const AIRTABLE_API = globalThis.process?.env?.AIRTABLE_API || 'https://api.airtable.com/v0';
 
 function tableUrl({ baseId, table }) {
-  return `${AIRTABLE_API}/${encodeURIComponent(baseId)}/${encodeURIComponent(table)}`;
+  return `${AIRTABLE_API}/${encodeURIComponent(String(baseId).trim())}/${encodeURIComponent(String(table).trim())}`;
 }
 
 export async function pullAirtable(at) {
@@ -162,9 +183,7 @@ export async function pullAirtable(at) {
     url.searchParams.set('pageSize', '100');
     if (at.formula) url.searchParams.set('filterByFormula', at.formula);
     if (offset) url.searchParams.set('offset', offset);
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${at.token}` } });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(airtableError(body, res.status));
+    const body = await call(url, {}, at);
     for (const r of body.records || []) {
       if (out.length >= at.max) break;
       out.push(fromFields(r.fields || {}, { airtableId: r.id, source: 'airtable' }));
@@ -175,12 +194,11 @@ export async function pullAirtable(at) {
 }
 
 async function patch(at, recordId, fields) {
-  const res = await fetch(`${tableUrl(at)}/${encodeURIComponent(recordId)}`, {
-    method: 'PATCH',
-    headers: { Authorization: `Bearer ${at.token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fields }),
-  });
-  if (!res.ok) throw new Error(airtableError(await res.json().catch(() => ({})), res.status));
+  await call(
+    `${tableUrl(at)}/${encodeURIComponent(recordId)}`,
+    { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) },
+    at,
+  );
 }
 
 export function markSentAirtable(at, recordId) {
@@ -205,9 +223,7 @@ export async function pullFollowQueue(at, { skip = {}, want = 5 } = {}) {
     url.searchParams.set('sort[0][direction]', 'desc');
     for (const f of ['Instagram', 'DM name', 'Category', 'Fit score']) url.searchParams.append('fields[]', f);
     if (offset) url.searchParams.set('offset', offset);
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${at.token}` } });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(airtableError(body, res.status));
+    const body = await call(url, {}, at);
     for (const r of body.records || []) {
       const f = r.fields || {};
       const handle = cleanHandle(f.Instagram);

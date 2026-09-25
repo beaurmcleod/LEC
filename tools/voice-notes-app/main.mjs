@@ -94,6 +94,11 @@ function createWindow() {
     win = null;
   });
 
+  // Links in the recorder (like the Airtable token page) open in the browser.
+  recorder.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\//.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
   recorder.webContents.loadFile(path.join(dir, 'src/index.html'));
   recorder.webContents.once('did-finish-load', () => recorder.webContents.focus());
 
