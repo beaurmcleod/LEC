@@ -238,3 +238,16 @@ ol.steps { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13
 
 .slider { display: grid; gap: 4px; }
 .slider input[type=range] { width: 100%; padding: 0; border: 0; background: none; accent-color: var(--accent); }
+
+.dot { display: inline-block; width: 7px; height: 7px; margin-left: 5px; border-radius: 50%; vertical-align: middle; }
+.dot:not(.ok, .warn, .bad) { display: none; }
+.dot.ok { background: var(--ok); }
+.dot.warn { background: var(--warn); }
+.dot.bad { background: var(--bad); }
+.follow-status { font-size: 15px; font-weight: 600; }
+.follow-status.warn { color: var(--warn); }
+.follow-status.bad { color: var(--bad); }
+.lead.static { border: 1px solid var(--line); background: var(--card); }
+.card.log { gap: 0; padding: 4px 12px; }
+.log-row { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; padding: 6px 0; border-top: 1px solid var(--line); }
+.log-row:first-child { border-top: 0; }

@@ -13,4 +13,10 @@ contextBridge.exposeInMainWorld('api', {
   pullAirtable: (at) => ipcRenderer.invoke('airtable:pull', at),
   markSent: (at, id) => ipcRenderer.invoke('airtable:sent', at, id),
   speak: (text, settings) => ipcRenderer.invoke('tts', text, settings),
+  showPane: (which) => ipcRenderer.invoke('pane:show', which),
+  followConfig: (at) => ipcRenderer.invoke('follow:config', at),
+  followSet: (on) => ipcRenderer.invoke('follow:set', on),
+  followState: () => ipcRenderer.invoke('follow:state'),
+  onFollow: (cb) => ipcRenderer.on('follow:status', (_e, s) => cb(s)),
+  onFollowed: (cb) => ipcRenderer.on('follow:followed', (_e, m) => cb(m)),
 });

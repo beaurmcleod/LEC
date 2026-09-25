@@ -46,9 +46,10 @@ const MODELS = [
 
 const PLACEHOLDERS = ['name', 'first', 'role', 'business', 'handle', 'note', 'hook', 'category'];
 // Refreshed from Airtable on every sync, unless you've edited that field here.
-const REFRESH_FIELDS = ['first', 'role', 'business', 'category', 'hook', 'bio', 'research', 'notes', 'atStatus'];
+const REFRESH_FIELDS = ['first', 'role', 'business', 'category', 'hook', 'bio', 'research', 'notes', 'atStatus', 'followedAt'];
 const MAX_SECONDS = 59;
 const SYNC_MS = 15 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const S = {
   view: 'leads',
@@ -64,6 +65,7 @@ const S = {
   sending: null,
   send: { pid: null, state: '', text: '' },
   sync: { at: 0, error: '', running: false },
+  follow: null,
 };
 
 const $app = document.getElementById('app');
@@ -113,7 +115,15 @@ const slots = () => S.template.filter((s) => s.kind === 'slot');
 const current = () => S.prospects.find((p) => p.id === S.currentId);
 
 const saveTemplate = () => store.put('kv', 'template', S.template);
-const saveSettings = () => store.put('kv', 'settings', S.settings);
+// The follow runner lives in the main process and needs the Airtable details; the token stays in these settings.
+const pushFollowConfig = () => {
+  const { token, baseId, table } = S.settings.airtable;
+  window.api.followConfig({ token, baseId, table });
+};
+const saveSettings = () => {
+  pushFollowConfig();
+  return store.put('kv', 'settings', S.settings);
+};
 
 let savedTimer;
 // Shows a short "Saved" pill once typing pauses, so it's clear Setup changes stuck.
@@ -165,7 +175,10 @@ function missingParts(p) {
 const clipSeconds = (p) => S.template.reduce((n, s) => n + (S.lens[partKey(p, s)] || 0), 0);
 
 // "Ready only" hides leads Make hasn't finished researching. Leads added by hand or CSV have no Airtable status and always show.
-const shown = (p) => !S.settings.readyOnly || !p.atStatus || p.atStatus === 'Ready';
+const researched = (p) => !S.settings.readyOnly || !p.atStatus || p.atStatus === 'Ready';
+// Airtable leads only come up for a DM a day after the follow step followed them.
+const followedLongEnough = (p) => !p.airtableId || (!!p.followedAt && Date.now() - Date.parse(p.followedAt) >= DAY_MS);
+const shown = (p) => researched(p) && followedLongEnough(p);
 const todoList = () => S.prospects.filter((p) => p.status === 'todo' && shown(p));
 const newCount = () => todoList().filter((p) => p.isNew).length;
 
@@ -542,7 +555,8 @@ async function sync({ quiet = false } = {}) {
   try {
     // The first pull brings in the whole list, so nothing is flagged new until the second.
     const firstPull = !S.prospects.some((p) => p.airtableId);
-    const { added, refreshed } = await merge(await window.api.pullAirtable(at), { markNew: !firstPull });
+    const formula = at.formula ? `AND(${at.formula}, ${leads.FOLLOWED_A_DAY_AGO})` : leads.FOLLOWED_A_DAY_AGO;
+    const { added, refreshed } = await merge(await window.api.pullAirtable({ ...at, formula }), { markNew: !firstPull });
     S.sync.at = Date.now();
     S.sync.error = '';
     if (!quiet) toast(`${added} new lead${added === 1 ? '' : 's'}, ${refreshed} refreshed.`);
@@ -683,6 +697,12 @@ function header() {
       'div',
       { class: 'tabs' },
       h('button', { class: `tab ${S.view === 'leads' ? 'on' : ''}`, onclick: leadsTab }, 'Leads', h('span', { id: 'new-badge', class: 'badge', hidden: !n }, n)),
+      h(
+        'button',
+        { class: `tab ${S.view === 'follow' ? 'on' : ''}`, onclick: () => ((S.view = 'follow'), render()) },
+        'Follow',
+        h('span', { id: 'follow-dot', class: `dot ${followDot()}` }),
+      ),
       h('button', { class: `tab ${S.view === 'setup' ? 'on' : ''}`, onclick: goSetup }, 'Setup'),
     ),
   );
@@ -698,7 +718,9 @@ function leadsView() {
   const need = missingFixed();
   const next = todoList()[0];
   const connected = !!S.settings.airtable.token;
-  const hidden = S.prospects.length - all.length;
+  const waiting = S.prospects.filter((p) => p.status === 'todo');
+  const notReady = waiting.filter((p) => !researched(p)).length;
+  const notFollowed = waiting.filter((p) => researched(p) && !followedLongEnough(p)).length;
 
   return h(
     'main',
@@ -746,7 +768,15 @@ function leadsView() {
     list.length
       ? h('div', { class: 'list' }, list.map(leadRow))
       : h('p', { class: 'muted' }, S.prospects.length ? 'Nothing here.' : 'No leads yet. Connect Airtable in Setup, import a CSV, or open a profile in Instagram on the right and hit Grab from IG.'),
-    hidden && S.settings.readyOnly ? h('p', { class: 'muted small' }, `${hidden} lead${hidden === 1 ? ' is' : 's are'} still being researched (hidden).`) : null,
+    notReady || notFollowed
+      ? h(
+          'p',
+          { class: 'muted small' },
+          'Hidden for now: ',
+          [notReady ? `${notReady} still being researched` : '', notFollowed ? `${notFollowed} not followed a day ago yet` : ''].filter(Boolean).join(', '),
+          '.',
+        )
+      : null,
     h(
       'div',
       { class: 'row-flex small-actions' },
@@ -1028,6 +1058,7 @@ function setupView() {
       { class: 'steps' },
       h('li', {}, 'Record your pitch parts below once. Use the same mic and spot you will use for the custom lines.'),
       h('li', {}, 'Connect Airtable. New leads from Make show up by themselves (checked on launch and every 15 minutes).'),
+      h('li', {}, 'Turn on Follow. It follows each lead and likes their latest post, a few a day. A lead shows up for a DM a day after it was followed.'),
       h('li', {}, 'Hit Start next lead. You get a short script, and their profile opens in Instagram on the right.'),
       h('li', {}, 'Record your lines (Space), Preview to listen (Enter), then Send (⌘ Enter). The app opens their DM, plays the clip into the mic, and hits send. It arrives as a normal voice note.'),
     ),
@@ -1056,9 +1087,10 @@ function setupView() {
       h('label', { class: 'field' }, 'Base ID', h('input', { value: at.baseId, oninput: txt(at, 'baseId') })),
       h('label', { class: 'field' }, 'Table', h('input', { value: at.table, oninput: txt(at, 'table') })),
       h('label', { class: 'field' }, 'Which leads to pull (Airtable formula)', h('textarea', { oninput: txt(at, 'formula') }, at.formula)),
+      h('p', { class: 'muted small' }, 'On top of this, the app only pulls leads it followed at least a day ago.'),
       h('label', { class: 'field' }, 'Max leads per sync', h('input', { type: 'number', min: 1, max: 1000, value: at.max, oninput: num(at, 'max') })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.autoSync, onchange: check(st, 'autoSync') }), 'Check for new leads on launch and every 15 minutes'),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: at.writeBack, onchange: check(at, 'writeBack') }), 'When a note is sent, update Airtable: Status = Sent, Channel = Instagram, Sent at = today'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: at.writeBack, onchange: check(at, 'writeBack') }), 'When a note is sent, update Airtable: Status = Sent, Channel = Instagram, Sent at = today, Touches = 1'),
     ),
 
     h('h2', {}, 'Auto-voice (optional)'),
@@ -1097,11 +1129,140 @@ function setupView() {
   );
 }
 
+// ---------- follow + like ----------
+
+const clock = (t) => new Date(t).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+const countdown = (ms) => fmt(Math.max(0, ms) / 1000);
+
+function followDot() {
+  const f = S.follow;
+  if (!f?.enabled) return f?.stopNote ? 'bad' : '';
+  return f.phase.kind === 'paused' || f.phase.kind === 'error' ? 'warn' : 'ok';
+}
+
+function followStatus(f) {
+  if (!f) return 'Loading...';
+  if (!f.enabled) {
+    if (f.stopNote === 'loggedout') return 'Stopped: Instagram is logged out in the app. Log in on the right, then press Start.';
+    if (f.stopNote) return `Stopped to be safe: ${f.stopNote}. Check Instagram on the right, then press Start.`;
+    return 'Off. Press Start and it works through your leads in the background.';
+  }
+  const { kind, until } = f.phase;
+  if (kind === 'gap') return ['Waiting between accounts. Next one in ', h('b', { id: 'follow-countdown' }, countdown(until - Date.now())), '.'];
+  return (
+    {
+      setup: 'Add your Airtable token in Setup to start.',
+      checking: 'Checking Airtable for who to follow...',
+      working: `Following @${f.current?.handle || ''}...`,
+      hours: `Outside 9am to 8pm Pacific. Starts again ${clock(until)}.`,
+      cap: `Done for today (${f.today} of ${f.cap}). Starts again ${clock(until)}.`,
+      paused: `Paused until ${clock(until)} because Instagram pushed back. See Recent below.`,
+      empty: 'Nobody new to follow. Checking Airtable again in 30 minutes.',
+      error: 'Hit a snag (see Recent below). Trying again in 10 minutes.',
+    }[kind] || 'Running.'
+  );
+}
+
+function logText(e) {
+  if (e.result === 'followed') return e.liked ? 'Followed and liked their latest post' : e.private ? 'Followed (private, nothing to like)' : "Followed (didn't like a post)";
+  if (e.result === 'already') return e.liked ? 'Already following; liked their latest post' : 'Already following';
+  if (e.result === 'notfound') return 'Account not found, skipped';
+  if (e.result === 'blocked') return `Instagram pushed back ("${e.note}"). Paused for 48 hours.${e.followed ? ' The follow went through.' : ''}`;
+  if (e.result === 'loggedout') return 'Instagram is logged out. Stopped.';
+  if (e.result === 'failed') return `Stopped: ${e.note}`;
+  return e.note;
+}
+
+const logClass = (e) => ({ followed: 'ok', already: 'muted', notfound: 'muted', blocked: 'bad', failed: 'bad', loggedout: 'bad', error: 'warn' })[e.result] || '';
+
+function followView() {
+  const f = S.follow;
+  const on = !!f?.enabled;
+  return h(
+    'main',
+    {},
+    h(
+      'div',
+      { class: 'card' },
+      h('p', { id: 'follow-status', class: `follow-status ${followDot()}` }, followStatus(f)),
+      h('button', { class: on ? 'big' : 'enter', onclick: () => window.api.followSet(!on), disabled: !f }, on ? 'Stop following' : 'Start following'),
+      f
+        ? h(
+            'p',
+            { class: 'muted small' },
+            [`Today: ${f.today} of ${f.cap} follows`, f.weekOne ? 'first week (8 a day, then 20)' : '20 a day', `${f.total} followed in all`, f.skipped ? `${f.skipped} not found` : '']
+              .filter(Boolean)
+              .join(' · '),
+          )
+        : null,
+    ),
+    f?.queue?.length
+      ? [
+          h('h2', {}, 'Up next'),
+          h(
+            'div',
+            { class: 'list' },
+            f.queue.map((q) =>
+              h(
+                'div',
+                { class: 'lead static' },
+                h('div', { class: 'who' }, h('span', {}, h('b', {}, `@${q.handle}`)), h('span', { class: 'muted small' }, [q.name, q.category].filter(Boolean).join(' · '))),
+                q.fit != null ? h('span', { class: 'tag' }, `fit ${q.fit}`) : null,
+              ),
+            ),
+          ),
+        ]
+      : null,
+    h('h2', {}, 'Recent'),
+    f?.log?.length
+      ? h(
+          'div',
+          { class: 'card log' },
+          f.log.map((e) =>
+            h('div', { class: 'log-row' }, h('span', { class: 'muted small' }, clock(e.at)), e.handle ? h('b', { class: 'small' }, `@${e.handle}`) : null, h('span', { class: `small ${logClass(e)}` }, logText(e))),
+          ),
+        )
+      : h('p', { class: 'muted small' }, 'Nothing yet.'),
+    h(
+      'p',
+      { class: 'muted small' },
+      'Limits: up to 8 follows a day in the first week, then 20. 2 to 6 minutes between accounts. Only 9am to 8pm Pacific. If Instagram shows "action blocked", "try again later" or a security check, it stops and waits 48 hours.',
+    ),
+    h('p', { class: 'muted small' }, 'While this screen is open, the right side shows the follow tab so you can watch. Following keeps running when you go back to Leads.'),
+  );
+}
+
+window.api.onFollow((f) => {
+  S.follow = f;
+  const dot = document.getElementById('follow-dot');
+  if (dot) dot.className = `dot ${followDot()}`;
+  if (S.view === 'follow') render();
+});
+
+window.api.onFollowed(({ airtableId, followedAt }) => {
+  const p = S.prospects.find((x) => x.airtableId === airtableId);
+  if (!p) return;
+  p.followedAt = followedAt;
+  saveProspects();
+});
+
+setInterval(() => {
+  const el = document.getElementById('follow-countdown');
+  if (el && S.follow?.phase.until) el.textContent = countdown(S.follow.phase.until - Date.now());
+}, 1000);
+
+let pane = 'dm';
 function render() {
   const p = current();
   if (S.currentId && !p) S.currentId = null;
-  const body = S.view === 'setup' ? setupView() : p ? detailView(p) : leadsView();
+  const body = S.view === 'setup' ? setupView() : S.view === 'follow' ? followView() : p ? detailView(p) : leadsView();
   $app.replaceChildren(header(), body);
+  // The Follow screen puts the follow tab on the right; everything else shows the DM tab.
+  const want = S.view === 'follow' ? 'follow' : 'dm';
+  if (want !== pane) {
+    pane = want;
+    window.api.showPane(want);
+  }
 }
 
 // ---------- keyboard ----------
@@ -1140,6 +1301,8 @@ document.addEventListener('keydown', (e) => {
   S.lens = (await store.get('kv', 'lens')) || {};
   const fixedSegs = S.template.filter((s) => s.kind === 'fixed');
   if (fixedSegs.length && fixedSegs.every((s) => !S.lens[fixedKey(s)])) S.view = 'setup';
+  pushFollowConfig();
+  S.follow = await window.api.followState();
   render();
   if (S.settings.autoSync) sync({ quiet: true });
   setInterval(() => S.settings.autoSync && sync({ quiet: true }), SYNC_MS);

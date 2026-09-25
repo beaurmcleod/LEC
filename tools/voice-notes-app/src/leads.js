@@ -58,6 +58,7 @@ export function makeProspect(f) {
     notes: f.notes || '',
     source: f.source || 'manual',
     atStatus: f.atStatus || '',
+    followedAt: f.followedAt || '',
     status: 'todo',
     sentAt: null,
     createdAt: Date.now(),
@@ -94,6 +95,7 @@ export function fromFields(obj, extra = {}) {
     note: pick(obj, 'what they do', 'specialty', 'note'),
     name: pick(obj, 'name to say', 'spoken name'),
     atStatus: pick(obj, 'status'),
+    followedAt: pick(obj, 'ig followed at'),
   });
 }
 
@@ -172,13 +174,54 @@ export async function pullAirtable(at) {
   return out;
 }
 
-export async function markSentAirtable(at, recordId) {
-  const d = new Date();
-  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+async function patch(at, recordId, fields) {
   const res = await fetch(`${tableUrl(at)}/${encodeURIComponent(recordId)}`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${at.token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fields: { Status: 'Sent', Channel: 'Instagram', 'Sent at': today } }),
+    body: JSON.stringify({ fields }),
   });
   if (!res.ok) throw new Error(airtableError(await res.json().catch(() => ({})), res.status));
+}
+
+export function markSentAirtable(at, recordId) {
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return patch(at, recordId, { Status: 'Sent', Channel: 'Instagram', 'Sent at': today, Touches: 1 });
+}
+
+// DMs only go to leads the follow step followed at least a day earlier.
+export const FOLLOWED_A_DAY_AGO = "IS_BEFORE({IG followed at}, DATEADD(NOW(), -1, 'days'))";
+
+// Leads still to follow: not skipped, not followed yet, and not already messaged.
+export const FOLLOW_FORMULA =
+  "AND({Instagram}!='', {Track}!='Skip', {IG followed at}='', OR({Status}='New', {Status}='Researched', {Status}='Ready'))";
+
+// Best fits first. Pages through until it finds `want` accounts that aren't in `skip`.
+export async function pullFollowQueue(at, { skip = {}, want = 5 } = {}) {
+  const out = [];
+  let offset = '';
+  for (let page = 0; page < 5 && out.length < want; page++) {
+    const url = new URL(tableUrl(at));
+    url.searchParams.set('pageSize', '25');
+    url.searchParams.set('filterByFormula', FOLLOW_FORMULA);
+    url.searchParams.set('sort[0][field]', 'Fit score');
+    url.searchParams.set('sort[0][direction]', 'desc');
+    for (const f of ['Instagram', 'DM name', 'Category', 'Fit score']) url.searchParams.append('fields[]', f);
+    if (offset) url.searchParams.set('offset', offset);
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${at.token}` } });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(airtableError(body, res.status));
+    for (const r of body.records || []) {
+      const f = r.fields || {};
+      const handle = cleanHandle(f.Instagram);
+      if (handle && !skip[r.id] && out.length < want) out.push({ id: r.id, handle, name: f['DM name'] || '', category: f.Category || '', fit: f['Fit score'] ?? null });
+    }
+    offset = body.offset;
+    if (!offset) break;
+  }
+  return out;
+}
+
+export function markFollowedAirtable(at, recordId, liked, when = new Date()) {
+  return patch(at, recordId, { 'IG followed at': when.toISOString(), 'IG liked': !!liked });
 }

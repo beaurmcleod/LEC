@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
+import { createFollowRunner } from './follow-runner.mjs';
 import * as leads from './src/leads.js';
 import { speak } from './src/voice.js';
 
@@ -22,6 +23,9 @@ const PANE = 480;
 let win;
 let recorder;
 let igView;
+// A second Instagram tab, same login, where follows and likes run without touching the DM tab.
+let followView;
+let follower;
 let injected;
 // The clip currently loaded into Instagram's mic. Re-sent after any full page load so a reload doesn't drop it.
 let pendingArm = null;
@@ -35,14 +39,16 @@ const isInstagram = (url) => {
   }
 };
 
-const toRecorder = (m) => win && recorder.webContents.send('ig:status', m);
+const toRecorder = (m, channel = 'ig:status') => win && recorder.webContents.send(channel, m);
 const ig = () => igView.webContents;
 
 function layout() {
   const { width, height } = win.contentView.getBounds();
   recorder.setBounds({ x: 0, y: 0, width: PANE, height });
-  // The 1px gap shows the window background as a divider.
-  igView.setBounds({ x: PANE + 1, y: 0, width: Math.max(0, width - PANE - 1), height });
+  // The 1px gap shows the window background as a divider. Both Instagram tabs share the right side; one sits on top.
+  const right = { x: PANE + 1, y: 0, width: Math.max(0, width - PANE - 1), height };
+  igView.setBounds(right);
+  followView.setBounds(right);
 }
 
 function createWindow() {
@@ -70,7 +76,13 @@ function createWindow() {
       backgroundThrottling: false,
     },
   });
+  followView = new WebContentsView({
+    webPreferences: { partition: 'persist:instagram', contextIsolation: true, sandbox: true, backgroundThrottling: false },
+  });
+  followView.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  followView.webContents.loadURL('about:blank');
   win.contentView.addChildView(recorder);
+  win.contentView.addChildView(followView);
   win.contentView.addChildView(igView);
   layout();
   // Follows the content area rather than the window, which also catches the menu bar settling and full screen.
@@ -78,6 +90,7 @@ function createWindow() {
   win.on('closed', () => {
     recorder.webContents.close();
     igView.webContents.close();
+    followView.webContents.close();
     win = null;
   });
 
@@ -168,8 +181,8 @@ async function igPage(action) {
 }
 
 // A real mouse click where possible, so Instagram sees the same events as a person clicking.
-async function igClick(wc, what) {
-  const pt = await wc.executeJavaScript(`(${igPage})(${JSON.stringify(what)})`, true);
+// `pt` comes from a page script: a point to click, { clicked } if it already clicked, or null if nothing was found.
+function clickPoint(wc, pt) {
   if (!pt) return false;
   if (!pt.clicked) {
     const z = wc.getZoomFactor();
@@ -181,6 +194,8 @@ async function igClick(wc, what) {
   }
   return true;
 }
+
+const igClick = async (wc, what) => clickPoint(wc, await wc.executeJavaScript(`(${igPage})(${JSON.stringify(what)})`, true));
 
 const pathOf = (url) => {
   try {
@@ -253,6 +268,12 @@ ipcMain.handle('clip:save', async (_e, wav, name) => {
 });
 ipcMain.handle('clip:reveal', (_e, file) => shell.showItemInFolder(file));
 
+// The recorder shows the follow tab on the right while its Follow screen is open.
+ipcMain.handle('pane:show', (_e, which) => win.contentView.addChildView(which === 'follow' ? followView : igView));
+ipcMain.handle('follow:config', (_e, at) => follower.configure(at));
+ipcMain.handle('follow:set', (_e, on) => follower.setEnabled(!!on));
+ipcMain.handle('follow:state', () => follower.snapshot());
+
 ipcMain.handle('airtable:pull', (_e, at) => leads.pullAirtable(at));
 ipcMain.handle('airtable:sent', (_e, at, id) => leads.markSentAirtable(at, id));
 ipcMain.handle('tts', (_e, text, settings) => speak(text, settings));
@@ -263,7 +284,18 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler(onlyMedia);
   session.fromPartition('persist:instagram').setPermissionRequestHandler(onlyMedia);
   injected = await fs.readFile(path.join(dir, 'src/ig-main.js'), 'utf8');
+  follower = createFollowRunner({
+    view: () => followView,
+    statePath: path.join(app.getPath('userData'), 'follow-state.json'),
+    igBase: IG_BASE,
+    click: clickPoint,
+    emit: (s) => toRecorder(s, 'follow:status'),
+    onFollowed: (m) => toRecorder(m, 'follow:followed'),
+    // Test runs only: short gaps and no time-of-day window. The daily caps still apply.
+    fast: process.env.TVN_TEST_FOLLOW === '1',
+  });
   createWindow();
+  await follower.init();
 });
 
 app.on('activate', () => {
