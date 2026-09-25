@@ -19,12 +19,37 @@ export function cleanHandle(raw) {
   return (url ? url[1] : s).replace(/^@/, '').replace(/\/+$/, '').trim();
 }
 
+// Title Case that leaves "Joe's" alone.
+const titleCase = (s) => s.toLowerCase().replace(/(^|[\s\-/&(])(\p{L})/gu, (m, a, c) => a + c.toUpperCase());
+
 function tidyBusiness(b) {
   let s = b.split(/\s+[-|•:–—]\s+/)[0].trim();
-  if (s.length > 3 && s === s.toUpperCase() && /[A-Z]/.test(s)) {
-    s = s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
-  }
+  if (s.length > 3 && s === s.toUpperCase() && /[A-Z]/.test(s)) s = titleCase(s);
   return s;
+}
+
+// A business name the way you'd say it: no shouting caps, tagline or legal suffix.
+export function spokenBusiness(b) {
+  return tidyBusiness(String(b || ''))
+    .replace(/,?\s+(llc|l\.l\.c\.|inc\.?|corp\.?|ltd\.?|pllc|pc)$/i, '')
+    .trim();
+}
+
+// A role the way you'd say it mid-sentence: "Studio owner" -> "studio owner". Acronyms like CEO or DPT stay.
+export function spokenRole(r) {
+  return String(r || '')
+    .trim()
+    .replace(/^(the|a|an)\s+/i, '')
+    .split(/([\s\-/]+)/)
+    .map((w) => (/^\p{Lu}\p{Ll}+$/u.test(w) ? w.toLowerCase() : w))
+    .join('')
+    .replace(/[.\s]+$/, '');
+}
+
+// A first name the way you'd say it: "JOHN" -> "John".
+export function spokenName(n) {
+  const s = String(n || '').trim();
+  return s.length > 1 && s === s.toUpperCase() && /\p{L}/u.test(s) ? titleCase(s) : s;
 }
 
 export function deriveName(p) {

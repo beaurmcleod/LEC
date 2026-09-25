@@ -204,10 +204,44 @@ async function delAudio(key) {
   await saveLens();
 }
 
+// The name to greet someone by, or '' when all the app has is their business or handle (so it never says
+// "Hey Made From Collective").
+function personName(p) {
+  const same = (a, b) => a && b && a.trim().toLowerCase() === b.trim().toLowerCase();
+  if (p.edited?.name) return leads.spokenName(p.name);
+  const name = p.first || (p.name !== leads.deriveName(p) ? p.name : '');
+  if (!name || same(name, p.business) || same(name, leads.spokenBusiness(p.business))) return '';
+  return leads.spokenName(name);
+}
+
+// Lead details cleaned up for saying out loud.
+function scriptVars(p) {
+  const name = personName(p);
+  return {
+    ...p,
+    name,
+    first: name,
+    role: leads.spokenRole(p.role),
+    business: leads.spokenBusiness(p.business),
+    handle: p.handle ? `@${p.handle}` : '',
+  };
+}
+
+// Rewords a line around details the lead doesn't have, so it still sounds natural:
+// no name -> "Hey there", no role -> "what you're doing at", no business -> the "at ..." part goes.
+function adaptScript(script, v) {
+  const R = "you(?:'|’)re the \\{role\\}";
+  let s = script || '';
+  for (const k of ['name', 'first']) if (!v[k]) s = s.replace(new RegExp(`\\b(hey|hi|hello|yo)(\\s+)\\{${k}\\}`, 'gi'), '$1$2there');
+  if (!v.business) s = s.replace(/\s+(at|of|with|from) \{business\}/gi, '');
+  if (!v.role) s = s.replace(new RegExp(`${R} (at|of|with) `, 'gi'), "what you're doing at ").replace(new RegExp(R, 'gi'), "what you're up to");
+  return s;
+}
+
 // Empty fields show as ___ so you can see what to improvise when recording.
 function renderScript(script, p) {
-  const vars = { ...p, handle: p.handle ? `@${p.handle}` : '' };
-  return (script || '').replace(/\{(\w+)\}/g, (m, k) => (PLACEHOLDERS.includes(k) ? vars[k] || '___' : m));
+  const vars = scriptVars(p);
+  return adaptScript(script, vars).replace(/\{(\w+)\}/g, (m, k) => (PLACEHOLDERS.includes(k) ? vars[k] || '___' : m));
 }
 
 function spokenScript(script, p) {
@@ -963,6 +997,13 @@ function lineRow(p, seg) {
     'div',
     { class: `line slot ${live ? 'live' : ''}` },
     h('div', { class: 'script', 'data-seg': seg.id }, renderScript(seg.script, p)),
+    /\{(name|first)\}/.test(seg.script || '')
+      ? h(
+          'p',
+          { class: 'muted small', 'data-namehint': '', hidden: !!personName(p) },
+          'No first name on file, so it opens with "Hey there". Know it? Add it under Edit details > Name to say.',
+        )
+      : null,
     meter(key),
     h(
       'div',
@@ -992,6 +1033,7 @@ function detailView(p) {
     for (const el of document.querySelectorAll('[data-seg]')) {
       el.textContent = renderScript(S.template.find((s) => s.id === el.dataset.seg).script, p);
     }
+    for (const el of document.querySelectorAll('[data-namehint]')) el.hidden = !!personName(p);
   };
   const ref = [
     ['Personal hook', p.hook],
