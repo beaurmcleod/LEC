@@ -2,12 +2,25 @@ import * as store from './store.js';
 import * as audio from './audio.js';
 import * as leads from './leads.js';
 
+// Your two custom lines, then the whole pitch in one take. Setup can split the pitch into more parts.
 const DEFAULT_TEMPLATE = [
   { id: 'greet', kind: 'slot', label: 'Greeting', script: 'Hi {name}!' },
-  { id: 'pitch1', kind: 'fixed', label: 'Pitch, part 1' },
   { id: 'specific', kind: 'slot', label: 'About them', script: "I see you're the {role} at {business}." },
-  { id: 'pitch2', kind: 'fixed', label: 'Pitch, part 2' },
+  { id: 'pitch', kind: 'fixed', label: 'Pitch' },
 ];
+
+// Earlier versions split the pitch in two around "About them". An untouched copy of that layout moves to
+// the one-take pitch; anything already recorded for the two halves is joined so nothing is lost.
+async function migrateTemplate(t) {
+  const shape = t.map((seg) => `${seg.id}:${seg.kind}`).join(',');
+  if (shape !== 'greet:slot,pitch1:fixed,specific:slot,pitch2:fixed') return t;
+  const next = [t[0], t[2], structuredClone(DEFAULT_TEMPLATE[2])];
+  const halves = (await Promise.all(['fixed:pitch1', 'fixed:pitch2'].map(getAudio))).filter(Boolean);
+  if (halves.length) await setAudio(fixedKey(next[2]), audio.concat(halves, 0), { source: 'joined' });
+  for (const key of ['fixed:pitch1', 'fixed:pitch2']) await delAudio(key);
+  await store.put('kv', 'template', next);
+  return next;
+}
 
 const DEFAULT_SETTINGS = {
   gapMs: 0,
@@ -637,7 +650,9 @@ async function deleteLead(p) {
 // ---------- template ----------
 
 async function addSegment(kind) {
-  S.template.push({ id: leads.uid(), kind, label: kind === 'fixed' ? 'New recorded part' : 'New custom line', script: '' });
+  const pitches = S.template.filter((seg) => seg.kind === 'fixed').length;
+  const label = kind === 'fixed' ? `Pitch, part ${pitches + 1}` : 'New custom line';
+  S.template.push({ id: leads.uid(), kind, label, script: '' });
   await saveTemplate();
   render();
 }
@@ -1056,7 +1071,7 @@ function setupView() {
     h(
       'ol',
       { class: 'steps' },
-      h('li', {}, 'Record your pitch parts below once. Use the same mic and spot you will use for the custom lines.'),
+      h('li', {}, 'Record your pitch below once, in one take. Use the same mic and spot you will use for the custom lines.'),
       h('li', {}, 'Connect Airtable. New leads from Make show up by themselves (checked on launch and every 15 minutes).'),
       h('li', {}, 'Turn on Follow. It follows each lead and likes their latest post, a few a day. A lead shows up for a DM a day after it was followed.'),
       h('li', {}, 'Hit Start next lead. You get a short script, and their profile opens in Instagram on the right.'),
@@ -1064,7 +1079,8 @@ function setupView() {
     ),
     h('h2', {}, 'Your voice note, in order'),
     S.template.map(segmentCard),
-    h('div', { class: 'row-flex' }, h('button', { onclick: () => addSegment('fixed') }, '+ Recorded-once part'), h('button', { onclick: () => addSegment('slot') }, '+ Custom line')),
+    h('div', { class: 'row-flex' }, h('button', { onclick: () => addSegment('fixed') }, '+ Pitch part'), h('button', { onclick: () => addSegment('slot') }, '+ Custom line')),
+    h('p', { class: 'muted small' }, 'Want a custom line in the middle of the pitch? Add a pitch part, then use the arrows to put the line between the two.'),
     h('p', { class: 'muted small' }, `Custom lines can use: ${PLACEHOLDERS.map((k) => `{${k}}`).join(' ')}. Recorded parts total ${secs(total)}; keep the whole note under 60s.`),
 
     h('h2', {}, 'Splicing and sending'),
@@ -1289,7 +1305,8 @@ document.addEventListener('keydown', (e) => {
 // ---------- boot ----------
 
 (async () => {
-  S.template = (await store.get('kv', 'template')) || structuredClone(DEFAULT_TEMPLATE);
+  S.lens = (await store.get('kv', 'lens')) || {};
+  S.template = await migrateTemplate((await store.get('kv', 'template')) || structuredClone(DEFAULT_TEMPLATE));
   const saved = (await store.get('kv', 'settings')) || {};
   S.settings = {
     ...DEFAULT_SETTINGS,
@@ -1298,7 +1315,6 @@ document.addEventListener('keydown', (e) => {
     eleven: { ...DEFAULT_SETTINGS.eleven, ...saved.eleven },
   };
   S.prospects = (await store.get('kv', 'prospects')) || [];
-  S.lens = (await store.get('kv', 'lens')) || {};
   const fixedSegs = S.template.filter((s) => s.kind === 'fixed');
   if (fixedSegs.length && fixedSegs.every((s) => !S.lens[fixedKey(s)])) S.view = 'setup';
   pushFollowConfig();
