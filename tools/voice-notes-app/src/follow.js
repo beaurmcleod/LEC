@@ -1,16 +1,13 @@
-// Follow + like pacing. These limits are deliberately fixed (not settings) to keep the account safe.
+// Follow + like pacing. The daily limit is a setting on the Follow screen; the gap between accounts
+// and the 48-hour pause after Instagram pushes back are fixed.
 export const LIMITS = Object.freeze({
-  week1PerDay: 8,
-  perDay: 20,
+  defaultPerDay: 50,
+  maxPerDay: 200,
   minGapMs: 2 * 60 * 1000,
   maxGapMs: 6 * 60 * 1000,
-  startHour: 9,
-  endHour: 20,
   blockPauseMs: 48 * 60 * 60 * 1000,
   timeZone: 'America/Los_Angeles',
 });
-
-const DAY = 24 * 60 * 60 * 1000;
 
 const fmt = new Intl.DateTimeFormat('en-US', {
   timeZone: LIMITS.timeZone,
@@ -28,13 +25,11 @@ export function pacific(t) {
   return { y: +p.year, mo: +p.month, d: +p.day, h: +p.hour, mi: +p.minute };
 }
 
+// Days (and the daily count) run midnight to midnight Pacific.
 export const dayKey = (t) => {
   const p = pacific(t);
   return `${p.y}-${String(p.mo).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`;
 };
-
-const keyToUtc = (key) => Date.UTC(...key.split('-').map((n, i) => (i === 1 ? n - 1 : +n)));
-const daysBetween = (a, b) => Math.round((keyToUtc(b) - keyToUtc(a)) / DAY);
 
 // The UTC time of a Pacific wall-clock hour on a given date (handles daylight saving).
 function pacificTime(y, mo, d, h) {
@@ -47,25 +42,21 @@ function pacificTime(y, mo, d, h) {
   return t;
 }
 
-// Next time the follow window opens (9am Pacific): today if it's still early, otherwise tomorrow.
-export function nextOpen(now, { tomorrow = false } = {}) {
+// The next midnight Pacific, when the daily count starts over.
+export function nextDay(now) {
   const p = pacific(now);
-  const addDay = tomorrow || p.h >= LIMITS.startHour;
-  const date = new Date(Date.UTC(p.y, p.mo - 1, p.d + (addDay ? 1 : 0)));
-  return pacificTime(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate(), LIMITS.startHour);
+  const date = new Date(Date.UTC(p.y, p.mo - 1, p.d + 1));
+  return pacificTime(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate(), 0);
 }
 
-export const inWeekOne = (state, now) => !state.firstFollowAt || daysBetween(dayKey(state.firstFollowAt), dayKey(now)) < 7;
-export const dailyCap = (state, now) => (inWeekOne(state, now) ? LIMITS.week1PerDay : LIMITS.perDay);
+export const clampPerDay = (n) => Math.min(LIMITS.maxPerDay, Math.max(1, Math.round(Number(n)) || LIMITS.defaultPerDay));
 export const followedToday = (state, now) => state.days?.[dayKey(now)] || 0;
 export const randomGap = (rng = Math.random) => LIMITS.minGapMs + rng() * (LIMITS.maxGapMs - LIMITS.minGapMs);
 
 // Whether the next account can be visited now, and if not, why and until when.
-export function gate(state, now, { ignoreHours = false } = {}) {
+export function gate(state, now, perDay) {
   if (state.pausedUntil > now) return { ok: false, reason: 'paused', until: state.pausedUntil };
-  const { h } = pacific(now);
-  if (!ignoreHours && (h < LIMITS.startHour || h >= LIMITS.endHour)) return { ok: false, reason: 'hours', until: nextOpen(now) };
-  if (followedToday(state, now) >= dailyCap(state, now)) return { ok: false, reason: 'cap', until: nextOpen(now, { tomorrow: true }) };
+  if (followedToday(state, now) >= perDay) return { ok: false, reason: 'cap', until: nextDay(now) };
   if (state.nextAt > now) return { ok: false, reason: 'gap', until: state.nextAt };
   return { ok: true };
 }
@@ -73,7 +64,6 @@ export function gate(state, now, { ignoreHours = false } = {}) {
 export function recordFollow(state, now) {
   const key = dayKey(now);
   state.days = { ...state.days, [key]: (state.days?.[key] || 0) + 1 };
-  state.firstFollowAt ||= now;
 }
 
 // Runs inside the follow tab's Instagram page. Self-contained so it can be sent as source.

@@ -292,7 +292,7 @@ app.whenReady().then(async () => {
     click: clickPoint,
     emit: (s) => toRecorder(s, 'follow:status'),
     onFollowed: (m) => toRecorder(m, 'follow:followed'),
-    // Test runs only: short gaps and no time-of-day window. The daily caps still apply.
+    // Test runs only: short gaps between accounts. The daily limit still applies.
     fast: process.env.TVN_TEST_FOLLOW === '1',
   });
   createWindow();

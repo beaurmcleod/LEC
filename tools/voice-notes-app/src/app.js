@@ -30,6 +30,7 @@ const DEFAULT_SETTINGS = {
   autoSend: true,
   autoSync: true,
   readyOnly: true,
+  followPerDay: 50,
   airtable: {
     token: '',
     baseId: 'appdAJbStcwrV2bq5',
@@ -131,7 +132,7 @@ const saveTemplate = () => store.put('kv', 'template', S.template);
 // The follow runner lives in the main process and needs the Airtable details; the token stays in these settings.
 const pushFollowConfig = () => {
   const { token, baseId, table } = S.settings.airtable;
-  window.api.followConfig({ token, baseId, table });
+  window.api.followConfig({ token, baseId, table, perDay: S.settings.followPerDay });
 };
 const saveSettings = () => {
   pushFollowConfig();
@@ -1073,7 +1074,7 @@ function setupView() {
       { class: 'steps' },
       h('li', {}, 'Record your pitch below once, in one take. Use the same mic and spot you will use for the custom lines.'),
       h('li', {}, 'Connect Airtable. New leads from Make show up by themselves (checked on launch and every 15 minutes).'),
-      h('li', {}, 'Turn on Follow. It follows each lead and likes their latest post, a few a day. A lead shows up for a DM a day after it was followed.'),
+      h('li', {}, 'Turn on Follow. It follows each lead and likes their latest post, up to your daily limit. A lead shows up for a DM a day after it was followed.'),
       h('li', {}, 'Hit Start next lead. You get a short script, and their profile opens in Instagram on the right.'),
       h('li', {}, 'Record your lines (Space), Preview to listen (Enter), then Send (⌘ Enter). The app opens their DM, plays the clip into the mic, and hits send. It arrives as a normal voice note.'),
     ),
@@ -1170,7 +1171,6 @@ function followStatus(f) {
       setup: 'Add your Airtable token in Setup to start.',
       checking: 'Checking Airtable for who to follow...',
       working: `Following @${f.current?.handle || ''}...`,
-      hours: `Outside 9am to 8pm Pacific. Starts again ${clock(until)}.`,
       cap: `Done for today (${f.today} of ${f.cap}). Starts again ${clock(until)}.`,
       paused: `Paused until ${clock(until)} because Instagram pushed back. See Recent below.`,
       empty: 'Nobody new to follow. Checking Airtable again in 30 minutes.',
@@ -1202,13 +1202,27 @@ function followView() {
       { class: 'card' },
       h('p', { id: 'follow-status', class: `follow-status ${followDot()}` }, followStatus(f)),
       h('button', { class: on ? 'big' : 'enter', onclick: () => window.api.followSet(!on), disabled: !f }, on ? 'Stop following' : 'Start following'),
+      h(
+        'label',
+        { class: 'field inline-field' },
+        'Follows a day',
+        h('input', {
+          type: 'number',
+          min: 1,
+          max: 200,
+          value: S.settings.followPerDay,
+          oninput: (e) => {
+            if (!e.target.value) return;
+            S.settings.followPerDay = Math.min(200, Math.max(1, parseInt(e.target.value, 10) || 1));
+            saveSettings().then(flashSaved);
+          },
+        }),
+      ),
       f
         ? h(
             'p',
             { class: 'muted small' },
-            [`Today: ${f.today} of ${f.cap} follows`, f.weekOne ? 'first week (8 a day, then 20)' : '20 a day', `${f.total} followed in all`, f.skipped ? `${f.skipped} not found` : '']
-              .filter(Boolean)
-              .join(' · '),
+            [`Today: ${f.today} of ${f.cap} follows`, `${f.total} followed in all`, f.skipped ? `${f.skipped} not found` : ''].filter(Boolean).join(' · '),
           )
         : null,
     ),
@@ -1242,7 +1256,7 @@ function followView() {
     h(
       'p',
       { class: 'muted small' },
-      'Limits: up to 8 follows a day in the first week, then 20. 2 to 6 minutes between accounts. Only 9am to 8pm Pacific. If Instagram shows "action blocked", "try again later" or a security check, it stops and waits 48 hours.',
+      'Pacing: your daily limit above (the day resets at midnight Pacific), 2 to 6 minutes between accounts, any time of day. If Instagram shows "action blocked", "try again later" or a security check, it stops and waits 48 hours.',
     ),
     h('p', { class: 'muted small' }, 'While this screen is open, the right side shows the follow tab so you can watch. Following keeps running when you go back to Leads.'),
   );

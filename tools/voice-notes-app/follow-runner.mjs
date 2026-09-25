@@ -6,11 +6,12 @@ const LOG_MAX = 60;
 const EMPTY_RETRY_MS = 30 * 60 * 1000;
 const ERROR_RETRY_MS = 10 * 60 * 1000;
 
-// Follows and likes one lead at a time in its own Instagram tab, within the limits in src/follow.js.
+// Follows and likes one lead at a time in its own Instagram tab, within the pacing in src/follow.js.
 // Its counters, pause and log live in a small JSON file so they survive restarts.
 export function createFollowRunner({ view, statePath, igBase, click, emit, onFollowed, fast = false }) {
-  let state = { enabled: false, stopNote: '', days: {}, firstFollowAt: 0, pausedUntil: 0, nextAt: 0, skipped: {}, log: [] };
+  let state = { enabled: false, stopNote: '', days: {}, pausedUntil: 0, nextAt: 0, skipped: {}, log: [] };
   let at = null;
+  let perDay = F.LIMITS.defaultPerDay;
   let timer = null;
   let busy = false;
   let phase = { kind: 'off', until: 0 };
@@ -31,8 +32,7 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
       current,
       queue,
       today: F.followedToday(state, now),
-      cap: F.dailyCap(state, now),
-      weekOne: F.inWeekOne(state, now),
+      cap: perDay,
       total: Object.values(state.days || {}).reduce((a, b) => a + b, 0),
       skipped: Object.keys(state.skipped).length,
       log: state.log.slice(0, 25),
@@ -115,7 +115,7 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
     if (busy) return;
     if (!state.enabled) return setPhase(state.stopNote ? 'stopped' : 'off');
     const now = Date.now();
-    const g = F.gate(state, now, { ignoreHours: fast });
+    const g = F.gate(state, now, perDay);
     if (!g.ok) {
       setPhase(g.reason, g.until);
       return schedule(g.until - now);
@@ -159,10 +159,12 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
       } catch {}
       tick();
     },
+    // Airtable details and the daily limit, from the app's settings.
     configure(cfg) {
-      const was = at?.token;
       at = cfg;
-      if (!was && at?.token && phase.kind === 'setup') tick();
+      perDay = F.clampPerDay(cfg.perDay);
+      if (!busy && ['setup', 'cap'].includes(phase.kind)) tick();
+      else emit(snapshot());
     },
     setEnabled(on) {
       state.enabled = on;
