@@ -775,6 +775,8 @@ function leadsView() {
   const gate = S.settings.followGate;
   const notFollowed = gate ? waiting.filter((p) => p.airtableId && !p.followedAt).length : 0;
   const followedToday = gate ? waiting.filter((p) => p.airtableId && p.followedAt && !followedLongEnough(p)).length : 0;
+  // Leads that only the follow wait is holding back.
+  const gated = gate ? waiting.filter((p) => researched(p) && !followedLongEnough(p)).length : 0;
 
   return h(
     'main',
@@ -839,6 +841,13 @@ function leadsView() {
         )
       : null,
     notFollowed ? followHint() : null,
+    gated
+      ? h(
+          'p',
+          {},
+          h('button', { id: 'skip-gate', onclick: skipGate }, `Show ${gated} lead${gated === 1 ? '' : 's'} now (skip the follow wait)`),
+        )
+      : null,
     h(
       'div',
       { class: 'row-flex small-actions' },
@@ -1239,6 +1248,14 @@ function followStatus(f) {
       error: 'Hit a snag (see Recent below). Trying again in 10 minutes.',
     }[kind] || 'Running.'
   );
+}
+
+// Turns the follow wait off from the Leads screen; Setup > Airtable turns it back on.
+function skipGate() {
+  S.settings.followGate = false;
+  saveSettings();
+  toast('Follow wait is off. Turn it back on in Setup > Airtable.');
+  render();
 }
 
 // On the Leads screen, when leads are waiting on the follow step but following isn't running.
