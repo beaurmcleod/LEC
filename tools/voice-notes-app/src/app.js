@@ -65,13 +65,14 @@ const DEFAULT_SETTINGS = {
   autoSend: true,
   autoSync: true,
   readyOnly: true,
+  followGate: true,
   followPerDay: 50,
   airtable: {
     token: '',
     baseId: 'appdAJbStcwrV2bq5',
     table: 'Leads',
     formula: "AND({Instagram} != '', OR({Status} = 'New', {Status} = 'Researched', {Status} = 'Ready'), {Track} != 'Skip')",
-    max: 100,
+    max: 1000,
     writeBack: true,
   },
   eleven: {
@@ -226,7 +227,8 @@ const clipSeconds = (p) => S.template.reduce((n, s) => n + (S.lens[partKey(p, s)
 // "Ready only" hides leads Make hasn't finished researching. Leads added by hand or CSV have no Airtable status and always show.
 const researched = (p) => !S.settings.readyOnly || !p.atStatus || p.atStatus === 'Ready';
 // Airtable leads only come up for a DM a day after the follow step followed them.
-const followedLongEnough = (p) => !p.airtableId || (!!p.followedAt && Date.now() - Date.parse(p.followedAt) >= DAY_MS);
+// DMs wait until a day after the app followed the lead (Setup can turn this off). Leads added by hand or CSV aren't held.
+const followedLongEnough = (p) => !S.settings.followGate || !p.airtableId || (!!p.followedAt && Date.now() - Date.parse(p.followedAt) >= DAY_MS);
 const shown = (p) => researched(p) && followedLongEnough(p);
 const todoList = () => S.prospects.filter((p) => p.status === 'todo' && shown(p));
 const newCount = () => todoList().filter((p) => p.isNew).length;
@@ -604,8 +606,7 @@ async function sync({ quiet = false } = {}) {
   try {
     // The first pull brings in the whole list, so nothing is flagged new until the second.
     const firstPull = !S.prospects.some((p) => p.airtableId);
-    const formula = at.formula ? `AND(${at.formula}, ${leads.FOLLOWED_A_DAY_AGO})` : leads.FOLLOWED_A_DAY_AGO;
-    const { added, refreshed } = await merge(await window.api.pullAirtable({ ...at, formula }), { markNew: !firstPull });
+    const { added, refreshed } = await merge(await window.api.pullAirtable(at), { markNew: !firstPull });
     S.sync.at = Date.now();
     S.sync.error = '';
     if (!quiet) toast(`${added} new lead${added === 1 ? '' : 's'}, ${refreshed} refreshed.`);
@@ -769,9 +770,11 @@ function leadsView() {
   const need = missingFixed();
   const next = todoList()[0];
   const connected = !!S.settings.airtable.token;
-  const waiting = S.prospects.filter((p) => p.status === 'todo');
+  const waiting = S.prospects.filter((p) => p.status === 'todo' && !shown(p));
   const notReady = waiting.filter((p) => !researched(p)).length;
-  const notFollowed = waiting.filter((p) => researched(p) && !followedLongEnough(p)).length;
+  const gate = S.settings.followGate;
+  const notFollowed = gate ? waiting.filter((p) => p.airtableId && !p.followedAt).length : 0;
+  const followedToday = gate ? waiting.filter((p) => p.airtableId && p.followedAt && !followedLongEnough(p)).length : 0;
 
   return h(
     'main',
@@ -818,16 +821,24 @@ function leadsView() {
     ),
     list.length
       ? h('div', { class: 'list' }, list.map(leadRow))
-      : h('p', { class: 'muted' }, S.prospects.length ? 'Nothing here.' : 'No leads yet. Connect Airtable in Setup, import a CSV, or open a profile in Instagram on the right and hit Grab from IG.'),
-    notReady || notFollowed
+      : h('p', { class: 'muted' }, waiting.length ? 'Nothing to send yet.' : S.prospects.length ? 'Nothing here.' : 'No leads yet. Connect Airtable in Setup, import a CSV, or open a profile in Instagram on the right and hit Grab from IG.'),
+    waiting.length
       ? h(
           'p',
-          { class: 'muted small' },
-          'Hidden for now: ',
-          [notReady ? `${notReady} still being researched` : '', notFollowed ? `${notFollowed} not followed a day ago yet` : ''].filter(Boolean).join(', '),
-          '.',
+          { id: 'hidden-line', class: 'muted small' },
+          `Hidden for now (${waiting.length}): `,
+          [
+            notFollowed ? `${notFollowed} not followed by the app yet` : '',
+            followedToday ? `${followedToday} followed less than a day ago` : '',
+            notReady ? `${notReady} not marked Ready in Airtable` : '',
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          '. ',
+          notFollowed || followedToday ? 'DMs go out a day after the app follows a lead (Setup > Airtable).' : '',
         )
       : null,
+    notFollowed ? followHint() : null,
     h(
       'div',
       { class: 'row-flex small-actions' },
@@ -1155,7 +1166,7 @@ function setupView() {
       h('label', { class: 'field' }, 'Base ID', h('input', { value: at.baseId, oninput: txt(at, 'baseId') })),
       h('label', { class: 'field' }, 'Table', h('input', { value: at.table, oninput: txt(at, 'table') })),
       h('label', { class: 'field' }, 'Which leads to pull (Airtable formula)', h('textarea', { oninput: txt(at, 'formula') }, at.formula)),
-      h('p', { class: 'muted small' }, 'On top of this, the app only pulls leads it followed at least a day ago.'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.followGate, onchange: check(st, 'followGate') }), 'Only DM leads the app followed at least a day ago (recommended). Off: Ready leads can be messaged right away.'),
       h('label', { class: 'field' }, 'Max leads per sync', h('input', { type: 'number', min: 1, max: 1000, value: at.max, oninput: num(at, 'max') })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.autoSync, onchange: check(st, 'autoSync') }), 'Check for new leads on launch and every 15 minutes'),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: at.writeBack, onchange: check(at, 'writeBack') }), 'When a note is sent, update Airtable: Status = Sent, Channel = Instagram, Sent at = today, Touches = 1'),
@@ -1227,6 +1238,20 @@ function followStatus(f) {
       empty: 'Nobody new to follow. Checking Airtable again in 30 minutes.',
       error: 'Hit a snag (see Recent below). Trying again in 10 minutes.',
     }[kind] || 'Running.'
+  );
+}
+
+// On the Leads screen, when leads are waiting on the follow step but following isn't running.
+function followHint() {
+  const f = S.follow;
+  if (f?.enabled && !['paused', 'error', 'setup'].includes(f.phase.kind)) return null;
+  return h(
+    'p',
+    { id: 'follow-hint', class: `status ${followDot() === 'bad' ? 'error' : ''}` },
+    'Following: ',
+    followStatus(f),
+    ' ',
+    h('button', { class: 'link', onclick: () => ((S.view = 'follow'), render()) }, 'Open Follow'),
   );
 }
 
@@ -1379,6 +1404,8 @@ document.addEventListener('keydown', (e) => {
     airtable: { ...DEFAULT_SETTINGS.airtable, ...saved.airtable },
     eleven: { ...DEFAULT_SETTINGS.eleven, ...saved.eleven },
   };
+  // The cap used to default to 100, which is fewer leads than the formula matches.
+  if (S.settings.airtable.max === 100) S.settings.airtable.max = DEFAULT_SETTINGS.airtable.max;
   S.prospects = (await store.get('kv', 'prospects')) || [];
   const fixedSegs = S.template.filter((s) => s.kind === 'fixed');
   if (fixedSegs.length && fixedSegs.every((s) => !S.lens[fixedKey(s)])) S.view = 'setup';

@@ -189,9 +189,6 @@ export function markSentAirtable(at, recordId) {
   return patch(at, recordId, { Status: 'Sent', Channel: 'Instagram', 'Sent at': today, Touches: 1 });
 }
 
-// DMs only go to leads the follow step followed at least a day earlier.
-export const FOLLOWED_A_DAY_AGO = "IS_BEFORE({IG followed at}, DATEADD(NOW(), -1, 'days'))";
-
 // Leads still to follow: not skipped, not followed yet, and not already messaged.
 export const FOLLOW_FORMULA =
   "AND({Instagram}!='', {Track}!='Skip', {IG followed at}='', OR({Status}='New', {Status}='Researched', {Status}='Ready'))";
