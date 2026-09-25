@@ -59,6 +59,7 @@ function readTime(text) {
 
 const DEFAULT_SETTINGS = {
   gapMs: 0,
+  matchLevels: true,
   leadInMs: 300,
   monitor: true,
   autoOpen: true,
@@ -413,11 +414,29 @@ async function autoVoiceAll() {
   setBusy('');
 }
 
+// How loud the recorded-once parts (the pitch) are, remembered until one is re-recorded.
+let pitchLoudness = { key: '', lufs: -Infinity };
+async function pitchLevel() {
+  const fixed = S.template.filter((s) => s.kind === 'fixed');
+  const key = fixed.map((s) => `${fixedKey(s)}:${S.lens[fixedKey(s)]}`).join('|');
+  if (key !== pitchLoudness.key) {
+    const parts = await Promise.all(fixed.map((s) => getAudio(fixedKey(s))));
+    const joined = audio.concat(parts.filter(Boolean), 0);
+    pitchLoudness = { key, lufs: joined.length ? audio.loudness(joined) : -Infinity };
+  }
+  return pitchLoudness.lufs;
+}
+
 async function buildClip(p) {
   const missing = missingParts(p);
   if (missing.length) throw new Error(`Still needs: ${missing.map((s) => s.label).join(', ')}`);
+  // Each lead's own lines are turned up or down to sound as loud as the pitch.
+  const target = S.settings.matchLevels ? await pitchLevel() : -Infinity;
   const parts = [];
-  for (const seg of S.template) parts.push(await getAudio(partKey(p, seg)));
+  for (const seg of S.template) {
+    const samples = await getAudio(partKey(p, seg));
+    parts.push(seg.kind === 'slot' && Number.isFinite(target) ? audio.matchLoudness(samples, target).samples : samples);
+  }
   return audio.concat(parts, S.settings.gapMs);
 }
 
@@ -1257,6 +1276,7 @@ function setupView() {
     h(
       'div',
       { class: 'card' },
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.matchLevels, onchange: check(st, 'matchLevels') }), "Match each lead's intro to the pitch's volume (recommended)"),
       h('label', { class: 'field' }, 'Extra pause between parts (ms, 0 = seamless crossfade)', h('input', { type: 'number', min: 0, max: 1000, value: st.gapMs, oninput: num(st, 'gapMs') })),
       h('label', { class: 'field' }, 'Silence before the clip starts in Instagram (ms)', h('input', { type: 'number', min: 0, max: 2000, value: st.leadInMs, oninput: num(st, 'leadInMs') })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.monitor, onchange: check(st, 'monitor') }), 'Play the clip out loud while it goes into Instagram'),

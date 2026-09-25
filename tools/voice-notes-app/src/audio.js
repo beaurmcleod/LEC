@@ -63,6 +63,11 @@ export function normalize(s, targetDb = -20) {
   for (const x of s) peak = Math.max(peak, Math.abs(x));
   if (peak > 0) g = Math.min(g, 2 / peak);
   g = Math.min(g, 16);
+  return softLimit(s, g);
+}
+
+// Applies a gain, rounding off anything above 0.8 so peaks never clip.
+function softLimit(s, g) {
   const out = new Float32Array(s.length);
   for (let i = 0; i < s.length; i++) {
     const x = s[i] * g;
@@ -70,6 +75,73 @@ export function normalize(s, targetDb = -20) {
     out[i] = a <= 0.8 ? x : Math.sign(x) * (0.8 + 0.19 * Math.tanh((a - 0.8) / 0.19));
   }
   return out;
+}
+
+// K-weighting from ITU-R BS.1770 (48 kHz): a gentle high shelf plus a low cut, so the measurement follows how
+// loud speech sounds rather than how much low rumble it has.
+const K_STAGES = [
+  { b: [1.53512485958697, -2.69169618940638, 1.19839281085285], a: [-1.69065929318241, 0.73248077421585] },
+  { b: [1, -2, 1], a: [-1.99004745483398, 0.99007225036621] },
+];
+
+function kWeighted(s) {
+  let x = s;
+  for (const { b, a } of K_STAGES) {
+    const y = new Float32Array(x.length);
+    let x1 = 0;
+    let x2 = 0;
+    let y1 = 0;
+    let y2 = 0;
+    for (let i = 0; i < x.length; i++) {
+      const v = b[0] * x[i] + b[1] * x1 + b[2] * x2 - a[0] * y1 - a[1] * y2;
+      x2 = x1;
+      x1 = x[i];
+      y2 = y1;
+      y1 = v;
+      y[i] = v;
+    }
+    x = y;
+  }
+  return x;
+}
+
+// How loud a recording sounds, in LUFS (the broadcast loudness measure, BS.1770). Measured over 400 ms windows,
+// leaving out silence and quiet stretches, so pauses between sentences don't drag a long pitch's number down.
+export function loudness(s) {
+  const k = kWeighted(s);
+  const block = Math.min(ms(400), k.length);
+  const hop = ms(100);
+  if (!block) return -Infinity;
+  // Running sum of squares, so each window is two lookups.
+  const cum = new Float64Array(k.length + 1);
+  for (let i = 0; i < k.length; i++) cum[i + 1] = cum[i] + k[i] * k[i];
+  const powers = [];
+  for (let at = 0; at + block <= k.length; at += hop) powers.push((cum[at + block] - cum[at]) / block);
+  const lufs = (p) => -0.691 + 10 * Math.log10(p + 1e-15);
+  const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+  const heard = powers.filter((p) => lufs(p) > -70);
+  if (!heard.length) return -Infinity;
+  const gate = lufs(mean(heard)) - 10;
+  const speech = heard.filter((p) => lufs(p) > gate);
+  return lufs(mean(speech.length ? speech : heard));
+}
+
+// Turns a part up or down to sound as loud as targetLufs (at most maxDb either way), keeping peaks from clipping.
+// Returns the new samples and the change in dB.
+export function matchLoudness(s, targetLufs, maxDb = 18) {
+  const start = loudness(s);
+  if (!Number.isFinite(start) || !Number.isFinite(targetLufs)) return { samples: s, db: 0 };
+  let db = Math.max(-maxDb, Math.min(maxDb, targetLufs - start));
+  if (Math.abs(db) < 0.2) return { samples: s, db: 0 };
+  let out = softLimit(s, 10 ** (db / 20));
+  // The limiter takes a little off loud takes that get turned up, so correct for it.
+  for (let i = 0; i < 2; i++) {
+    const miss = targetLufs - loudness(out);
+    if (Math.abs(miss) < 0.2) break;
+    db = Math.max(-maxDb, Math.min(maxDb, db + miss));
+    out = softLimit(s, 10 ** (db / 20));
+  }
+  return { samples: out, db };
 }
 
 export function fade(s, fadeMs = 12) {
