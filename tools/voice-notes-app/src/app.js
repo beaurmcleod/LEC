@@ -2,24 +2,59 @@ import * as store from './store.js';
 import * as audio from './audio.js';
 import * as leads from './leads.js';
 
-// Your two custom lines, then the whole pitch in one take. Setup can split the pitch into more parts.
+// Read this off the screen when recording the pitch. About 32 seconds at a normal pace.
+const PITCH_SCRIPT = `Figured a real voice beats another copy-paste DM. I'm Garrett with Torrey Labs — we're a peptide company here in San Diego, every batch third-party tested.
+
+Your clients are probably already asking you about peptides for weight loss or recovery. We give you your own link: they order straight from us, you never touch product or money, and you get twenty percent on every order, for life. One of our trainers already clears a grand a month, just from referrals.
+
+Worth a look? Reply and I'll send the details.`;
+
+// One custom intro line per lead, then the whole pitch in one take. Setup can split the pitch into more parts.
 const DEFAULT_TEMPLATE = [
-  { id: 'greet', kind: 'slot', label: 'Greeting', script: 'Hi {name}!' },
-  { id: 'specific', kind: 'slot', label: 'About them', script: "I see you're the {role} at {business}." },
-  { id: 'pitch', kind: 'fixed', label: 'Pitch' },
+  { id: 'intro', kind: 'slot', label: 'Intro', script: "Hey {name} — saw you're the {role} at {business}." },
+  { id: 'pitch', kind: 'fixed', label: 'Pitch', script: PITCH_SCRIPT },
 ];
 
-// Earlier versions split the pitch in two around "About them". An untouched copy of that layout moves to
-// the one-take pitch; anything already recorded for the two halves is joined so nothing is lost.
+const OLD_SCRIPTS = { greet: 'Hi {name}!', specific: "I see you're the {role} at {business}." };
+const OLD_SHAPES = {
+  'greet:slot,pitch1:fixed,specific:slot,pitch2:fixed': ['pitch1', 'pitch2'],
+  'greet:slot,specific:slot,pitch:fixed': ['pitch'],
+};
+
+// Earlier layouts had two custom lines ("Hi {name}!" and "I see you're the...") and, before that, a pitch split
+// in two. An untouched copy moves to the single intro line. A recorded pitch is kept (halves joined), and the
+// old per-lead lines are cleared so every lead shows the new intro as not recorded yet. Edited layouts stay
+// as they are, but the pitch still gets the script if it has none.
 async function migrateTemplate(t) {
   const shape = t.map((seg) => `${seg.id}:${seg.kind}`).join(',');
-  if (shape !== 'greet:slot,pitch1:fixed,specific:slot,pitch2:fixed') return t;
-  const next = [t[0], t[2], structuredClone(DEFAULT_TEMPLATE[2])];
-  const halves = (await Promise.all(['fixed:pitch1', 'fixed:pitch2'].map(getAudio))).filter(Boolean);
-  if (halves.length) await setAudio(fixedKey(next[2]), audio.concat(halves, 0), { source: 'joined' });
-  for (const key of ['fixed:pitch1', 'fixed:pitch2']) await delAudio(key);
+  const pitchIds = OLD_SHAPES[shape];
+  const untouched = t.filter((seg) => seg.kind === 'slot').every((seg) => seg.script === OLD_SCRIPTS[seg.id]);
+  if (!pitchIds || !untouched) {
+    const pitch = t.find((seg) => seg.kind === 'fixed' && seg.id === 'pitch');
+    if (pitch && pitch.script == null) {
+      pitch.script = PITCH_SCRIPT;
+      await store.put('kv', 'template', t);
+    }
+    return t;
+  }
+  const next = structuredClone(DEFAULT_TEMPLATE);
+  const pitch = next[1];
+  const oldPitch = t.find((seg) => seg.id === 'pitch');
+  if (oldPitch?.label) pitch.label = oldPitch.label;
+  if (pitchIds.length > 1) {
+    const halves = (await Promise.all(pitchIds.map((id) => getAudio(`fixed:${id}`)))).filter(Boolean);
+    if (halves.length) await setAudio(fixedKey(pitch), audio.concat(halves, 0), { source: 'joined' });
+    for (const id of pitchIds) await delAudio(`fixed:${id}`);
+  }
+  for (const key of Object.keys(S.lens)) if (/^slot:.*:(greet|specific)$/.test(key)) await delAudio(key);
   await store.put('kv', 'template', next);
   return next;
+}
+
+// A rough read-aloud time, so the pitch stays short.
+function readTime(text) {
+  const words = (text || '').trim().split(/\s+/).filter(Boolean).length;
+  return words ? `${words} words · about ${Math.round(words / 160 * 60)} seconds out loud` : '';
 }
 
 const DEFAULT_SETTINGS = {
@@ -992,6 +1027,21 @@ function segmentCard(seg, i) {
     h('input', { value: seg.label, 'aria-label': 'Part name', oninput: (e) => ((seg.label = e.target.value), saveTemplate().then(flashSaved)) }),
     fixed
       ? [
+          h(
+            'label',
+            { class: 'field' },
+            'Script (read it while you record)',
+            h('textarea', {
+              class: 'read-along',
+              'aria-label': `${seg.label} script`,
+              oninput: (e) => {
+                seg.script = e.target.value;
+                e.target.nextSibling.textContent = readTime(seg.script);
+                saveTemplate().then(flashSaved);
+              },
+            }, seg.script || ''),
+            h('span', { class: 'muted small' }, readTime(seg.script)),
+          ),
           meter(key),
           h(
             'div',
@@ -1003,7 +1053,7 @@ function segmentCard(seg, i) {
             file,
           ),
         ]
-      : h('label', { class: 'field' }, 'What you say (per lead)', h('input', { value: seg.script, placeholder: 'Hi {name}!', oninput: (e) => ((seg.script = e.target.value), saveTemplate().then(flashSaved)) })),
+      : h('label', { class: 'field' }, 'What you say (per lead)', h('input', { value: seg.script, placeholder: 'Hey {name}!', oninput: (e) => ((seg.script = e.target.value), saveTemplate().then(flashSaved)) })),
   );
 }
 
@@ -1072,7 +1122,7 @@ function setupView() {
     h(
       'ol',
       { class: 'steps' },
-      h('li', {}, 'Record your pitch below once, in one take. Use the same mic and spot you will use for the custom lines.'),
+      h('li', {}, 'Record your pitch below once, in one take, reading the script on screen. Use the same mic and spot you will use for the intro line.'),
       h('li', {}, 'Connect Airtable. New leads from Make show up by themselves (checked on launch and every 15 minutes).'),
       h('li', {}, 'Turn on Follow. It follows each lead and likes their latest post, up to your daily limit. A lead shows up for a DM a day after it was followed.'),
       h('li', {}, 'Hit Start next lead. You get a short script, and their profile opens in Instagram on the right.'),
@@ -1082,6 +1132,7 @@ function setupView() {
     S.template.map(segmentCard),
     h('div', { class: 'row-flex' }, h('button', { onclick: () => addSegment('fixed') }, '+ Pitch part'), h('button', { onclick: () => addSegment('slot') }, '+ Custom line')),
     h('p', { class: 'muted small' }, 'Want a custom line in the middle of the pitch? Add a pitch part, then use the arrows to put the line between the two.'),
+    h('p', { class: 'muted small' }, 'Before you record the pitch: only say "every batch third-party tested" if you can send the certificate the moment someone asks, and keep the referral example true to the numbers.'),
     h('p', { class: 'muted small' }, `Custom lines can use: ${PLACEHOLDERS.map((k) => `{${k}}`).join(' ')}. Recorded parts total ${secs(total)}; keep the whole note under 60s.`),
 
     h('h2', {}, 'Splicing and sending'),

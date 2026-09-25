@@ -252,3 +252,4 @@ ol.steps { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13
 .log-row { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; padding: 6px 0; border-top: 1px solid var(--line); }
 .log-row:first-child { border-top: 0; }
 .inline-field { grid-template-columns: 1fr 90px; align-items: center; font-size: 13px; }
+textarea.read-along { font-size: 15px; line-height: 1.55; min-height: 190px; color: var(--text); }
