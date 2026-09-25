@@ -248,6 +248,8 @@ ol.steps { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13
 .follow-status.warn { color: var(--warn); }
 .follow-status.bad { color: var(--bad); }
 .lead.static { border: 1px solid var(--line); background: var(--card); }
+.lead.wait { padding: 8px 12px; }
+.lead.wait .tag { white-space: nowrap; }
 .card.log { gap: 0; padding: 4px 12px; }
 .log-row { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; padding: 6px 0; border-top: 1px solid var(--line); }
 .log-row:first-child { border-top: 0; }

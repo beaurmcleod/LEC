@@ -612,10 +612,13 @@ async function sync({ quiet = false } = {}) {
     const firstPull = !S.prospects.some((p) => p.airtableId);
     const pulled = await window.api.pullAirtable(at);
     S.sync.pulled = pulled.length;
-    const { added, refreshed } = await merge(pulled, { markNew: !firstPull });
+    const { added } = await merge(pulled, { markNew: !firstPull });
     S.sync.at = Date.now();
     S.sync.error = '';
-    if (!quiet) toast(`${added} new lead${added === 1 ? '' : 's'}, ${refreshed} refreshed.`);
+    const todo = S.prospects.filter((p) => p.status === 'todo');
+    const ready = todo.filter(shown).length;
+    if (!quiet)
+      toast(`Synced ${pulled.length} leads from Airtable (${added} new). ${ready} ready to send, ${todo.length - ready} waiting.`, 6000);
   } catch (e) {
     S.sync.error = errText(e);
     if (!quiet) toast(atError(S.sync.error), 8000);
@@ -776,7 +779,8 @@ function leadsView() {
   const need = missingFixed();
   const next = todoList()[0];
   const connected = !!S.settings.airtable.token;
-  const waiting = S.prospects.filter((p) => p.status === 'todo' && !shown(p));
+  const waiting = S.prospects.filter((p) => p.status === 'todo' && !shown(p)).sort(byWaitOrder);
+  const showWaiting = S.filter === 'todo' || S.filter === 'all';
   const notReady = waiting.filter((p) => !researched(p)).length;
   const gate = S.settings.followGate;
   const notFollowed = gate ? waiting.filter((p) => p.airtableId && !p.followedAt).length : 0;
@@ -829,30 +833,42 @@ function leadsView() {
     ),
     list.length
       ? h('div', { class: 'list' }, list.map(leadRow))
-      : h('p', { class: 'muted' }, waiting.length ? 'Nothing to send yet.' : S.prospects.length ? 'Nothing here.' : 'No leads yet. Connect Airtable in Setup, import a CSV, or open a profile in Instagram on the right and hit Grab from IG.'),
-    waiting.length
-      ? h(
+      : h(
           'p',
-          { id: 'hidden-line', class: 'muted small' },
-          `Hidden for now (${waiting.length}): `,
-          [
-            notFollowed ? `${notFollowed} not followed by the app yet` : '',
-            followedToday ? `${followedToday} followed less than a day ago` : '',
-            notReady ? `${notReady} not marked Ready in Airtable` : '',
-          ]
-            .filter(Boolean)
-            .join(' · '),
-          '. ',
-          notFollowed || followedToday ? 'DMs go out a day after the app follows a lead (Setup > Airtable).' : '',
-        )
-      : null,
-    notFollowed ? followHint() : null,
-    gated
-      ? h(
-          'p',
-          {},
-          h('button', { id: 'skip-gate', onclick: skipGate }, `Show ${gated} lead${gated === 1 ? '' : 's'} now (skip the follow wait)`),
-        )
+          { class: 'muted' },
+          waiting.length && showWaiting
+            ? 'Nothing ready to send yet. Your leads are below, with what each one is waiting on.'
+            : S.prospects.length
+              ? 'Nothing here.'
+              : 'No leads yet. Connect Airtable in Setup, import a CSV, or open a profile in Instagram on the right and hit Grab from IG.',
+        ),
+    showWaiting && waiting.length
+      ? [
+          h('h2', { id: 'waiting-head' }, `Waiting (${waiting.length})`),
+          h(
+            'p',
+            { id: 'hidden-line', class: 'muted small' },
+            [
+              notFollowed ? `${notFollowed} not followed yet` : '',
+              followedToday ? `${followedToday} followed less than a day ago` : '',
+              notReady ? `${notReady} not marked Ready in Airtable` : '',
+            ]
+              .filter(Boolean)
+              .join(' · '),
+            '. ',
+            notFollowed || followedToday ? 'DMs go out a day after the app follows a lead.' : '',
+          ),
+          notFollowed ? followHint() : null,
+          gated
+            ? h(
+                'p',
+                {},
+                h('button', { id: 'skip-gate', onclick: skipGate }, `Send to ${gated} Ready lead${gated === 1 ? '' : 's'} now (skip the follow wait)`),
+              )
+            : null,
+          h('div', { class: 'list', id: 'waiting-list' }, waiting.slice(0, WAIT_SHOWN).map(waitRow)),
+          waiting.length > WAIT_SHOWN ? h('p', { class: 'muted small' }, `...and ${waiting.length - WAIT_SHOWN} more.`) : null,
+        ]
       : null,
     h(
       'div',
@@ -864,6 +880,40 @@ function leadsView() {
       file,
     ),
     S.busy ? h('p', { class: 'muted small' }, S.busy) : null,
+  );
+}
+
+const WAIT_SHOWN = 60;
+
+// What a lead is waiting on before it can be messaged.
+function waitReasons(p) {
+  const out = [];
+  if (S.settings.followGate && p.airtableId) {
+    if (!p.followedAt) out.push(['not followed yet', 'warn']);
+    else if (!followedLongEnough(p)) {
+      const hrs = Math.ceil((Date.parse(p.followedAt) + DAY_MS - Date.now()) / 3600e3);
+      out.push([`followed · DM in ${hrs <= 1 ? 'under 1h' : `${hrs}h`}`, '']);
+    }
+  }
+  if (!researched(p)) out.push([`status: ${p.atStatus || 'none'}`, '']);
+  return out;
+}
+
+// Ready leads first, then followed ones, soonest to be messageable first.
+const waitRank = (p) => (researched(p) ? 0 : 2) + (p.followedAt ? 0 : 1);
+const byWaitOrder = (a, b) => waitRank(a) - waitRank(b) || (Date.parse(a.followedAt) || 0) - (Date.parse(b.followedAt) || 0);
+
+function waitRow(p) {
+  return h(
+    'div',
+    { class: 'lead static wait' },
+    h(
+      'div',
+      { class: 'who' },
+      h('span', {}, h('b', {}, p.name || '(no name)')),
+      h('span', { class: 'muted small' }, [p.handle ? `@${p.handle}` : 'no handle', p.role, p.business !== p.name ? p.business : ''].filter(Boolean).join(' · ')),
+    ),
+    waitReasons(p).map(([text, cls]) => h('span', { class: `tag ${cls}` }, text)),
   );
 }
 
