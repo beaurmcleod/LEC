@@ -138,7 +138,8 @@ async function igPage(action) {
     return r.width > 0 && r.height > 0;
   };
   const buttons = () => [...document.querySelectorAll('button, [role=button]')].filter(shown);
-  const byText = (re) => buttons().find((el) => re.test(el.textContent.trim()));
+  // Visible text only, so an icon's hidden title doesn't change what a button says.
+  const byText = (re) => buttons().find((el) => re.test((el.innerText ?? el.textContent).trim()));
   const byLabel = (re, not) =>
     [...document.querySelectorAll('[aria-label]')].find((el) => {
       const label = el.getAttribute('aria-label');

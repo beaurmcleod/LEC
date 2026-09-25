@@ -65,7 +65,7 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
       if (!click(wc, await run(wc, 'clickFollow'))) return { result: 'failed', note: "couldn't click Follow" };
       const a = await run(wc, 'afterFollow');
       if (a.state === 'blocked') return { result: 'blocked', note: a.note };
-      if (a.state !== 'following' && a.state !== 'requested') return { result: 'failed', note: "the follow didn't go through" };
+      if (a.state !== 'following' && a.state !== 'requested') return { result: 'failed', clicked: true, note: "couldn't confirm the follow" };
       followed = true;
       requested = a.state === 'requested';
     }
@@ -89,7 +89,8 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
 
   async function settle(lead, r) {
     const now = Date.now();
-    if (r.followed) F.recordFollow(state, now);
+    // A click that couldn't be confirmed still counts toward today's limit, to stay on the safe side.
+    if (r.followed || r.clicked) F.recordFollow(state, now);
     if (r.result === 'blocked') state.pausedUntil = now + F.LIMITS.blockPauseMs;
     if (r.result === 'notfound') state.skipped[lead.id] = 'not found';
     if (r.result === 'loggedout' || r.result === 'failed') {

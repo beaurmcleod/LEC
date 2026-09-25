@@ -85,7 +85,10 @@ export async function followPage(action) {
     return r.width > 0 && r.height > 0;
   };
   const buttons = () => [...document.querySelectorAll('button, [role=button]')].filter(shown);
-  const byText = (re) => buttons().find((el) => re.test(el.textContent.trim()));
+  // Visible text only: Instagram's icons carry hidden titles (the Following button's "Down chevron icon")
+  // that textContent would include.
+  const label = (el) => (el.innerText ?? el.textContent).trim();
+  const byText = (re) => buttons().find((el) => re.test(label(el)));
   const waitFor = async (fn, ms) => {
     for (const end = Date.now() + ms; ; await sleep(250)) {
       const found = fn();
