@@ -62,7 +62,7 @@
       src.connect(monitor).connect(c.destination);
     }
     src.start(c.currentTime + (job.leadInMs || 0) / 1000);
-    post('playing', { label: job.label, seconds: job.buffer.duration });
+    post('playing', { label: job.label, seconds: job.buffer.duration, outLoud: !!job.monitor });
 
     let finished = false;
     let stopped = false;

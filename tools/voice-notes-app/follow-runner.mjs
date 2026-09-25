@@ -62,7 +62,7 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
     let followed = false;
     let requested = p.state === 'requested';
     if (p.state === 'follow') {
-      if (!click(wc, await run(wc, 'clickFollow'))) return { result: 'failed', note: "couldn't click Follow" };
+      if (!(await click(wc, await run(wc, 'clickFollow')))) return { result: 'failed', note: "couldn't click Follow" };
       const a = await run(wc, 'afterFollow');
       if (a.state === 'blocked') return { result: 'blocked', note: a.note };
       if (a.state !== 'following' && a.state !== 'requested') return { result: 'failed', clicked: true, note: "couldn't confirm the follow" };
@@ -78,7 +78,7 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
       const post = await run(wc, 'post');
       if (post.state === 'blocked') return { result: 'blocked', followed, note: post.note };
       liked = post.state === 'liked';
-      if (post.state === 'like' && click(wc, await run(wc, 'clickLike'))) {
+      if (post.state === 'like' && (await click(wc, await run(wc, 'clickLike')))) {
         const l = await run(wc, 'afterLike');
         if (l.state === 'blocked') return { result: 'blocked', followed, note: l.note };
         liked = l.state === 'liked';

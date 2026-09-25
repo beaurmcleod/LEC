@@ -61,7 +61,7 @@ const DEFAULT_SETTINGS = {
   gapMs: 0,
   matchLevels: true,
   leadInMs: 300,
-  monitor: true,
+  monitorWatching: false,
   autoOpen: true,
   autoSend: true,
   autoSync: true,
@@ -115,6 +115,9 @@ const S = {
   armed: null,
   sending: null,
   send: { pid: null, state: '', text: '' },
+  // Sends running in the hidden Instagram tab while you move on: the one in progress and the ones waiting.
+  bg: { current: null, jobs: [] },
+  watchSend: false,
   sync: { at: 0, error: '', running: false, pulled: null },
   follow: null,
 };
@@ -444,9 +447,10 @@ async function buildClip(p) {
 
 // Status updates from the Instagram pane. Send waits on these; otherwise they drive the status line.
 const waiters = new Set();
-function waitForStatus(states, ms) {
+function waitForStatus(states, ms, target = 'dm') {
   return new Promise((resolve) => {
     const w = {
+      target,
       states: [...states, 'error'],
       resolve: (m) => {
         clearTimeout(timer);
@@ -467,7 +471,9 @@ const STATUS_TEXT = {
 };
 
 window.api.onStatus((msg) => {
-  for (const w of [...waiters]) if (w.states.includes(msg.state)) w.resolve(msg);
+  const target = msg.target || 'dm';
+  for (const w of [...waiters]) if (w.target === target && w.states.includes(msg.state)) w.resolve(msg);
+  if (target !== 'dm') return;
   if (['done', 'stopped', 'idle'].includes(msg.state)) S.armed = null;
   if (S.sending || !S.send.pid) return;
   let text = STATUS_TEXT[msg.state] ?? '';
@@ -486,65 +492,193 @@ function setSend(pid, state, text) {
   }
 }
 
+// Opens their DM in one of the Instagram tabs, plays the clip into the mic and hits send.
+// Returns '' once it's sent, or which step needs a person ('nodm', 'nomic', 'early', 'nosend', 'yours'); throws on errors.
+async function deliver(p, samples, { target, monitor, say, onPlaying = () => {} }) {
+  const seconds = samples.length / audio.SR;
+  say('Opening their DM...');
+  const dmOpen = await window.api.igDo('openDm', p.handle, target).then(
+    () => true,
+    () => false,
+  );
+
+  say('Loading the clip...');
+  const armed = waitForStatus(['armed'], 10000, target);
+  await window.api.arm(audio.encodeWav(samples), { label: p.name, leadInMs: S.settings.leadInMs, monitor }, target);
+  const a = await armed;
+  if (a.state !== 'armed') throw new Error(a.message || "Instagram didn't take the clip");
+  if (target === 'dm') S.armed = p.id;
+  if (!dmOpen) return 'nodm';
+
+  say(`Recording into their DM (${fmt(seconds)})...`);
+  const playing = waitForStatus(['playing'], 8000, target);
+  const micClicked = await window.api.igDo('clickMic', null, target).then(
+    () => true,
+    () => false,
+  );
+  const pl = micClicked ? await playing : { state: 'timeout' };
+  if (pl.state === 'error') throw new Error(pl.message);
+  if (pl.state !== 'playing') return 'nomic';
+  onPlaying(seconds);
+
+  const done = await waitForStatus(['done', 'armed'], (seconds + 15) * 1000, target);
+  if (done.state === 'armed') return 'early';
+  if (done.state !== 'done') throw new Error(done.message || 'the clip never finished playing');
+
+  if (!S.settings.autoSend) return 'yours';
+  say('Sending...');
+  const stopped = waitForStatus(['stopped'], 8000, target);
+  const sendClicked = await window.api.igDo('clickSend', null, target).then(
+    () => true,
+    () => false,
+  );
+  const st = sendClicked ? await stopped : { state: 'timeout' };
+  return st.state === 'stopped' ? '' : 'nosend';
+}
+
+// What to do by hand when sending while watching.
+const HAND_OFF = {
+  nodm: "Couldn't open their DM by itself. The clip is loaded: open their DM in Instagram and click the mic.",
+  nomic: 'The clip is loaded. Click the mic in their DM and it plays in.',
+  early: 'Instagram stopped recording early. The clip is reloaded: click the mic to try again.',
+  nosend: 'Clip is in their DM. Hit send in Instagram, then Mark sent.',
+  yours: 'Clip is in their DM. Hit send in Instagram, then Mark sent.',
+};
+// Why a background send didn't go through.
+const BG_FAIL = {
+  nodm: "couldn't open their DM",
+  nomic: "couldn't start a voice message in their DM",
+  early: 'Instagram stopped recording early',
+  nosend: "couldn't hit Instagram's send button",
+};
+
+async function clipFor(p) {
+  if (!p.handle) return toast('Add their Instagram handle first (Edit details).'), null;
+  try {
+    const samples = await buildClip(p);
+    if (samples.length / audio.SR > MAX_SECONDS) toast('Heads up: this clip is over 60 seconds. Instagram may cut it off.', 7000);
+    return samples;
+  } catch (e) {
+    return toast(e.message), null;
+  }
+}
+
+// Send: runs in the background so you can go straight to the next lead. Needs auto-send, since nobody is
+// watching the background tab to hit send by hand.
+function sendLead(p) {
+  if (S.rec || S.sending || p.status === 'sending') return;
+  return S.settings.autoSend ? queueSend(p) : sendNow(p);
+}
+
+async function queueSend(p) {
+  const samples = await clipFor(p);
+  if (!samples) return;
+  stopPlay();
+  p.status = 'sending';
+  delete p.sendIssue;
+  await saveProspects();
+  S.bg.jobs.push({ pid: p.id, samples });
+  toast(`Sending to @${p.handle} in the background.`);
+  if (S.currentId === p.id) {
+    const next = nextTodo(p.id);
+    if (next) openLead(next.id);
+    else {
+      S.currentId = null;
+      render();
+    }
+  } else render();
+  runQueue();
+}
+
+// One send at a time in the hidden tab, silently.
+async function runQueue() {
+  if (S.bg.current) return;
+  while (S.bg.jobs.length) {
+    const job = S.bg.jobs.shift();
+    const p = S.prospects.find((x) => x.id === job.pid);
+    if (!p || p.status !== 'sending') continue;
+    const cur = (S.bg.current = { pid: p.id, handle: p.handle, text: 'Starting...', until: 0 });
+    paintQueue();
+    let issue = '';
+    try {
+      const left = await deliver(p, job.samples, {
+        target: 'send',
+        monitor: false,
+        say: (text) => ((cur.text = text), paintQueue()),
+        onPlaying: (sec) => ((cur.until = Date.now() + sec * 1000), paintQueue()),
+      });
+      if (left) issue = BG_FAIL[left] || left;
+    } catch (e) {
+      issue = errText(e);
+    }
+    if (issue) {
+      window.api.disarm('send');
+      p.status = 'todo';
+      p.sendIssue = issue;
+      await saveProspects();
+      toast(`Didn't send to @${p.handle}: ${issue}. It's back in To do.`, 8000);
+    } else {
+      toast(`Sent to @${p.handle} ✓`);
+      await markSent(p);
+    }
+    S.bg.current = null;
+    paintQueue();
+    refreshQuietly();
+  }
+  if (S.watchSend) {
+    S.watchSend = false;
+    showRightPane();
+  }
+}
+
+// Updates the screen after a background change, unless that would interrupt recording or typing.
+function refreshQuietly() {
+  if (S.rec || S.view === 'setup' || document.activeElement?.matches?.('input, textarea')) return paintQueue();
+  render();
+}
+
+// The strip under the tabs that shows what's sending in the background.
+function queueStrip() {
+  return h('div', { id: 'send-queue', class: 'queue', hidden: true });
+}
+function paintQueue() {
+  const el = document.getElementById('send-queue');
+  if (!el) return;
+  const cur = S.bg.current;
+  el.hidden = !cur;
+  if (!cur) return el.replaceChildren();
+  const left = cur.until ? ` · ${countdown(cur.until - Date.now())} left` : '';
+  const more = S.bg.jobs.length ? ` · ${S.bg.jobs.length} more queued` : '';
+  el.replaceChildren(
+    h('span', { class: 'grow' }, h('b', {}, `Sending to @${cur.handle}`), ` ${cur.text.replace(/\s*\(\d+:\d+\)\.\.\.$/, '...')}${left}${more}`),
+    h('button', { class: 'link', onclick: toggleWatch }, S.watchSend ? 'Hide' : 'Watch'),
+  );
+}
+setInterval(() => S.bg.current?.until && paintQueue(), 1000);
+
+function toggleWatch() {
+  S.watchSend = !S.watchSend;
+  showRightPane();
+  paintQueue();
+}
+
+// Sends in the Instagram pane you can see, handing off to you if a step needs a click.
 async function sendNow(p) {
   if (S.rec || S.sending) return;
-  if (!p.handle) return toast('Add their Instagram handle first (Edit details).');
-  let samples;
-  try {
-    samples = await buildClip(p);
-  } catch (e) {
-    return toast(e.message);
-  }
+  const samples = await clipFor(p);
+  if (!samples) return;
   stopPlay();
-  const seconds = samples.length / audio.SR;
-  if (seconds > MAX_SECONDS) toast('Heads up: this clip is over 60 seconds. Instagram may cut it off.', 7000);
   const say = (text, state = 'working') => setSend(p.id, state, text);
-  // Anything the app can't do by itself is left for you with the clip still loaded, so one click finishes it.
-  const handOff = (text) => {
-    say(text, 'armed');
-    window.api.showInstagram();
-  };
   S.sending = p.id;
+  delete p.sendIssue;
   render();
   try {
-    say('Opening their DM...');
-    const dmOpen = await window.api.igDo('openDm', p.handle).then(
-      () => true,
-      () => false,
-    );
-
-    say('Loading the clip...');
-    const armed = waitForStatus(['armed'], 10000);
-    await window.api.arm(audio.encodeWav(samples), { label: p.name, leadInMs: S.settings.leadInMs, monitor: S.settings.monitor });
-    const a = await armed;
-    if (a.state !== 'armed') throw new Error(a.message || "Instagram didn't take the clip. Try Send again.");
-    S.armed = p.id;
-    if (!dmOpen) return handOff("Couldn't open their DM by itself. The clip is loaded: open their DM in Instagram and click the mic.");
-
-    say(`Recording into their DM (${fmt(seconds)})...`);
-    const playing = waitForStatus(['playing'], 8000);
-    const micClicked = await window.api.igDo('clickMic').then(
-      () => true,
-      () => false,
-    );
-    const pl = micClicked ? await playing : { state: 'timeout' };
-    if (pl.state === 'error') throw new Error(pl.message);
-    if (pl.state !== 'playing') return handOff('The clip is loaded. Click the mic in their DM and it plays in.');
-
-    const done = await waitForStatus(['done', 'armed'], (seconds + 15) * 1000);
-    if (done.state === 'armed') return handOff('Instagram stopped recording early. The clip is reloaded: click the mic to try again.');
-    if (done.state !== 'done') throw new Error(done.message || 'The clip never finished playing. Check Instagram on the right.');
-
-    if (!S.settings.autoSend) return handOff('Clip is in their DM. Hit send in Instagram, then Mark sent.');
-    say('Sending...');
-    const stopped = waitForStatus(['stopped'], 8000);
-    const sendClicked = await window.api.igDo('clickSend').then(
-      () => true,
-      () => false,
-    );
-    const st = sendClicked ? await stopped : { state: 'timeout' };
-    if (st.state !== 'stopped') return handOff('Clip is in their DM. Hit send in Instagram, then Mark sent.');
-
+    const left = await deliver(p, samples, { target: 'dm', monitor: S.settings.monitorWatching, say });
+    if (left) {
+      say(HAND_OFF[left], 'armed');
+      window.api.showInstagram();
+      return;
+    }
     say('Sent ✓', 'done');
     toast(`Sent to @${p.handle} ✓`);
     S.sending = null;
@@ -719,13 +853,23 @@ function nextTodo(fromId) {
   return list.find((p) => S.prospects.indexOf(p) > i) || list[0] || null;
 }
 
-async function setStatus(p, status, { advance = true } = {}) {
-  p.status = status;
-  p.sentAt = status === 'sent' ? Date.now() : null;
+async function markSent(p) {
+  p.status = 'sent';
+  p.sentAt = Date.now();
+  delete p.sendIssue;
   await saveProspects();
   const at = S.settings.airtable;
-  if (status === 'sent' && at.writeBack && at.token && p.airtableId) {
+  if (at.writeBack && at.token && p.airtableId) {
     window.api.markSent(at, p.airtableId).catch((e) => toast(`Marked sent here, but Airtable said: ${errText(e)}`, 8000));
+  }
+}
+
+async function setStatus(p, status, { advance = true } = {}) {
+  if (status === 'sent') await markSent(p);
+  else {
+    p.status = status;
+    p.sentAt = null;
+    await saveProspects();
   }
   if (status === 'todo' || !advance) return render();
   const next = nextTodo(p.id);
@@ -975,6 +1119,8 @@ function leadRow(p) {
   const done = total - missingParts(p).length;
   let pill;
   if (p.status === 'sent') pill = h('span', { class: 'tag ok' }, 'sent');
+  else if (p.status === 'sending') pill = h('span', { class: 'tag' }, 'sending...');
+  else if (p.sendIssue) pill = h('span', { class: 'tag bad', title: p.sendIssue }, 'send failed');
   else if (p.status === 'skipped') pill = h('span', { class: 'tag' }, 'skipped');
   else if (done === total) pill = h('span', { class: 'tag ok' }, 'ready to send');
   else pill = h('span', { class: 'tag warn' }, `${done}/${total} parts`);
@@ -1119,10 +1265,22 @@ function detailView(p) {
     step('3', 'Send'),
     h(
       'button',
-      { class: 'enter', onclick: () => sendNow(p), disabled: blocked || !p.handle },
-      sending ? 'Sending...' : p.handle ? `Send to @${p.handle}` : 'Add their Instagram to send',
-      sending ? null : h('span', {}, '⌘ Enter'),
+      { class: 'enter', onclick: () => sendLead(p), disabled: blocked || !p.handle || p.status === 'sending' },
+      sending || p.status === 'sending' ? 'Sending...' : p.handle ? `Send to @${p.handle}` : 'Add their Instagram to send',
+      sending || p.status === 'sending' ? null : h('span', {}, '⌘ Enter'),
     ),
+    S.settings.autoSend && p.status === 'todo'
+      ? h('p', { class: 'muted small' }, 'Sends in the background, silently, and opens your next lead right away.')
+      : null,
+    p.sendIssue && p.status === 'todo'
+      ? h(
+          'p',
+          { class: 'status error' },
+          `The last send didn't go through: ${p.sendIssue}. Press Send to try again, or `,
+          h('button', { class: 'link', onclick: () => sendNow(p), disabled: blocked }, 'send while watching'),
+          ' to do it in the Instagram pane.',
+        )
+      : null,
     h('p', { id: 'send-status', class: `status ${sendStatus.state}`, hidden: !sendStatus.text }, sendStatus.text),
     p.status === 'todo'
       ? h(
@@ -1137,8 +1295,8 @@ function detailView(p) {
       : h(
           'div',
           { class: 'row-flex' },
-          h('span', { class: 'tag' }, p.status),
-          h('button', { onclick: () => setStatus(p, 'todo') }, 'Move back to to-do'),
+          h('span', { class: 'tag' }, p.status === 'sending' ? 'sending in the background' : p.status),
+          p.status === 'sending' ? null : h('button', { onclick: () => setStatus(p, 'todo') }, 'Move back to to-do'),
           h('span', { class: 'grow' }),
           h('button', { class: 'link', onclick: () => deleteLead(p) }, 'Delete'),
         ),
@@ -1279,7 +1437,7 @@ function setupView() {
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.matchLevels, onchange: check(st, 'matchLevels') }), "Match each lead's intro to the pitch's volume (recommended)"),
       h('label', { class: 'field' }, 'Extra pause between parts (ms, 0 = seamless crossfade)', h('input', { type: 'number', min: 0, max: 1000, value: st.gapMs, oninput: num(st, 'gapMs') })),
       h('label', { class: 'field' }, 'Silence before the clip starts in Instagram (ms)', h('input', { type: 'number', min: 0, max: 2000, value: st.leadInMs, oninput: num(st, 'leadInMs') })),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.monitor, onchange: check(st, 'monitor') }), 'Play the clip out loud while it goes into Instagram'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.monitorWatching, onchange: check(st, 'monitorWatching') }), 'Play the clip out loud when I use Send while watching (background sends are always silent)'),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.autoOpen, onchange: check(st, 'autoOpen') }), "Open the lead's Instagram profile when I open a lead"),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.autoSend, onchange: check(st, 'autoSend') }), "Send hits Instagram's send button for me (off: it stops after recording so I can check it and send myself)"),
     ),
@@ -1525,9 +1683,14 @@ function render() {
   const p = current();
   if (S.currentId && !p) S.currentId = null;
   const body = S.view === 'setup' ? setupView() : S.view === 'follow' ? followView() : p ? detailView(p) : leadsView();
-  $app.replaceChildren(header(), body);
-  // The Follow screen puts the follow tab on the right; everything else shows the DM tab.
-  const want = S.view === 'follow' ? 'follow' : 'dm';
+  $app.replaceChildren(header(), queueStrip(), body);
+  paintQueue();
+  showRightPane();
+}
+
+// The Follow screen puts the follow tab on the right, Watch shows the background send, otherwise the DM tab.
+function showRightPane() {
+  const want = S.view === 'follow' ? 'follow' : S.watchSend && S.bg.current ? 'send' : 'dm';
   if (want !== pane) {
     pane = want;
     window.api.showPane(want);
@@ -1550,7 +1713,7 @@ document.addEventListener('keydown', (e) => {
     if (!p) {
       const next = todoList()[0];
       if (next) openLead(next.id);
-    } else if (e.metaKey || e.ctrlKey) sendNow(p);
+    } else if (e.metaKey || e.ctrlKey) sendLead(p);
     else document.querySelector(`[data-play="preview:${p.id}"]`)?.click();
   }
 });
@@ -1570,6 +1733,10 @@ document.addEventListener('keydown', (e) => {
   // The cap used to default to 100, which is fewer leads than the formula matches.
   if (S.settings.airtable.max === 100) S.settings.airtable.max = DEFAULT_SETTINGS.airtable.max;
   S.prospects = (await store.get('kv', 'prospects')) || [];
+  for (const p of S.prospects.filter((x) => x.status === 'sending')) {
+    p.status = 'todo';
+    p.sendIssue = 'the app closed before it sent';
+  }
   const fixedSegs = S.template.filter((s) => s.kind === 'fixed');
   if (fixedSegs.length && fixedSegs.every((s) => !S.lens[fixedKey(s)])) S.view = 'setup';
   pushFollowConfig();

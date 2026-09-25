@@ -1,12 +1,12 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
-  arm: (wav, meta) => ipcRenderer.invoke('ig:arm', wav, meta),
-  disarm: () => ipcRenderer.invoke('ig:disarm'),
+  arm: (wav, meta, target) => ipcRenderer.invoke('ig:arm', wav, meta, target),
+  disarm: (target) => ipcRenderer.invoke('ig:disarm', target),
   openProfile: (handle) => ipcRenderer.invoke('ig:open', handle),
   showInstagram: () => ipcRenderer.invoke('ig:show'),
   grab: () => ipcRenderer.invoke('ig:grab'),
-  igDo: (action, handle) => ipcRenderer.invoke('ig:do', action, handle),
+  igDo: (action, handle, target) => ipcRenderer.invoke('ig:do', action, handle, target),
   onStatus: (cb) => ipcRenderer.on('ig:status', (_e, m) => cb(m)),
   saveClip: (wav, name) => ipcRenderer.invoke('clip:save', wav, name),
   reveal: (file) => ipcRenderer.invoke('clip:reveal', file),

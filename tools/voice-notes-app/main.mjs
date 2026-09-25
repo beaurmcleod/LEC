@@ -1,4 +1,4 @@
-import { app, BaseWindow, WebContentsView, clipboard, ipcMain, screen, session, shell, systemPreferences } from 'electron';
+import { app, BaseWindow, WebContentsView, clipboard, ipcMain, screen, session, shell, systemPreferences, webContents } from 'electron';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -25,10 +25,13 @@ let recorder;
 let igView;
 // A second Instagram tab, same login, where follows and likes run without touching the DM tab.
 let followView;
+// A third, hidden one where voice notes send in the background while you work on the next lead.
+let sendView;
 let follower;
 let injected;
-// The clip currently loaded into Instagram's mic. Re-sent after any full page load so a reload doesn't drop it.
-let pendingArm = null;
+// The clip currently loaded into each tab's mic ('dm' is the one you see, 'send' the background one).
+// Re-sent after any full page load so a reload doesn't drop it.
+const pendingArm = { dm: null, send: null };
 
 const isInstagram = (url) => {
   try {
@@ -41,6 +44,8 @@ const isInstagram = (url) => {
 
 const toRecorder = (m, channel = 'ig:status') => win && recorder.webContents.send(channel, m);
 const ig = () => igView.webContents;
+const tab = (target) => (target === 'send' ? sendView : igView).webContents;
+const targetOf = (wc) => (sendView && wc === sendView.webContents ? 'send' : 'dm');
 
 function layout() {
   const { width, height } = win.contentView.getBounds();
@@ -49,6 +54,7 @@ function layout() {
   const right = { x: PANE + 1, y: 0, width: Math.max(0, width - PANE - 1), height };
   igView.setBounds(right);
   followView.setBounds(right);
+  sendView.setBounds(right);
 }
 
 function createWindow() {
@@ -81,8 +87,19 @@ function createWindow() {
   });
   followView.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   followView.webContents.loadURL('about:blank');
+  sendView = new WebContentsView({
+    webPreferences: {
+      partition: 'persist:instagram',
+      preload: path.join(dir, 'ig-preload.cjs'),
+      contextIsolation: true,
+      sandbox: true,
+      backgroundThrottling: false,
+    },
+  });
+  // The DM tab goes on top; the follow and send tabs work behind it.
   win.contentView.addChildView(recorder);
   win.contentView.addChildView(followView);
+  win.contentView.addChildView(sendView);
   win.contentView.addChildView(igView);
   layout();
   // Follows the content area rather than the window, which also catches the menu bar settling and full screen.
@@ -91,6 +108,7 @@ function createWindow() {
     recorder.webContents.close();
     igView.webContents.close();
     followView.webContents.close();
+    sendView.webContents.close();
     win = null;
   });
 
@@ -103,13 +121,7 @@ function createWindow() {
   recorder.webContents.once('did-finish-load', () => recorder.webContents.focus());
 
   const wc = igView.webContents;
-  wc.on('dom-ready', async () => {
-    if (!isInstagram(wc.getURL())) return;
-    await wc.executeJavaScript(injected).catch(() => {});
-    if (pendingArm) wc.send('ivn:arm', pendingArm);
-  });
-  // The pane can't be closed and reopened, so recover from a crashed Instagram page by reloading it.
-  wc.on('render-process-gone', () => setTimeout(() => !wc.isDestroyed() && wc.reload(), 500));
+  micTab(wc, 'dm');
   // Facebook / Instagram login popups stay in the app; everything else opens in the browser.
   wc.setWindowOpenHandler(({ url }) => {
     if (isInstagram(url) || /(^|\.)facebook\.com$/.test(new URL(url).hostname)) return { action: 'allow' };
@@ -117,6 +129,21 @@ function createWindow() {
     return { action: 'deny' };
   });
   wc.loadURL(`${IG_BASE}/direct/inbox/`);
+  micTab(sendView.webContents, 'send');
+  sendView.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  sendView.webContents.loadURL('about:blank');
+  watchFocus();
+}
+
+// An Instagram tab whose mic the app can swap for a clip.
+function micTab(wc, target) {
+  wc.on('dom-ready', async () => {
+    if (!isInstagram(wc.getURL())) return;
+    await wc.executeJavaScript(injected).catch(() => {});
+    if (pendingArm[target]) wc.send('ivn:arm', pendingArm[target]);
+  });
+  // The tabs can't be closed and reopened, so recover from a crashed Instagram page by reloading it.
+  wc.on('render-process-gone', () => setTimeout(() => !wc.isDestroyed() && wc.reload(), 500));
 }
 
 const GRAB = `(() => {
@@ -188,7 +215,7 @@ async function igPage(action) {
 
 // A real mouse click where possible, so Instagram sees the same events as a person clicking.
 // `pt` comes from a page script: a point to click, { clicked } if it already clicked, or null if nothing was found.
-function clickPoint(wc, pt) {
+async function clickPoint(wc, pt) {
   if (!pt) return false;
   if (!pt.clicked) {
     const z = wc.getZoomFactor();
@@ -199,6 +226,44 @@ function clickPoint(wc, pt) {
     wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
   }
   return true;
+}
+
+// Keyboard focus. Loading a page or clicking in an Instagram tab moves the keyboard there, which would send
+// your Space (record) into Instagram. So the app remembers where you last put the keyboard yourself, the
+// recorder or the DM tab, and hands it back: the hidden tabs never keep it, and app-driven loads and clicks
+// in the DM tab don't take it.
+let front = null;
+let driving = 0;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function giveBack() {
+  const to = front && !front.isDestroyed() ? front : recorder?.webContents;
+  if (to && !to.isDestroyed() && webContents.getFocusedWebContents() !== to) to.focus();
+}
+
+function watchFocus() {
+  front = recorder.webContents;
+  recorder.webContents.on('focus', () => (front = recorder.webContents));
+  igView.webContents.on('focus', () => {
+    if (!driving) front = igView.webContents;
+  });
+  for (const v of [sendView, followView]) v.webContents.on('focus', () => setImmediate(giveBack));
+}
+
+// Runs an app-driven load or click in the DM tab, then puts the keyboard back where you had it.
+async function quietly(fn) {
+  driving++;
+  try {
+    return await fn();
+  } finally {
+    (async () => {
+      for (const ms of [0, 60, 250]) {
+        await sleep(ms);
+        giveBack();
+      }
+      driving--;
+    })();
+  }
 }
 
 const igClick = async (wc, what) => clickPoint(wc, await wc.executeJavaScript(`(${igPage})(${JSON.stringify(what)})`, true));
@@ -233,27 +298,33 @@ function copyFileToClipboard(file) {
   }
 }
 
-ipcMain.handle('ig:arm', (_e, wav, meta) => {
-  pendingArm = { wav, ...meta };
-  if (!ig().isLoading()) ig().send('ivn:arm', pendingArm);
+ipcMain.handle('ig:arm', (_e, wav, meta, target = 'dm') => {
+  pendingArm[target] = { wav, ...meta };
+  if (!tab(target).isLoading()) tab(target).send('ivn:arm', pendingArm[target]);
 });
-ipcMain.handle('ig:disarm', () => {
-  pendingArm = null;
-  ig().send('ivn:disarm');
+ipcMain.handle('ig:disarm', (_e, target = 'dm') => {
+  pendingArm[target] = null;
+  tab(target).send('ivn:disarm');
 });
-ipcMain.handle('ig:open', (_e, handle) => ig().loadURL(`${IG_BASE}/${encodeURIComponent(handle)}/`));
+ipcMain.handle('ig:open', (_e, handle) => quietly(() => ig().loadURL(`${IG_BASE}/${encodeURIComponent(handle)}/`)));
 // Puts the keyboard in the Instagram pane, for when you need to finish something there by hand.
-ipcMain.handle('ig:show', () => ig().focus());
-ipcMain.handle('ig:grab', () => ig().executeJavaScript(GRAB));
-ipcMain.handle('ig:do', async (_e, action, handle) => {
-  const wc = ig();
-  if (action === 'openDm') return openDm(wc, handle);
-  if (action === 'clickMic' && !(await igClick(wc, 'mic'))) throw new Error("Couldn't find the mic button in the DM.");
-  if (action === 'clickSend' && !(await igClick(wc, 'send'))) throw new Error("Couldn't find Instagram's send button.");
+ipcMain.handle('ig:show', () => {
+  front = ig();
+  ig().focus();
 });
-ipcMain.on('ig:status', (_e, m) => {
-  if (['done', 'stopped', 'idle'].includes(m.state)) pendingArm = null;
-  toRecorder(m);
+ipcMain.handle('ig:grab', () => ig().executeJavaScript(GRAB));
+ipcMain.handle('ig:do', (_e, action, handle, target = 'dm') =>
+  quietly(async () => {
+    const wc = tab(target);
+    if (action === 'openDm') return openDm(wc, handle);
+    if (action === 'clickMic' && !(await igClick(wc, 'mic'))) throw new Error("Couldn't find the mic button in the DM.");
+    if (action === 'clickSend' && !(await igClick(wc, 'send'))) throw new Error("Couldn't find Instagram's send button.");
+  }),
+);
+ipcMain.on('ig:status', (e, m) => {
+  const target = targetOf(e.sender);
+  if (['done', 'stopped', 'idle'].includes(m.state)) pendingArm[target] = null;
+  toRecorder({ ...m, target });
 });
 
 ipcMain.handle('clip:save', async (_e, wav, name) => {
@@ -275,7 +346,7 @@ ipcMain.handle('clip:save', async (_e, wav, name) => {
 ipcMain.handle('clip:reveal', (_e, file) => shell.showItemInFolder(file));
 
 // The recorder shows the follow tab on the right while its Follow screen is open.
-ipcMain.handle('pane:show', (_e, which) => win.contentView.addChildView(which === 'follow' ? followView : igView));
+ipcMain.handle('pane:show', (_e, which) => win.contentView.addChildView({ follow: followView, send: sendView }[which] || igView));
 ipcMain.handle('follow:config', (_e, at) => follower.configure(at));
 ipcMain.handle('follow:set', (_e, on) => follower.setEnabled(!!on));
 ipcMain.handle('follow:state', () => follower.snapshot());
