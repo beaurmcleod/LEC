@@ -1182,6 +1182,78 @@ function lineRow(p, seg) {
   );
 }
 
+function handleTag(p) {
+  return p.handle
+    ? h('button', { id: 'lead-handle', class: 'link', title: 'Open their profile in Instagram', onclick: () => window.api.openProfile(p.handle).catch(() => {}) }, `@${p.handle}`)
+    : h('span', { id: 'lead-handle', class: 'tag warn' }, 'no Instagram');
+}
+
+const whoText = (p) => [p.role, p.business && p.business !== p.name ? p.business : ''].filter(Boolean).join(' at ');
+
+function sendButton(p) {
+  const sending = S.sending === p.id || p.status === 'sending';
+  const blocked = !!missingParts(p).length || !!S.rec || !!S.sending;
+  return h(
+    'button',
+    { id: 'send-btn', class: 'enter', onclick: () => sendLead(p), disabled: blocked || !p.handle || p.status === 'sending' },
+    sending ? 'Sending...' : p.handle ? `Send to @${p.handle}` : 'Add their Instagram to send',
+    sending ? null : h('span', {}, '⌘ Enter'),
+  );
+}
+
+// Brings the top of a lead's page, its script lines and the Send button up to date without redrawing the
+// page, so the field you're typing in keeps the keyboard.
+function paintLead(p) {
+  const swap = (id, el) => document.getElementById(id)?.replaceWith(el);
+  const name = document.getElementById('lead-name');
+  if (name) name.textContent = p.name || '(no name)';
+  swap('lead-handle', handleTag(p));
+  const who = document.getElementById('lead-who');
+  if (who) {
+    who.textContent = whoText(p);
+    who.hidden = !who.textContent;
+  }
+  swap('send-btn', sendButton(p));
+  for (const el of document.querySelectorAll('[data-seg]')) {
+    el.textContent = renderScript(S.template.find((s) => s.id === el.dataset.seg).script, p);
+  }
+  for (const el of document.querySelectorAll('[data-namehint]')) el.hidden = !!personName(p);
+}
+
+// Once you stop typing an Instagram handle, opens that profile on the right and fills in what's empty.
+const HANDLE_RE = /^[A-Za-z0-9._]{1,30}$/;
+let handleTimer = null;
+function openTypedHandle(p) {
+  clearTimeout(handleTimer);
+  if (!HANDLE_RE.test(p.handle)) return;
+  handleTimer = setTimeout(async () => {
+    const handle = p.handle;
+    const dupe = S.prospects.find((x) => x !== p && x.handle.toLowerCase() === handle.toLowerCase());
+    if (dupe) toast(`@${handle} is already a lead (${dupe.name || 'no name'}).`, 6000);
+    try {
+      await window.api.openProfile(handle);
+      const info = await window.api.grab();
+      if (p.handle !== handle || info?.handle?.toLowerCase() !== handle.toLowerCase()) return;
+      // Only fills blanks, and only ones you haven't typed in yourself.
+      let filled = false;
+      if (!p.business && !p.edited?.business && info.displayName) {
+        p.business = info.displayName;
+        const input = document.querySelector('input[data-k="business"]');
+        if (input && document.activeElement !== input) input.value = p.business;
+        filled = true;
+      }
+      if (!p.bio && info.bio) {
+        p.bio = info.bio;
+        filled = true;
+      }
+      if (filled) {
+        await saveProspects();
+        if (S.currentId === p.id) paintLead(p);
+      }
+    } catch {}
+  }, 700);
+}
+
 const step = (n, title) => h('h2', { class: 'step' }, h('span', { class: 'n' }, n), title);
 
 function detailView(p) {
@@ -1195,10 +1267,8 @@ function detailView(p) {
     // Your edits win over later Airtable syncs.
     p.edited = { ...p.edited, [k]: true };
     saveProspects();
-    for (const el of document.querySelectorAll('[data-seg]')) {
-      el.textContent = renderScript(S.template.find((s) => s.id === el.dataset.seg).script, p);
-    }
-    for (const el of document.querySelectorAll('[data-namehint]')) el.hidden = !!personName(p);
+    paintLead(p);
+    if (k === 'handle') openTypedHandle(p);
   };
   const ref = [
     ['Personal hook', p.hook],
@@ -1211,7 +1281,7 @@ function detailView(p) {
   const sendStatus = S.send.pid === p.id ? S.send : { state: '', text: '' };
   const sending = S.sending === p.id;
   const blocked = !!missing.length || !!S.rec || !!S.sending;
-  const who = [p.role, p.business && p.business !== p.name ? p.business : ''].filter(Boolean).join(' at ');
+  const who = whoText(p);
 
   return h(
     'main',
@@ -1230,12 +1300,10 @@ function detailView(p) {
       h(
         'div',
         { class: 'lead-title' },
-        h('b', {}, p.name || '(no name)'),
-        p.handle
-          ? h('button', { class: 'link', title: 'Open their profile in Instagram', onclick: () => window.api.openProfile(p.handle).catch(() => {}) }, `@${p.handle}`)
-          : h('span', { class: 'tag warn' }, 'no Instagram'),
+        h('b', { id: 'lead-name' }, p.name || '(no name)'),
+        handleTag(p),
       ),
-      who ? h('p', { class: 'muted' }, who) : null,
+      h('p', { id: 'lead-who', class: 'muted', hidden: !who }, who),
       p.hook ? h('p', { class: 'small clamp', title: p.hook }, p.hook) : null,
       h(
         'details',
@@ -1245,7 +1313,7 @@ function detailView(p) {
           'div',
           { class: 'edit' },
           h('div', { class: 'grid2' }, field('Name to say', p.name, edit('name')), field('Role', p.role, edit('role'), { placeholder: 'e.g. owner, head coach' })),
-          h('div', { class: 'grid2' }, field('Business', p.business, edit('business')), field('Instagram', p.handle, edit('handle'), { placeholder: 'handle' })),
+          h('div', { class: 'grid2' }, field('Business', p.business, edit('business'), { 'data-k': 'business' }), field('Instagram', p.handle, edit('handle'), { placeholder: 'handle or profile link' })),
           field('What they do', p.note, edit('note'), { placeholder: 'e.g. small group training' }),
         ),
       ),
@@ -1263,12 +1331,7 @@ function detailView(p) {
       : playButton(`preview:${p.id}`, `▶ Preview the whole clip (${fmt(clipSeconds(p))})`, () => buildClip(p), { class: 'big', disabled: !!S.rec || !!S.sending }, '■ Stop preview'),
 
     step('3', 'Send'),
-    h(
-      'button',
-      { class: 'enter', onclick: () => sendLead(p), disabled: blocked || !p.handle || p.status === 'sending' },
-      sending || p.status === 'sending' ? 'Sending...' : p.handle ? `Send to @${p.handle}` : 'Add their Instagram to send',
-      sending || p.status === 'sending' ? null : h('span', {}, '⌘ Enter'),
-    ),
+    sendButton(p),
     S.settings.autoSend && p.status === 'todo'
       ? h('p', { class: 'muted small' }, 'Sends in the background, silently, and opens your next lead right away.')
       : null,
