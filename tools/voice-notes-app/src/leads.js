@@ -1,0 +1,265 @@
+const CATEGORY_PHRASES = {
+  'Personal trainer': 'personal training',
+  'Physical therapy': 'physical therapy',
+  Chiropractor: 'chiropractic care',
+  'Sports medicine': 'sports medicine',
+  'Recovery studio': 'recovery work',
+  'Gym / CrossFit': 'strength training',
+  'Med spa': 'med spa treatments',
+  'IV / wellness clinic': 'IV and wellness therapy',
+  'Nutrition / coach': 'nutrition coaching',
+  'Athlete / creator': 'training content',
+};
+
+export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+
+export function cleanHandle(raw) {
+  const s = String(raw || '').trim();
+  const url = s.match(/instagram\.com\/([^/?#\s]+)/i);
+  return (url ? url[1] : s).replace(/^@/, '').replace(/\/+$/, '').trim();
+}
+
+// Title Case that leaves "Joe's" alone.
+const titleCase = (s) => s.toLowerCase().replace(/(^|[\s\-/&(])(\p{L})/gu, (m, a, c) => a + c.toUpperCase());
+
+function tidyBusiness(b) {
+  let s = b.split(/\s+[-|•:–—]\s+/)[0].trim();
+  if (s.length > 3 && s === s.toUpperCase() && /[A-Z]/.test(s)) s = titleCase(s);
+  return s;
+}
+
+// A business name the way you'd say it: no shouting caps, tagline or legal suffix.
+export function spokenBusiness(b) {
+  return tidyBusiness(String(b || ''))
+    .replace(/,?\s+(llc|l\.l\.c\.|inc\.?|corp\.?|ltd\.?|pllc|pc)$/i, '')
+    .trim();
+}
+
+// A role the way you'd say it mid-sentence: "Studio owner" -> "studio owner". Acronyms like CEO or DPT stay.
+export function spokenRole(r) {
+  return String(r || '')
+    .trim()
+    .replace(/^(the|a|an)\s+/i, '')
+    .split(/([\s\-/]+)/)
+    .map((w) => (/^\p{Lu}\p{Ll}+$/u.test(w) ? w.toLowerCase() : w))
+    .join('')
+    .replace(/[.\s]+$/, '');
+}
+
+// A first name the way you'd say it: "JOHN" -> "John".
+export function spokenName(n) {
+  const s = String(n || '').trim();
+  return s.length > 1 && s === s.toUpperCase() && /\p{L}/u.test(s) ? titleCase(s) : s;
+}
+
+export function deriveName(p) {
+  return (p.first || '').trim() || (p.business ? tidyBusiness(p.business) : '') || p.handle || '';
+}
+
+// A short phrase that reads naturally after "I see you do ...".
+export function deriveNote(p) {
+  if (CATEGORY_PHRASES[p.category]) return CATEGORY_PHRASES[p.category];
+  const search = (p.notes || '').match(/found via search '([^']+)'/i);
+  if (!search) return '';
+  return search[1]
+    .trim()
+    .replace(/\bpersonal trainer\b/i, 'personal training')
+    .replace(/\bchiropractor\b/i, 'chiropractic care')
+    .replace(/\s+(gym|studio|clinic|center|centre|shop)$/i, '');
+}
+
+export function makeProspect(f) {
+  const p = {
+    id: uid(),
+    airtableId: f.airtableId || '',
+    first: f.first || '',
+    role: f.role || '',
+    business: f.business || '',
+    handle: cleanHandle(f.handle),
+    category: f.category || '',
+    hook: f.hook || '',
+    bio: f.bio || '',
+    research: f.research || '',
+    notes: f.notes || '',
+    source: f.source || 'manual',
+    atStatus: f.atStatus || '',
+    followedAt: f.followedAt || '',
+    status: 'todo',
+    sentAt: null,
+    createdAt: Date.now(),
+  };
+  p.name = f.name || deriveName(p);
+  p.note = f.note || deriveNote(p);
+  return p;
+}
+
+function pick(obj, ...names) {
+  const lower = {};
+  for (const k of Object.keys(obj)) lower[k.trim().toLowerCase()] = obj[k];
+  for (const n of names) {
+    const v = lower[n];
+    const s = Array.isArray(v) ? v.join(', ') : v == null ? '' : String(v).trim();
+    if (s) return s;
+  }
+  return '';
+}
+
+// Column names match the Torrey Labs "Leads" table, so an Airtable CSV export imports as-is.
+export function fromFields(obj, extra = {}) {
+  return makeProspect({
+    ...extra,
+    first: pick(obj, 'first name', 'first'),
+    role: pick(obj, 'role', 'position', 'title', 'job title'),
+    business: pick(obj, 'business', 'business name', 'company', 'name'),
+    handle: pick(obj, 'instagram', 'instagram handle', 'handle', 'ig', 'username', 'instagram url', 'ig url'),
+    category: pick(obj, 'category'),
+    hook: pick(obj, 'personal hook', 'hook'),
+    bio: pick(obj, 'ig bio', 'bio'),
+    research: pick(obj, 'research'),
+    notes: pick(obj, 'notes'),
+    note: pick(obj, 'what they do', 'specialty', 'note'),
+    name: pick(obj, 'name to say', 'spoken name'),
+    atStatus: pick(obj, 'status'),
+    followedAt: pick(obj, 'ig followed at'),
+  });
+}
+
+export function parseCSV(text) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c !== '"') field += c;
+      else if (text[i + 1] === '"') {
+        field += '"';
+        i++;
+      } else quoted = false;
+    } else if (c === '"') quoted = true;
+    else if (c === ',') {
+      row.push(field);
+      field = '';
+    } else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+    } else field += c;
+  }
+  if (field !== '' || row.length) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows.filter((r) => r.some((v) => v.trim() !== ''));
+}
+
+export function fromCSV(text) {
+  const rows = parseCSV(text.replace(/^﻿/, ''));
+  if (rows.length < 2) return [];
+  const head = rows[0].map((h) => h.trim());
+  return rows
+    .slice(1)
+    .map((r) => fromFields(Object.fromEntries(head.map((k, i) => [k, r[i] ?? ''])), { source: 'csv' }))
+    .filter((p) => p.handle || p.business || p.first);
+}
+
+// Airtable's error codes, in words that say what to fix.
+function airtableError(body, status) {
+  const e = body?.error;
+  const type = typeof e === 'string' ? e : e?.type || '';
+  const msg = typeof e === 'object' && e?.message ? e.message : '';
+  if (status === 401 || type === 'AUTHENTICATION_REQUIRED')
+    return "Airtable didn't accept the token. Make a new one at airtable.com/create/tokens and paste it in Setup.";
+  if (/FILTER_BY_FORMULA/.test(type)) return `The "Which leads to pull" formula in Setup has a mistake: ${msg || type}`;
+  if (/UNKNOWN_FIELD_NAME/.test(type)) return `Airtable doesn't have a field the app asked for: ${msg || type}`;
+  if (status === 403 || status === 404 || /PERMISSIONS|NOT_FOUND/.test(type))
+    return "The token can't open the Leads table. When you make the token, add both scopes (data.records:read and data.records:write) and add the Torrey Labs base under Access. Also check Base ID and Table in Setup.";
+  return msg || type || `HTTP ${status}`;
+}
+
+// One Airtable request, with network failures and error replies turned into plain messages.
+async function call(url, init = {}, at) {
+  let res;
+  try {
+    res = await fetch(url, { ...init, headers: { Authorization: `Bearer ${String(at.token || '').trim()}`, ...init.headers } });
+  } catch (e) {
+    throw new Error(`Couldn't reach Airtable (${e.cause?.code || e.message}). Check the internet connection.`);
+  }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(airtableError(body, res.status));
+  return body;
+}
+
+// AIRTABLE_API lets tests point the app at a local stand-in.
+const AIRTABLE_API = globalThis.process?.env?.AIRTABLE_API || 'https://api.airtable.com/v0';
+
+function tableUrl({ baseId, table }) {
+  return `${AIRTABLE_API}/${encodeURIComponent(String(baseId).trim())}/${encodeURIComponent(String(table).trim())}`;
+}
+
+export async function pullAirtable(at) {
+  const out = [];
+  let offset = '';
+  do {
+    const url = new URL(tableUrl(at));
+    url.searchParams.set('pageSize', '100');
+    if (at.formula) url.searchParams.set('filterByFormula', at.formula);
+    if (offset) url.searchParams.set('offset', offset);
+    const body = await call(url, {}, at);
+    for (const r of body.records || []) {
+      if (out.length >= at.max) break;
+      out.push(fromFields(r.fields || {}, { airtableId: r.id, source: 'airtable' }));
+    }
+    offset = body.offset;
+  } while (offset && out.length < at.max);
+  return out;
+}
+
+async function patch(at, recordId, fields) {
+  await call(
+    `${tableUrl(at)}/${encodeURIComponent(recordId)}`,
+    { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) },
+    at,
+  );
+}
+
+export function markSentAirtable(at, recordId) {
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return patch(at, recordId, { Status: 'Sent', Channel: 'Instagram', 'Sent at': today, Touches: 1 });
+}
+
+// Leads still to follow: not skipped, not followed yet, and not already messaged.
+export const FOLLOW_FORMULA =
+  "AND({Instagram}!='', {Track}!='Skip', {IG followed at}='', OR({Status}='New', {Status}='Researched', {Status}='Ready'))";
+
+// Best fits first. Pages through until it finds `want` accounts that aren't in `skip`.
+export async function pullFollowQueue(at, { skip = {}, want = 5 } = {}) {
+  const out = [];
+  let offset = '';
+  for (let page = 0; page < 5 && out.length < want; page++) {
+    const url = new URL(tableUrl(at));
+    url.searchParams.set('pageSize', '25');
+    url.searchParams.set('filterByFormula', FOLLOW_FORMULA);
+    url.searchParams.set('sort[0][field]', 'Fit score');
+    url.searchParams.set('sort[0][direction]', 'desc');
+    for (const f of ['Instagram', 'DM name', 'Category', 'Fit score']) url.searchParams.append('fields[]', f);
+    if (offset) url.searchParams.set('offset', offset);
+    const body = await call(url, {}, at);
+    for (const r of body.records || []) {
+      const f = r.fields || {};
+      const handle = cleanHandle(f.Instagram);
+      if (handle && !skip[r.id] && out.length < want) out.push({ id: r.id, handle, name: f['DM name'] || '', category: f.Category || '', fit: f['Fit score'] ?? null });
+    }
+    offset = body.offset;
+    if (!offset) break;
+  }
+  return out;
+}
+
+export function markFollowedAirtable(at, recordId, liked, when = new Date()) {
+  return patch(at, recordId, { 'IG followed at': when.toISOString(), 'IG liked': !!liked });
+}

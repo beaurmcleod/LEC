@@ -1,0 +1,22 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('api', {
+  arm: (wav, meta, target) => ipcRenderer.invoke('ig:arm', wav, meta, target),
+  disarm: (target) => ipcRenderer.invoke('ig:disarm', target),
+  openProfile: (handle) => ipcRenderer.invoke('ig:open', handle),
+  showInstagram: () => ipcRenderer.invoke('ig:show'),
+  grab: () => ipcRenderer.invoke('ig:grab'),
+  igDo: (action, handle, target) => ipcRenderer.invoke('ig:do', action, handle, target),
+  onStatus: (cb) => ipcRenderer.on('ig:status', (_e, m) => cb(m)),
+  saveClip: (wav, name) => ipcRenderer.invoke('clip:save', wav, name),
+  reveal: (file) => ipcRenderer.invoke('clip:reveal', file),
+  pullAirtable: (at) => ipcRenderer.invoke('airtable:pull', at),
+  markSent: (at, id) => ipcRenderer.invoke('airtable:sent', at, id),
+  speak: (text, settings) => ipcRenderer.invoke('tts', text, settings),
+  showPane: (which) => ipcRenderer.invoke('pane:show', which),
+  followConfig: (at) => ipcRenderer.invoke('follow:config', at),
+  followSet: (on) => ipcRenderer.invoke('follow:set', on),
+  followState: () => ipcRenderer.invoke('follow:state'),
+  onFollow: (cb) => ipcRenderer.on('follow:status', (_e, s) => cb(s)),
+  onFollowed: (cb) => ipcRenderer.on('follow:followed', (_e, m) => cb(m)),
+});
