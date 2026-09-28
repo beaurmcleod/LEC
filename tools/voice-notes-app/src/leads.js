@@ -52,6 +52,117 @@ export function spokenName(n) {
   return s.length > 1 && s === s.toUpperCase() && /\p{L}/u.test(s) ? titleCase(s) : s;
 }
 
+// Who they are, in the plural, for "a lot of ___ ask us...". Keyed by the Airtable Category.
+const CROWDS = {
+  'personal trainer': 'trainers',
+  'gym / crossfit': 'gym owners',
+  'recovery studio': 'recovery studios',
+  'iv / wellness clinic': 'wellness clinics',
+  'med spa': 'med spas',
+  chiropractor: 'chiropractors',
+  'physical therapy': 'physical therapists',
+  'sports medicine': 'sports medicine docs',
+  'nutrition / coach': 'coaches',
+  'athlete / creator': 'athletes',
+};
+
+// With no Category (or "Other"), a guess from their role, then their business name.
+const CROWD_GUESSES = [
+  [/\bdpt\b|physical therap/i, 'physical therapists'],
+  [/chiro/i, 'chiropractors'],
+  [/med ?spa|aesthetic/i, 'med spas'],
+  [/\biv\b|infusion/i, 'wellness clinics'],
+  [/trainer/i, 'trainers'],
+  [/coach|instructor|teacher/i, 'coaches'],
+  [/recover|sauna|cryo|float|stretch/i, 'recovery studios'],
+  [/crossfit|\bgym\b|boxing|jiu.?jitsu|\bbjj\b|martial|muay/i, 'gym owners'],
+  [/pilates|yoga|barre|spin|cycl|studio/i, 'studio owners'],
+];
+
+export function crowd(category, role = '', business = '') {
+  const c = CROWDS[String(category || '').toLowerCase().replace(/\s*\/\s*/g, ' / ').trim()];
+  if (c === 'gym owners' && /coach|trainer/i.test(role)) return 'coaches';
+  if (c) return c;
+  for (const text of [role, business]) for (const [re, who] of CROWD_GUESSES) if (re.test(text)) return who;
+  return /owner|founder/i.test(role) ? 'studio owners' : 'people in your world';
+}
+
+const MONTHS = ['Jan', 'Feb', 'March', 'April', 'May', 'June', 'July', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+const PASSIVE = /^(named|voted|featured|recognized|ranked|awarded|listed|nominated|certified|called|chosen|picked|rated)$/;
+const PAST = /^(\w+ed|took|ran|won|made|got|built|began|became|grew|brought|taught|left|went|spent|hit|launched)$/;
+const PRESENT = /^(runs|hosts|brings|offers|blends|pairs|trains|teaches|owns|co-owns|coaches|leads|operates|specializes|focuses|works|holds|keeps|makes|gives|helps|builds|serves|combines|mixes|programs|competes|fights|opens|puts)$/;
+
+// "runs" -> "run", "teaches" -> "teach", "has" -> "have".
+function baseVerb(v) {
+  const w = v.toLowerCase();
+  if (w === 'has') return 'have';
+  if (w === 'is') return 'are';
+  if (w === 'was') return 'were';
+  if (/ies$/.test(w)) return w.slice(0, -3) + 'y';
+  if (/(ch|sh|ss|x|z|o)es$/.test(w)) return w.slice(0, -2);
+  return w.replace(/s$/, '');
+}
+
+const lowerFirst = (s) => s.charAt(0).toLowerCase() + s.slice(1);
+const yours = (s) => s.replace(/\b(their|his|her)\b/gi, 'your').replace(/\bthey're\b/gi, "you're");
+
+// The Airtable "Personal hook" (one real detail, written as a note about them) said to them as one sentence:
+// "Runs a weekly beach workout" -> "saw you run a weekly beach workout."
+// "being named Best Oceanside Trainer" -> "saw you got named Best Oceanside Trainer."
+// "your 200-hour yoga teacher training" -> "saw your 200-hour yoga teacher training."
+export function spokenHook(raw) {
+  let s = String(raw || '')
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/\b(that|you|they)(s|ve|re)\b/gi, "$1'$2")
+    .replace(/\by(a)ll\b/gi, "y'$1ll")
+    .replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (m, y, mo, d) => `${MONTHS[+mo - 1] || mo} ${+d}`)
+    .replace(/\s+/g, ' ')
+    .trim();
+  const end = /[!?]$/.test(s) ? s.slice(-1) : '.';
+  s = s.replace(/[\s.!?;:,]+$/, '');
+  if (!s) return '';
+  const words = s.split(' ');
+  const first = words[0].toLowerCase();
+  const from = (i) => words.slice(i).join(' ');
+  const line = (() => {
+    if (/^(saw|loved?|congrats|huge)$/.test(first)) return lowerFirst(s);
+    if (/^(you|you've|you're|y'all)$/.test(first))
+      return `saw ${lowerFirst(s)}`;
+    if (/^(your|the|that|this|those|these|our)$/.test(first)) return `saw ${s}`;
+    if (/^(their|his|her)$/.test(first)) return `saw your ${from(1)}`;
+    if (/^(she|he|they)$/.test(first) && words[1]) return `saw you ${baseVerb(words[1])} ${yours(from(2))}`;
+    if (/^(former|ex-)/.test(first)) return `saw you're a ${lowerFirst(s)}`;
+    if (/^(first|only)$/.test(first)) return `saw you're the ${lowerFirst(s)}`;
+    if (/^(a|one|two|three|four|five|six|seven|eight|nine|ten|\d+\+?)$/.test(first) && /^(years?|decades?)$/i.test(words[1] || '')) {
+      if (/^of$/i.test(words[2] || '')) return `saw your ${s}`;
+      if (/^into$/i.test(words[2] || '')) return `saw you're ${s}`;
+      return `saw you spent ${s}`;
+    }
+    if (words.slice(1, 4).some((w) => /^who$/i.test(w))) return `saw you're a ${s}`;
+    // No subject: it's about them, so it becomes "you ...".
+    const adv = /^(just|recently|also|still|now)$/.test(first) ? 1 : 0;
+    const verb = (words[adv] || '').toLowerCase();
+    // "Earned Fitness SD won..." is a name, not a verb ("Hosts Workout Wednesdays" still is one).
+    const known = PRESENT.test(verb) || PASSIVE.test(verb) || /^(being|has|was|is)$/.test(verb);
+    if (!known && /^\p{Lu}/u.test(words[adv] || '') && /^\p{Lu}/u.test(words[adv + 1] || '')) return `saw ${s}`;
+    const pre = adv ? `${first} ` : '';
+    const rest = yours(from(adv + 1));
+    if (verb === 'being') return `saw you got ${pre}${rest}`;
+    if (verb === 'founded' && /^by$/i.test(words[adv + 1] || '')) return `saw it was ${pre}founded ${from(adv + 1)}`;
+    if (PASSIVE.test(verb)) return `saw you were ${pre}${verb} ${rest}`;
+    if (verb === 'was' || verb === 'is') return `saw you ${baseVerb(verb)} ${pre}${rest}`.replace(/^saw you are /, "saw you're ");
+    if (verb === 'has') return `saw you${/(ed|en|un|wn|ght)$/.test(words[adv + 1] || '') ? "'ve" : ' have'} ${pre}${rest}`;
+    if (/ing$/.test(verb) && verb.length > 4) {
+      const since = /\b(since \d{4}|for \d+\+? years)\b/i.test(s);
+      return `saw you${since ? "'ve been" : "'re"} ${pre}${verb} ${rest}`;
+    }
+    if (PRESENT.test(verb)) return `saw you ${pre}${baseVerb(verb)} ${rest}`;
+    if (PAST.test(verb)) return `saw you ${pre}${verb} ${rest}`;
+    return `saw ${s}`;
+  })();
+  return line.replace(/\s+/g, ' ').trim() + end;
+}
+
 export function deriveName(p) {
   return (p.first || '').trim() || (p.business ? tidyBusiness(p.business) : '') || p.handle || '';
 }

@@ -9,9 +9,15 @@ Your clients are probably already asking you about peptides for weight loss or r
 
 Worth a look? Reply and I'll send the details.`;
 
+// The intro names one real thing about them (their Airtable "Personal hook") and ties what they do to us,
+// the way the outreach emails open. With no hook it falls back to their role and business.
+const INTRO_SCRIPT = 'Hey {name} — {detail} A lot of {crowd} ask us where to find peptides with real lab reports.';
+const OLD_INTRO = "Hey {name} — saw you're the {role} at {business}.";
+const FALLBACK_DETAIL = "saw you're the {role} at {business}.";
+
 // One custom intro line per lead, then the whole pitch in one take. Setup can split the pitch into more parts.
 const DEFAULT_TEMPLATE = [
-  { id: 'intro', kind: 'slot', label: 'Intro', script: "Hey {name} — saw you're the {role} at {business}." },
+  { id: 'intro', kind: 'slot', label: 'Intro', script: INTRO_SCRIPT },
   { id: 'pitch', kind: 'fixed', label: 'Pitch', script: PITCH_SCRIPT },
 ];
 
@@ -24,17 +30,19 @@ const OLD_SHAPES = {
 // Earlier layouts had two custom lines ("Hi {name}!" and "I see you're the...") and, before that, a pitch split
 // in two. An untouched copy moves to the single intro line. A recorded pitch is kept (halves joined), and the
 // old per-lead lines are cleared so every lead shows the new intro as not recorded yet. Edited layouts stay
-// as they are, but the pitch still gets the script if it has none.
+// as they are, but the pitch still gets the script if it has none, and an untouched copy of the plain
+// role-and-business intro becomes the hook intro (recordings are kept).
 async function migrateTemplate(t) {
   const shape = t.map((seg) => `${seg.id}:${seg.kind}`).join(',');
   const pitchIds = OLD_SHAPES[shape];
   const untouched = t.filter((seg) => seg.kind === 'slot').every((seg) => seg.script === OLD_SCRIPTS[seg.id]);
   if (!pitchIds || !untouched) {
     const pitch = t.find((seg) => seg.kind === 'fixed' && seg.id === 'pitch');
-    if (pitch && pitch.script == null) {
-      pitch.script = PITCH_SCRIPT;
-      await store.put('kv', 'template', t);
-    }
+    const intro = t.find((seg) => seg.kind === 'slot' && seg.script === OLD_INTRO);
+    const noScript = pitch && pitch.script == null;
+    if (noScript) pitch.script = PITCH_SCRIPT;
+    if (intro) intro.script = INTRO_SCRIPT;
+    if (noScript || intro) await store.put('kv', 'template', t);
     return t;
   }
   const next = structuredClone(DEFAULT_TEMPLATE);
@@ -95,7 +103,7 @@ const MODELS = [
   ['eleven_multilingual_v2', 'Multilingual v2 (steadiest, all sliders apply)'],
 ];
 
-const PLACEHOLDERS = ['name', 'first', 'role', 'business', 'handle', 'note', 'hook', 'category'];
+const PLACEHOLDERS = ['name', 'first', 'detail', 'crowd', 'role', 'business', 'handle', 'note', 'hook', 'category'];
 // Refreshed from Airtable on every sync, unless you've edited that field here.
 const REFRESH_FIELDS = ['first', 'role', 'business', 'category', 'hook', 'bio', 'research', 'notes', 'atStatus', 'followedAt'];
 const MAX_SECONDS = 59;
@@ -218,17 +226,21 @@ function personName(p) {
   return leads.spokenName(name);
 }
 
-// Lead details cleaned up for saying out loud.
+// Lead details cleaned up for saying out loud. {detail} is their Personal hook as a sentence ("saw you run
+// HYROX prep."), or their role and business when there's no hook; {crowd} is who they are ("trainers").
 function scriptVars(p) {
   const name = personName(p);
-  return {
+  const v = {
     ...p,
     name,
     first: name,
     role: leads.spokenRole(p.role),
     business: leads.spokenBusiness(p.business),
     handle: p.handle ? `@${p.handle}` : '',
+    crowd: leads.crowd(p.category, p.role, p.business),
   };
+  v.detail = leads.spokenHook(p.hook) || adaptScript(FALLBACK_DETAIL, v).replace(/\{(\w+)\}/g, (m, k) => v[k] || '');
+  return v;
 }
 
 // Rewords a line around details the lead doesn't have, so it still sounds natural:
@@ -1271,7 +1283,6 @@ function detailView(p) {
     if (k === 'handle') openTypedHandle(p);
   };
   const ref = [
-    ['Personal hook', p.hook],
     ['Category', p.category],
     ['IG bio', p.bio],
     ['Research', p.research],
@@ -1304,7 +1315,6 @@ function detailView(p) {
         handleTag(p),
       ),
       h('p', { id: 'lead-who', class: 'muted', hidden: !who }, who),
-      p.hook ? h('p', { class: 'small clamp', title: p.hook }, p.hook) : null,
       h(
         'details',
         { class: 'ref' },
@@ -1314,6 +1324,7 @@ function detailView(p) {
           { class: 'edit' },
           h('div', { class: 'grid2' }, field('Name to say', p.name, edit('name')), field('Role', p.role, edit('role'), { placeholder: 'e.g. owner, head coach' })),
           h('div', { class: 'grid2' }, field('Business', p.business, edit('business'), { 'data-k': 'business' }), field('Instagram', p.handle, edit('handle'), { placeholder: 'handle or profile link' })),
+          field('Personal hook (one real thing about them)', p.hook, edit('hook'), { placeholder: 'e.g. runs HYROX prep classes' }),
           field('What they do', p.note, edit('note'), { placeholder: 'e.g. small group training' }),
         ),
       ),
@@ -1411,7 +1422,12 @@ function segmentCard(seg, i) {
             file,
           ),
         ]
-      : h('label', { class: 'field' }, 'What you say (per lead)', h('input', { value: seg.script, placeholder: 'Hey {name}!', oninput: (e) => ((seg.script = e.target.value), saveTemplate().then(flashSaved)) })),
+      : [
+          h('label', { class: 'field' }, 'What you say (per lead)', h('input', { value: seg.script, placeholder: 'Hey {name}!', oninput: (e) => ((seg.script = e.target.value), saveTemplate().then(flashSaved)) })),
+          /\{(detail|crowd)\}/.test(seg.script || '')
+            ? h('p', { class: 'muted small' }, '{detail} is their Personal hook from Airtable said to them ("saw you run HYROX prep."), or their role and business if there isn\'t one. {crowd} is who they are, from Category ("trainers", "gym owners").')
+            : null,
+        ],
   );
 }
 
