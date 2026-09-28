@@ -78,6 +78,7 @@ const DEFAULT_SETTINGS = {
   breath: true,
   breathPick: 0,
   breathDb: 0,
+  breathSource: 'auto',
   leadInMs: 300,
   monitorWatching: false,
   autoOpen: true,
@@ -508,7 +509,7 @@ async function pitchInfo() {
     const parts = await Promise.all(fixed.map((s) => getAudio(fixedKey(s))));
     const joined = audio.concat(parts.filter(Boolean), 0);
     const has = joined.length > 0;
-    pitchCache = { key, lufs: has ? audio.loudness(joined) : -Infinity, bands: has ? audio.toneBands(joined) : null, room: has ? audio.roomTone(joined) : -Infinity };
+    pitchCache = { key, lufs: has ? audio.loudness(joined) : -Infinity, bands: has ? audio.toneBands(joined) : null, room: has ? audio.roomTone(joined) : -Infinity, joined };
   }
   return pitchCache;
 }
@@ -525,15 +526,32 @@ async function breathsIn(seg) {
   return breathCache.get(key);
 }
 
-// The breath put between a custom line and the pitch part after it: one of that part's own breaths, so the room
-// sound and the voice match. null when it's off or the part has none.
+// A breath you recorded yourself, set to a natural level under the pitch (about 22 dB below its speech, before
+// the Breath volume slider). Kept under its own key, so it isn't a part of the voice note's layout.
+const MY_BREATH = 'fixed:breath';
+const MY_BREATH_DB = -22;
+// The least air around the join, in ms: a natural pause before a breath, and a beat after it before the words.
+const MIN_AIR = { before: 220, after: 120 };
+async function myBreath() {
+  const raw = S.lens[MY_BREATH] ? await getAudio(MY_BREATH) : null;
+  if (!raw) return null;
+  const pitch = await pitchInfo();
+  const clip = Number.isFinite(pitch.lufs) ? audio.matchLoudness(raw, pitch.lufs + MY_BREATH_DB, 40).samples : raw;
+  return { clip, mine: true, seconds: raw.length / audio.SR };
+}
+
+// The breath put between a custom line and the pitch part after it: one of the pitch's own breaths (so the room
+// sound and the voice match), or the one you recorded. Yours is used when you chose it, or when the pitch has
+// none. null when the breath is off or there's neither.
 async function breathBefore(seg) {
   if (!S.settings.breath || seg?.kind !== 'fixed') return null;
   const list = await breathsIn(seg);
+  const mine = S.settings.breathSource === 'mine' || !list.length ? await myBreath() : null;
+  if (mine) return mine;
   if (!list.length) return null;
   const n = S.settings.breathPick % list.length;
   const b = list[n];
-  return { clip: audio.breathClip(await getAudio(fixedKey(seg)), b), b, n, total: list.length };
+  return { clip: audio.breathClip(await getAudio(fixedKey(seg)), b), b, n, total: list.length, seconds: b.seconds };
 }
 
 // Builds a lead's whole voice note. Each custom line is EQ'd to the pitch's tone, turned up or down to the
@@ -572,18 +590,34 @@ async function assembleClip(p) {
       info.lines.push(line);
       parts.push(samples);
       kinds.push('slot');
-      const breath = await breathBefore(S.template[i + 1]);
-      if (breath) {
-        parts.push(audio.gainDb(breath.clip, st.breathDb));
-        kinds.push('breath');
-        info.breath ??= { ...breath.b, n: breath.n + 1, total: breath.total };
+      const next = S.template[i + 1];
+      const breath = await breathBefore(next);
+      if (next?.kind === 'fixed') {
+        // The air around the join: what the takes already have, topped up to a natural pause (a take stopped
+        // right after the last word has none), plus the Pause slider, most of it before the breath.
+        const tail = audio.quietEdges(samples).tailMs;
+        const head = audio.quietEdges(await getAudio(fixedKey(next))).headMs;
+        const pads = breath && !breath.mine ? 60 : 0;
+        const wantBefore = Math.max(0, MIN_AIR.before - tail - pads) + (breath ? st.gapMs * 0.6 : st.gapMs);
+        const wantAfter = breath ? Math.max(0, MIN_AIR.after - head - pads) + st.gapMs * 0.4 : 0;
+        const air = (msLen) => (msLen > 0 && pitch.joined?.length ? audio.roomAir(pitch.joined, msLen) : null);
+        const before = air(wantBefore);
+        if (before) (parts.push(before), kinds.push('air'));
+        if (breath) {
+          parts.push(audio.gainDb(breath.clip, st.breathDb));
+          kinds.push('breath');
+          info.breath ??= breath.mine ? { mine: true, seconds: breath.seconds } : { ...breath.b, n: breath.n + 1, total: breath.total };
+          const after = air(wantAfter);
+          if (after) (parts.push(after), kinds.push('air'));
+        }
+        info.timing = { before: tail + pads + wantBefore, after: head + pads + wantAfter };
       }
     } else {
       parts.push(samples);
       kinds.push('fixed');
     }
   }
-  const { samples, starts } = audio.join(parts, st.gapMs);
+  const { samples, starts } = audio.join(parts, 0);
   const slot = kinds.indexOf('slot');
   const fixed = kinds.findIndex((k, i) => i > slot && k === 'fixed');
   const joinAt = slot >= 0 && fixed >= 0 ? { end: starts[slot] + parts[slot].length, pitch: starts[fixed] } : null;
@@ -1651,7 +1685,7 @@ async function paintBreath() {
   const list = await breathsIn(seg);
   if (!list.length) {
     return el.replaceChildren(
-      h('span', { class: 'muted' }, "No clear breath found in your pitch, so the intro runs straight into it. A take with a natural breath between sentences gives the app one to use."),
+      h('span', { class: 'muted' }, "No clear breath found in your pitch. Record your own under Listen on any lead's page, or re-record the pitch with a natural breath between sentences."),
     );
   }
   const n = S.settings.breathPick % list.length;
@@ -1688,8 +1722,9 @@ function joinPanel(p) {
   };
   const check = (k, label) =>
     h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st[k], onchange: (e) => ((st[k] = e.target.checked), k === 'breath' && paintBreath(), changed()) }), label);
-  const dbSlider = (k, label, min, max, step) => {
-    const show = (v) => `${v > 0 ? '+' : ''}${v} dB`;
+  const msSlider = (k, label, min, max, step) => anySlider(k, label, min, max, step, (v) => `${v} ms`);
+  const dbSlider = (k, label, min, max, step) => anySlider(k, label, min, max, step, (v) => `${v > 0 ? '+' : ''}${v} dB`);
+  const anySlider = (k, label, min, max, step, show) => {
     const out = h('span', { class: 'tag', 'data-out': k }, show(st[k]));
     return h(
       'div',
@@ -1720,15 +1755,40 @@ function joinPanel(p) {
     check('matchLevels', "Match the intro to the pitch's volume"),
     dbSlider('introDb', 'Intro volume trim', -6, 6, 0.5),
     check('toneMatch', "Match the intro's tone to the pitch (EQ)"),
-    check('breath', 'A breath from the pitch between the intro and the pitch'),
+    check('breath', 'A breath between the intro and the pitch'),
     h('div', { id: 'breath-info', class: 'row-flex small' }),
+    myBreathRow(),
     dbSlider('breathDb', 'Breath volume', -12, 12, 1),
-    h(
-      'label',
-      { class: 'field' },
-      'Extra silence before the pitch (ms, 0 = seamless)',
-      h('input', { type: 'number', min: 0, max: 1000, value: st.gapMs, onchange: (e) => ((st.gapMs = Math.max(0, parseInt(e.target.value, 10) || 0)), changed()) }),
-    ),
+    msSlider('gapMs', 'Pause between the intro and the pitch', 0, 1500, 50),
+  );
+}
+
+// Record your own breath: one take, kept until you redo it. Used when the pitch has no breath to lend, or when
+// you pick it.
+function myBreathRow() {
+  const st = S.settings;
+  const have = !!S.lens[MY_BREATH];
+  const pick = (v) => () => {
+    st.breathSource = v;
+    stopPlay();
+    saveSettings().then(flashSaved);
+    paintJoin(current());
+  };
+  return h(
+    'div',
+    { id: 'my-breath', class: 'row-flex small' },
+    h('span', { class: 'muted' }, have ? `Your recorded breath (${secs(S.lens[MY_BREATH])})` : "Or record your own: press, breathe in like you're about to speak, press again."),
+    recButton(MY_BREATH, 'Record a breath'),
+    have ? playButton(MY_BREATH, 'Play', async () => (await myBreath())?.clip, { class: 'icon' }) : null,
+    have
+      ? h(
+          'label',
+          { class: 'check inline' },
+          h('input', { type: 'radio', name: 'breath-source', checked: st.breathSource !== 'mine', onchange: pick('auto') }),
+          "the pitch's",
+        )
+      : null,
+    have ? h('label', { class: 'check inline' }, h('input', { type: 'radio', name: 'breath-source', checked: st.breathSource === 'mine', onchange: pick('mine') }), 'mine') : null,
   );
 }
 
@@ -1758,13 +1818,20 @@ async function paintJoin(p) {
         `Room tone: intro ${f(line.room)} dB, pitch ${f(info.pitchRoom)} dB.${line.eased ? " The intro's tail is eased down to the pitch's level before the join." : ''}${roomDiff > 8 ? ' For the cleanest join, record the intro in the same spot and at the same distance as the pitch.' : ''}`,
       );
     }
+    const turned = S.settings.breathDb ? `, turned ${S.settings.breathDb > 0 ? 'up' : 'down'} ${Math.abs(S.settings.breathDb)} dB` : '';
     out.push(
-      info.breath
-        ? `Breath: a ${info.breath.seconds.toFixed(1)}s breath from ${secs(info.breath.at)} into the pitch (${info.breath.n} of ${info.breath.total}), ${info.breath.db} dB below the pitch's speech${S.settings.breathDb ? `, turned ${S.settings.breathDb > 0 ? 'up' : 'down'} ${Math.abs(S.settings.breathDb)} dB` : ''}.`
-        : S.settings.breath
-          ? 'Breath: none found in the pitch, so the intro runs straight into it.'
-          : 'Breath: off.',
+      info.breath?.mine
+        ? `Breath: your recorded breath (${info.breath.seconds.toFixed(1)}s), set ${-MY_BREATH_DB} dB below the pitch's speech${turned}.`
+        : info.breath
+          ? `Breath: a ${info.breath.seconds.toFixed(1)}s breath from ${secs(info.breath.at)} into the pitch (${info.breath.n} of ${info.breath.total}), ${info.breath.db} dB below the pitch's speech${turned}.`
+          : S.settings.breath
+            ? 'Breath: none found in the pitch and none recorded, so the intro runs straight into it. Record one below.'
+            : 'Breath: off.',
     );
+    if (info.timing) {
+      const ms = (v) => `${Math.round(v)} ms`;
+      out.push(`Timing: intro → ${ms(info.timing.before)} of air → ${info.breath ? `breath ${info.breath.seconds.toFixed(1)}s → ${ms(info.timing.after)} of air → ` : ''}pitch.`);
+    }
   } catch (e) {
     out = [errText(e)];
   }
@@ -1863,7 +1930,6 @@ function setupView() {
       h('div', { id: 'breath-info', class: 'row-flex small' }),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.toneMatch, onchange: check(st, 'toneMatch') }), "Match the intro's tone to the pitch (EQ), so a take recorded closer to or farther from the mic still sounds like the same voice"),
       h('p', { class: 'muted small' }, "Fine-tune the join by ear under Listen on any lead's page: play just the join, trim the intro or breath volume, or add silence."),
-      h('label', { class: 'field' }, 'Extra pause between parts (ms, 0 = seamless crossfade)', h('input', { type: 'number', min: 0, max: 1000, value: st.gapMs, oninput: num(st, 'gapMs') })),
       h('label', { class: 'field' }, 'Silence before the clip starts in Instagram (ms)', h('input', { type: 'number', min: 0, max: 2000, value: st.leadInMs, oninput: num(st, 'leadInMs') })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.monitorWatching, onchange: check(st, 'monitorWatching') }), 'Play the clip out loud when I use Send while watching (background sends are always silent)'),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.autoOpen, onchange: check(st, 'autoOpen') }), "Open the lead's Instagram profile when I open a lead"),

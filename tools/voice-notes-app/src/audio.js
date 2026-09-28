@@ -326,18 +326,48 @@ export function toneMatch(s, ref, maxDb = 8) {
 // A level change in dB, with the soft limiter so a boost never clips.
 export const gainDb = (s, db) => (db ? softLimit(s, 10 ** (db / 20)) : s);
 
-// The room, in dB: the level of the quietest 100 ms of a take (the pause at either end, or between words).
-export function roomTone(s) {
+// The quietest 100 ms of a take (the pause at either end, or between words): where it starts and its level in dB.
+export function quietest(s) {
   const db = frameDb(s);
   const w = 10;
-  if (db.length < w) return db.length ? Math.min(...db) : -Infinity;
-  let best = Infinity;
+  if (db.length < w) return { at: 0, db: db.length ? Math.min(...db) : -Infinity };
+  let best = { at: 0, db: Infinity };
   for (let i = 0; i + w <= db.length; i++) {
     let p = 0;
     for (let k = i; k < i + w; k++) p += 10 ** (db[k] / 10);
-    best = Math.min(best, 10 * Math.log10(p / w));
+    const level = 10 * Math.log10(p / w);
+    if (level < best.db) best = { at: i * FRAME, db: level };
   }
   return best;
+}
+export const roomTone = (s) => quietest(s).db;
+
+// A stretch of room air of the given length, made from a take's quietest 100 ms tiled back and forth with
+// short crossfades, so a pause added at a join breathes like the room rather than going dead silent.
+export function roomAir(s, lengthMs) {
+  const q = quietest(s);
+  const slice = s.slice(q.at, Math.min(s.length, q.at + ms(100)));
+  if (!slice.length) return new Float32Array(ms(lengthMs));
+  const back = slice.slice().reverse();
+  const parts = [];
+  for (let have = 0, i = 0; have < ms(lengthMs); i++) {
+    parts.push(i % 2 ? back : slice);
+    have += slice.length - ms(10);
+  }
+  return join(parts, 0, 10).samples.slice(0, ms(lengthMs));
+}
+
+// How much quiet a take has at its start and end (ms), by the same rule trimSilence uses.
+export function quietEdges(s, { floorDb = -55, rangeDb = 32 } = {}) {
+  const db = frameDb(s);
+  const peak = maxOf(db);
+  if (!db.length || peak < floorDb) return { headMs: (s.length / SR) * 1000, tailMs: 0 };
+  const thr = Math.max(floorDb, peak - rangeDb);
+  let head = 0;
+  while (head < db.length && db[head] < thr) head++;
+  let tail = 0;
+  while (tail < db.length - head && db[db.length - 1 - tail] < thr) tail++;
+  return { headMs: head * 10, tailMs: tail * 10 };
 }
 
 // Eases the last `tailMs` of a take down by `db` (a ramp in dB), so a take whose room noise is louder than what
@@ -422,7 +452,7 @@ export function findBreaths(s) {
   const loud = sorted.filter((d) => d > peak - 25);
   const ref = 10 * Math.log10(loud.reduce((a, d) => a + 10 ** (d / 10), 0) / loud.length);
   const speech = (x) => (x.voiced > 0.5 && x.db > floor + 10) || x.db > ref - 6;
-  const breathy = (x) => !speech(x) && x.db > floor + 6 && x.db > ref - 45 && x.lo <= 0.6 && x.hi <= 0.6 && x.flat >= 0.15;
+  const breathy = (x) => !speech(x) && x.db > floor + 6 && x.db > ref - 50 && x.lo <= 0.7 && x.hi <= 0.7 && x.flat >= 0.12;
 
   const found = [];
   let f = 0;
@@ -435,20 +465,20 @@ export function findBreaths(s) {
     const p0 = f;
     while (f < st.length && !speech(st[f])) f++;
     const p1 = f;
-    if (p0 === 0 || p1 >= st.length || p1 - p0 < 20) continue;
-    // The breathy stretch inside it, allowing short dips, at least 30 ms clear of the words on either side.
+    if (p0 === 0 || p1 >= st.length || p1 - p0 < 15) continue;
+    // The breathy stretch inside it, allowing short dips, at least 20 ms clear of the words on either side.
     let best = null;
-    for (let i = p0 + 3; i < p1 - 3; i++) {
+    for (let i = p0 + 2; i < p1 - 2; i++) {
       if (!breathy(st[i])) continue;
       let j = i;
-      for (let k = i + 1, miss = 0; k < p1 - 3; k++) {
+      for (let k = i + 1, miss = 0; k < p1 - 2; k++) {
         if (breathy(st[k])) (j = k), (miss = 0);
         else if (++miss > 3) break;
       }
       const frames = j - i + 1;
       let top = -Infinity;
       for (let k = i; k <= j; k++) top = Math.max(top, st[k].db);
-      if (frames >= 12 && frames <= 100 && top > floor + 10 && top > ref - 42 && (!best || frames > best.frames)) best = { i, j, frames, top };
+      if (frames >= 12 && frames <= 100 && top > floor + 9 && top > ref - 46 && (!best || frames > best.frames)) best = { i, j, frames, top };
       i = j;
     }
     if (best) found.push({ start: best.i * FRAME, end: (best.j + 1) * FRAME, seconds: best.frames / 100, at: (best.i * FRAME) / SR, db: Math.round(best.top - ref) });
