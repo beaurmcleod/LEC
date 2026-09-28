@@ -148,6 +148,7 @@ button.big { width: 100%; padding: 12px; border-radius: 12px; font-size: 15px; f
   font-weight: 700;
 }
 .badge[hidden] { display: none; }
+.badge.sent { background: none; color: var(--ok); padding: 0 2px; }
 .tag.new { background: var(--accent); color: var(--accent-text); }
 .card.sync { padding: 8px 12px; }
 label.check.inline { align-items: center; font-size: 12px; color: var(--muted); }

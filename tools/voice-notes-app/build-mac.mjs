@@ -11,6 +11,9 @@ if (process.platform !== 'darwin') {
 }
 
 const NAME = 'Torrey Voice Notes';
+// Setup shows this, so you can tell which update is installed.
+const commit = execFileSync('git', ['rev-parse', '--short', 'HEAD']).toString().trim();
+fs.writeFileSync('src/build.js', `export default ${JSON.stringify({ commit, built: new Date().toISOString() })};\n`);
 const [outDir] = await packager({
   dir: '.',
   out: 'dist',
@@ -36,4 +39,4 @@ try {
   fs.rmSync(dest, { recursive: true, force: true });
   execFileSync('ditto', [bundle, dest]);
 }
-console.log(`\nInstalled: ${dest}\nOpen it from Launchpad or Spotlight ("${NAME}").`);
+console.log(`\nInstalled build ${commit}: ${dest}\nOpen it from Launchpad or Spotlight ("${NAME}"). Setup shows the build at the bottom.`);

@@ -163,6 +163,19 @@ export function spokenHook(raw) {
   return line.replace(/\s+/g, ' ').trim() + end;
 }
 
+// The line in the Airtable "Bridge" (the DM sent after the joke lands) that reacts to something about them:
+// "ha, you're a good sport. Bankers Hill's lucky to have that red facade on Grape Street." -> the second
+// sentence. Used when a lead has no Personal hook.
+export function spokenBridge(raw) {
+  const first = String(raw || '').split(/\n\s*\n/)[0].trim();
+  const said = first.split(/(?<=[.!?])\s+/).find(
+    (x) =>
+      !/^(ha|haha|lol|appreciate you|thanks for|glad|good one|you're a good sport)\b/i.test(x) &&
+      !/speaking of|real reason|torrey|peptide|\b(i'?m|we|our|us)\b|cool if|mind if|partner|link|\d+%|order|lab report|question/i.test(x),
+  );
+  return said ? said.replace(/\s+/g, ' ').trim() : '';
+}
+
 export function deriveName(p) {
   return (p.first || '').trim() || (p.business ? tidyBusiness(p.business) : '') || p.handle || '';
 }
@@ -189,6 +202,7 @@ export function makeProspect(f) {
     handle: cleanHandle(f.handle),
     category: f.category || '',
     hook: f.hook || '',
+    bridge: f.bridge || '',
     bio: f.bio || '',
     research: f.research || '',
     notes: f.notes || '',
@@ -225,6 +239,7 @@ export function fromFields(obj, extra = {}) {
     handle: pick(obj, 'instagram', 'instagram handle', 'handle', 'ig', 'username', 'instagram url', 'ig url'),
     category: pick(obj, 'category'),
     hook: pick(obj, 'personal hook', 'hook'),
+    bridge: pick(obj, 'bridge'),
     bio: pick(obj, 'ig bio', 'bio'),
     research: pick(obj, 'research'),
     notes: pick(obj, 'notes'),

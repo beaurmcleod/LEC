@@ -105,7 +105,7 @@ const MODELS = [
 
 const PLACEHOLDERS = ['name', 'first', 'detail', 'crowd', 'role', 'business', 'handle', 'note', 'hook', 'category'];
 // Refreshed from Airtable on every sync, unless you've edited that field here.
-const REFRESH_FIELDS = ['first', 'role', 'business', 'category', 'hook', 'bio', 'research', 'notes', 'atStatus', 'followedAt'];
+const REFRESH_FIELDS = ['first', 'role', 'business', 'category', 'hook', 'bridge', 'bio', 'research', 'notes', 'atStatus', 'followedAt'];
 const MAX_SECONDS = 59;
 const SYNC_MS = 15 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -261,7 +261,8 @@ function personName(p) {
 }
 
 // Lead details cleaned up for saying out loud. {detail} is their Personal hook as a sentence ("saw you run
-// HYROX prep."), or their role and business when there's no hook; {crowd} is who they are ("trainers").
+// HYROX prep."); with no hook, the Bridge's line about them, then their role and business. {crowd} is who
+// they are ("trainers").
 function scriptVars(p) {
   const name = personName(p);
   const v = {
@@ -273,7 +274,8 @@ function scriptVars(p) {
     handle: p.handle ? `@${p.handle}` : '',
     crowd: leads.crowd(p.category, p.role, p.business),
   };
-  v.detail = leads.spokenHook(p.hook) || adaptScript(FALLBACK_DETAIL, v).replace(/\{(\w+)\}/g, (m, k) => v[k] || '');
+  v.detail =
+    leads.spokenHook(p.hook) || leads.spokenBridge(p.bridge) || adaptScript(FALLBACK_DETAIL, v).replace(/\{(\w+)\}/g, (m, k) => v[k] || '');
   return v;
 }
 
@@ -919,11 +921,26 @@ function nextTodo(fromId) {
   return list.find((p) => S.prospects.indexOf(p) > i) || list[0] || null;
 }
 
+// Voice notes sent since midnight on this Mac, counting ones you marked sent by hand.
+function sentToday() {
+  const midnight = new Date().setHours(0, 0, 0, 0);
+  return S.prospects.filter((p) => p.status === 'sent' && p.sentAt >= midnight).length;
+}
+
+function sentBadge() {
+  const n = sentToday();
+  return h('span', { id: 'sent-today', class: 'badge sent', title: `${n} voice note${n === 1 ? '' : 's'} sent today` }, `✓ ${n}`);
+}
+
+// In place, so a background send never interrupts recording or typing.
+const paintSentToday = () => document.getElementById('sent-today')?.replaceWith(sentBadge());
+
 async function markSent(p) {
   p.status = 'sent';
   p.sentAt = Date.now();
   delete p.sendIssue;
   await saveProspects();
+  paintSentToday();
   const at = S.settings.airtable;
   if (at.writeBack && at.token && p.airtableId) {
     window.api.markSent(at, p.airtableId).catch((e) => toast(`Marked sent here, but Airtable said: ${errText(e)}`, 8000));
@@ -1020,7 +1037,7 @@ function header() {
     h(
       'div',
       { class: 'tabs' },
-      h('button', { class: `tab ${S.view === 'leads' ? 'on' : ''}`, onclick: leadsTab }, 'Leads', h('span', { id: 'new-badge', class: 'badge', hidden: !n }, n)),
+      h('button', { class: `tab ${S.view === 'leads' ? 'on' : ''}`, onclick: leadsTab }, 'Leads', h('span', { id: 'new-badge', class: 'badge', hidden: !n }, n), sentBadge()),
       h(
         'button',
         { class: `tab ${S.view === 'follow' ? 'on' : ''}`, onclick: () => ((S.view = 'follow'), render()) },
@@ -1649,6 +1666,11 @@ function setupView() {
       ),
       S.busy ? h('p', { class: 'muted small' }, S.busy) : null,
     ),
+    h(
+      'p',
+      { id: 'build', class: 'muted small center' },
+      S.build ? `Build ${S.build.commit}, installed ${new Date(S.build.built).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}` : 'Development build',
+    ),
   );
 }
 
@@ -1873,6 +1895,8 @@ document.addEventListener('keydown', (e) => {
 // ---------- boot ----------
 
 (async () => {
+  // Written by build-mac.mjs, so Setup can show which update is installed.
+  S.build = await import('./build.js').then((m) => m.default).catch(() => null);
   S.lens = (await store.get('kv', 'lens')) || {};
   S.said = await store.get('kv', 'said');
   if (!S.said) {
@@ -1901,5 +1925,5 @@ document.addEventListener('keydown', (e) => {
   render();
   if (S.settings.autoSync) sync({ quiet: true });
   setInterval(() => S.settings.autoSync && sync({ quiet: true }), SYNC_MS);
-  setInterval(paintSync, 60 * 1000);
+  setInterval(() => (paintSync(), paintSentToday()), 60 * 1000);
 })();
