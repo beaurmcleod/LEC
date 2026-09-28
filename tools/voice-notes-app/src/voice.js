@@ -8,10 +8,13 @@ function voiceSettings(s) {
   };
 }
 
+// ELEVEN_API lets tests point the app at a local stand-in.
+const ELEVEN_API = globalThis.process?.env?.ELEVEN_API || 'https://api.elevenlabs.io/v1';
+
 async function request({ key, voiceId, model }, text, settings) {
   const body = { text, model_id: model || 'eleven_multilingual_v2' };
   if (settings) body.voice_settings = settings;
-  return fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`, {
+  return fetch(`${ELEVEN_API}/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`, {
     method: 'POST',
     headers: { 'xi-api-key': key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
     body: JSON.stringify(body),

@@ -118,6 +118,7 @@ const S = {
   settings: null,
   prospects: [],
   lens: {},
+  said: {},
   rec: null,
   busy: '',
   armed: null,
@@ -199,11 +200,17 @@ function flashSaved() {
 }
 const saveProspects = () => store.put('kv', 'prospects', S.prospects);
 const saveLens = () => store.put('kv', 'lens', S.lens);
+const saveSaid = () => store.put('kv', 'said', S.said);
 
 async function setAudio(key, samples, meta = {}) {
   await store.put('audio', key, { samples, ...meta });
   S.lens[key] = samples.length / audio.SR;
   await saveLens();
+  if (key.startsWith('slot:')) {
+    if (meta.text) S.said[key] = { text: meta.text, by: meta.source };
+    else delete S.said[key];
+    await saveSaid();
+  }
 }
 
 async function getAudio(key) {
@@ -214,6 +221,33 @@ async function delAudio(key) {
   await store.del('audio', key);
   delete S.lens[key];
   await saveLens();
+  if (S.said[key]) {
+    delete S.said[key];
+    await saveSaid();
+  }
+}
+
+// What a lead's line says right now, from its "slot:<lead>:<line>" key.
+function lineText(key) {
+  const [, pid, sid] = key.split(':');
+  const p = S.prospects.find((x) => x.id === pid);
+  const seg = S.template.find((x) => x.id === sid);
+  return p && seg ? spokenScript(seg.script, p) : '';
+}
+
+// A recorded or auto-voiced line whose wording has changed since (a new intro, a new hook, a fixed name).
+const outdated = (p, seg) => {
+  const said = S.said[slotKey(p, seg)];
+  return !!said && !!S.lens[slotKey(p, seg)] && said.text !== spokenScript(seg.script, p);
+};
+
+// Auto-voiced lines from before the app kept track of wording: their audio still has the text they were made from.
+async function backfillSaid() {
+  for (const key of Object.keys(S.lens).filter((k) => k.startsWith('slot:'))) {
+    const rec = await store.get('audio', key);
+    if (rec?.source === 'tts' && rec.text) S.said[key] = { text: rec.text, by: 'tts' };
+  }
+  await saveSaid();
 }
 
 // The name to greet someone by, or '' when all the app has is their business or handle (so it never says
@@ -367,7 +401,7 @@ async function stopRecording() {
     const samples = audio.processTake(await recorder.stop(), { chopStartMs: 60, chopEndMs: 180 });
     if (samples.length < audio.SR * 0.25) toast("Didn't catch that. Check your mic and try again.");
     else {
-      await setAudio(key, samples, { source: 'mic' });
+      await setAudio(key, samples, { source: 'mic', text: lineText(key) });
       // A re-take makes any clip already loaded into Instagram out of date.
       if (S.armed && key.includes(`:${S.armed}:`)) {
         window.api.disarm();
@@ -411,22 +445,42 @@ async function autoVoiceOne(p, seg) {
   setBusy('');
 }
 
-async function autoVoiceAll() {
-  const jobs = [];
-  for (const p of todoList()) {
-    for (const seg of slots()) if (!S.lens[slotKey(p, seg)]) jobs.push([p, seg]);
-  }
-  if (!jobs.length) return toast('Every to-do lead already has its lines.');
-  for (let i = 0; i < jobs.length; i++) {
-    setBusy(`Auto-voicing ${i + 1} of ${jobs.length}...`);
+async function runVoiceJobs(jobs, verb) {
+  let done = 0;
+  for (const job of jobs) {
+    setBusy(`${verb} ${done + 1} of ${jobs.length}...`);
     try {
-      await autoVoice(...jobs[i]);
+      await autoVoice(...job);
+      done++;
     } catch (e) {
       toast(errText(e), 8000);
       break;
     }
   }
   setBusy('');
+  return done;
+}
+
+async function autoVoiceAll() {
+  const jobs = [];
+  for (const p of todoList()) {
+    for (const seg of slots()) if (!S.lens[slotKey(p, seg)]) jobs.push([p, seg]);
+  }
+  if (!jobs.length) return toast('Every to-do lead already has its lines.');
+  await runVoiceJobs(jobs, 'Auto-voicing');
+}
+
+// Auto-voiced lines whose wording changed, on every lead still to do (waiting ones too). Lines you recorded
+// yourself are only flagged, since the app can't re-say them in your voice.
+const staleVoiced = () =>
+  S.prospects
+    .filter((p) => p.status === 'todo')
+    .flatMap((p) => slots().filter((seg) => outdated(p, seg) && S.said[slotKey(p, seg)].by === 'tts').map((seg) => [p, seg]));
+
+async function revoiceAll() {
+  const jobs = staleVoiced();
+  const done = await runVoiceJobs(jobs, 'Re-voicing');
+  if (done === jobs.length) toast(`Re-voiced ${done} line${done === 1 ? '' : 's'} with the new wording.`);
 }
 
 // How loud the recorded-once parts (the pitch) are, remembered until one is re-recorded.
@@ -996,6 +1050,7 @@ function leadsView() {
   const followedToday = gate ? waiting.filter((p) => p.airtableId && p.followedAt && !followedLongEnough(p)).length : 0;
   // Leads that only the follow wait is holding back.
   const gated = gate ? waiting.filter((p) => researched(p) && !followedLongEnough(p)).length : 0;
+  const stale = ttsReady() ? staleVoiced() : [];
 
   return h(
     'main',
@@ -1011,6 +1066,14 @@ function leadsView() {
         connected ? h('button', { onclick: () => sync(), disabled: S.sync.running }, 'Sync now') : h('button', { onclick: goSetup }, 'Connect Airtable'),
       ),
     ),
+    stale.length
+      ? h(
+          'div',
+          { class: 'card row-flex', id: 'revoice' },
+          h('span', { class: 'grow small' }, `${stale.length} auto-voiced line${stale.length === 1 ? ' still says' : 's still say'} the old wording.`),
+          h('button', { onclick: revoiceAll, disabled: !!S.busy }, `Re-voice ${stale.length === 1 ? 'it' : `all ${stale.length}`}`),
+        )
+      : null,
     h(
       'button',
       { class: 'enter', onclick: () => next && openLead(next.id), disabled: !next },
@@ -1187,11 +1250,19 @@ function lineRow(p, seg) {
       { class: 'row-flex' },
       recButton(key),
       playButton(key, 'Play', () => getAudio(key), { disabled: !len || live }),
-      ttsReady() ? h('button', { onclick: () => autoVoiceOne(p, seg), disabled: !!S.busy || !!S.rec || !!S.sending }, 'Auto-voice') : null,
+      ttsReady() ? h('button', { onclick: () => autoVoiceOne(p, seg), disabled: !!S.busy || !!S.rec || !!S.sending }, outdated(p, seg) ? 'Re-voice' : 'Auto-voice') : null,
       h('span', { class: 'grow' }),
-      len ? h('span', { class: 'tag ok' }, `✓ ${secs(len)}`) : h('span', { class: 'tag warn' }, 'not recorded'),
+      lineTag(p, seg),
     ),
   );
+}
+
+function lineTag(p, seg) {
+  const len = S.lens[slotKey(p, seg)];
+  const id = `tag-${seg.id}`;
+  if (!len) return h('span', { id, class: 'tag warn' }, 'not recorded');
+  if (outdated(p, seg)) return h('span', { id, class: 'tag warn', title: `Says: "${S.said[slotKey(p, seg)].text}"` }, `old wording · ${secs(len)}`);
+  return h('span', { id, class: 'tag ok' }, `✓ ${secs(len)}`);
 }
 
 function handleTag(p) {
@@ -1227,7 +1298,9 @@ function paintLead(p) {
   }
   swap('send-btn', sendButton(p));
   for (const el of document.querySelectorAll('[data-seg]')) {
-    el.textContent = renderScript(S.template.find((s) => s.id === el.dataset.seg).script, p);
+    const seg = S.template.find((s) => s.id === el.dataset.seg);
+    el.textContent = renderScript(seg.script, p);
+    swap(`tag-${seg.id}`, lineTag(p, seg));
   }
   for (const el of document.querySelectorAll('[data-namehint]')) el.hidden = !!personName(p);
 }
@@ -1801,6 +1874,11 @@ document.addEventListener('keydown', (e) => {
 
 (async () => {
   S.lens = (await store.get('kv', 'lens')) || {};
+  S.said = await store.get('kv', 'said');
+  if (!S.said) {
+    S.said = {};
+    await backfillSaid();
+  }
   S.template = await migrateTemplate((await store.get('kv', 'template')) || structuredClone(DEFAULT_TEMPLATE));
   const saved = (await store.get('kv', 'settings')) || {};
   S.settings = {
