@@ -134,9 +134,11 @@ export async function followPage(action) {
     if (loggedOut()) return { state: 'loggedout' };
     if (notFound()) return { state: 'notfound' };
     const isPrivate = /this account is private/i.test(mainText());
-    const posts = [...document.querySelectorAll('main a[href*="/p/"], main a[href*="/reel/"]')].filter(shown);
-    const latest = posts.find((a) => !a.querySelector('svg[aria-label*="pinned" i]'));
-    return { state: followState(), private: isPrivate, post: latest?.getAttribute('href') || '' };
+    // Newest first, pinned posts left out.
+    const posts = [...document.querySelectorAll('main a[href*="/p/"], main a[href*="/reel/"]')]
+      .filter((a) => shown(a) && !a.querySelector('svg[aria-label*="pinned" i]'))
+      .map((a) => a.getAttribute('href'));
+    return { state: followState(), private: isPrivate, posts: [...new Set(posts)].slice(0, 12) };
   }
   // Short fixed waits let the page finish settling before a click.
   if (action === 'clickFollow') {

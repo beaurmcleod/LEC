@@ -347,6 +347,8 @@ ipcMain.handle('clip:reveal', (_e, file) => shell.showItemInFolder(file));
 
 // The recorder shows the follow tab on the right while its Follow screen is open.
 ipcMain.handle('pane:show', (_e, which) => win.contentView.addChildView({ follow: followView, send: sendView }[which] || igView));
+// After a voice note sends: follow them and like their 1st and 4th posts, in the hidden send tab.
+ipcMain.handle('ig:engage', (_e, handle, airtableId) => quietly(() => follower.engage(tab('send'), { handle, airtableId })));
 ipcMain.handle('follow:config', (_e, at) => follower.configure(at));
 ipcMain.handle('follow:set', (_e, on) => follower.setEnabled(!!on));
 ipcMain.handle('follow:state', () => follower.snapshot());

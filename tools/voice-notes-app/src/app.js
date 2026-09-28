@@ -73,6 +73,8 @@ function readTime(text) {
 const DEFAULT_SETTINGS = {
   gapMs: 0,
   matchLevels: true,
+  breath: true,
+  breathPick: 0,
   leadInMs: 300,
   monitorWatching: false,
   autoOpen: true,
@@ -81,6 +83,7 @@ const DEFAULT_SETTINGS = {
   readyOnly: true,
   followGate: true,
   followPerDay: 50,
+  engageAfterSend: true,
   airtable: {
     token: '',
     baseId: 'appdAJbStcwrV2bq5',
@@ -321,7 +324,8 @@ const researched = (p) => !S.settings.readyOnly || !p.atStatus || p.atStatus ===
 // Airtable leads only come up for a DM a day after the follow step followed them.
 // DMs wait until a day after the app followed the lead (Setup can turn this off). Leads added by hand or CSV aren't held.
 const followedLongEnough = (p) => !S.settings.followGate || !p.airtableId || (!!p.followedAt && Date.now() - Date.parse(p.followedAt) >= DAY_MS);
-const shown = (p) => researched(p) && followedLongEnough(p);
+// The holds only apply to leads still to do: a sent lead stays listed after it's followed.
+const shown = (p) => p.status !== 'todo' || (researched(p) && followedLongEnough(p));
 const todoList = () => S.prospects.filter((p) => p.status === 'todo' && shown(p));
 const newCount = () => todoList().filter((p) => p.isNew).length;
 
@@ -504,15 +508,38 @@ async function pitchLevel() {
   return pitchLoudness.lufs;
 }
 
+// The breaths in a recorded-once part, remembered until it's re-recorded.
+const breathCache = new Map();
+async function breathsIn(seg) {
+  const key = `${fixedKey(seg)}:${S.lens[fixedKey(seg)]}`;
+  if (!breathCache.has(key)) {
+    const samples = await getAudio(fixedKey(seg));
+    breathCache.set(key, samples ? audio.findBreaths(samples) : []);
+  }
+  return breathCache.get(key);
+}
+
+// The breath put between a custom line and the pitch part after it: one of that part's own breaths, so the room
+// sound and the voice match. null when it's off or the part has none.
+async function breathBefore(seg) {
+  if (!S.settings.breath || seg?.kind !== 'fixed') return null;
+  const list = await breathsIn(seg);
+  if (!list.length) return null;
+  const b = list[S.settings.breathPick % list.length];
+  return audio.breathClip(await getAudio(fixedKey(seg)), b);
+}
+
 async function buildClip(p) {
   const missing = missingParts(p);
   if (missing.length) throw new Error(`Still needs: ${missing.map((s) => s.label).join(', ')}`);
   // Each lead's own lines are turned up or down to sound as loud as the pitch.
   const target = S.settings.matchLevels ? await pitchLevel() : -Infinity;
   const parts = [];
-  for (const seg of S.template) {
+  for (const [i, seg] of S.template.entries()) {
     const samples = await getAudio(partKey(p, seg));
     parts.push(seg.kind === 'slot' && Number.isFinite(target) ? audio.matchLoudness(samples, target).samples : samples);
+    const breath = seg.kind === 'slot' ? await breathBefore(S.template[i + 1]) : null;
+    if (breath) parts.push(breath);
   }
   return audio.concat(parts, S.settings.gapMs);
 }
@@ -670,6 +697,10 @@ async function runQueue() {
   while (S.bg.jobs.length) {
     const job = S.bg.jobs.shift();
     const p = S.prospects.find((x) => x.id === job.pid);
+    if (job.engage) {
+      if (p) await engage(p);
+      continue;
+    }
     if (!p || p.status !== 'sending') continue;
     const cur = (S.bg.current = { pid: p.id, handle: p.handle, text: 'Starting...', until: 0 });
     paintQueue();
@@ -705,6 +736,23 @@ async function runQueue() {
   }
 }
 
+// Once a note is sent: follow them and like their 1st and 4th posts. It runs in the hidden send tab, straight
+// after that send and before the next one.
+function queueEngage(p) {
+  if (!S.settings.engageAfterSend || !p.handle) return;
+  S.bg.jobs.unshift({ pid: p.id, engage: true });
+  runQueue();
+}
+
+async function engage(p) {
+  S.bg.current = { pid: p.id, handle: p.handle, text: '', until: 0, engage: true };
+  paintQueue();
+  const r = await window.api.engage(p.handle, p.airtableId || '').catch((e) => ({ result: 'failed', note: errText(e) }));
+  if (r.result === 'blocked') toast(`Instagram pushed back while following @${p.handle} ("${r.note}"). Follows and likes pause for 48 hours.`, 8000);
+  S.bg.current = null;
+  paintQueue();
+}
+
 // Updates the screen after a background change, unless that would interrupt recording or typing.
 function refreshQuietly() {
   if (S.rec || S.view === 'setup' || document.activeElement?.matches?.('input, textarea')) return paintQueue();
@@ -722,9 +770,13 @@ function paintQueue() {
   el.hidden = !cur;
   if (!cur) return el.replaceChildren();
   const left = cur.until ? ` · ${countdown(cur.until - Date.now())} left` : '';
-  const more = S.bg.jobs.length ? ` · ${S.bg.jobs.length} more queued` : '';
+  const queued = S.bg.jobs.filter((j) => !j.engage).length;
+  const more = queued ? ` · ${queued} more queued` : '';
+  const what = cur.engage
+    ? [h('b', {}, `Following @${cur.handle}`), ' and liking 2 posts...']
+    : [h('b', {}, `Sending to @${cur.handle}`), ` ${cur.text.replace(/\s*\(\d+:\d+\)\.\.\.$/, '...')}`];
   el.replaceChildren(
-    h('span', { class: 'grow' }, h('b', {}, `Sending to @${cur.handle}`), ` ${cur.text.replace(/\s*\(\d+:\d+\)\.\.\.$/, '...')}${left}${more}`),
+    h('span', { class: 'grow' }, ...what, `${left}${more}`),
     h('button', { class: 'link', onclick: toggleWatch }, S.watchSend ? 'Hide' : 'Watch'),
   );
 }
@@ -947,6 +999,7 @@ async function markSent(p) {
   delete p.sendIssue;
   await saveProspects();
   paintSentToday();
+  queueEngage(p);
   const at = S.settings.airtable;
   if (at.writeBack && at.token && p.airtableId) {
     window.api.markSent(at, p.airtableId).catch((e) => toast(`Marked sent here, but Airtable said: ${errText(e)}`, 8000));
@@ -1531,6 +1584,29 @@ function segmentCard(seg, i) {
   );
 }
 
+// Which breath the join uses, with a way to hear it and pick another.
+async function paintBreath() {
+  const el = document.getElementById('breath-info');
+  const seg = S.template.find((s, i) => s.kind === 'fixed' && S.template[i - 1]?.kind === 'slot');
+  if (!el) return;
+  if (!S.settings.breath || !seg || !S.lens[fixedKey(seg)]) return el.replaceChildren();
+  const list = await breathsIn(seg);
+  if (!list.length) {
+    return el.replaceChildren(
+      h('span', { class: 'muted' }, "No clear breath found in your pitch, so the intro runs straight into it. A take with a natural breath between sentences gives the app one to use."),
+    );
+  }
+  const n = S.settings.breathPick % list.length;
+  const b = list[n];
+  el.replaceChildren(
+    h('span', { class: 'grow muted' }, `Using a ${b.seconds.toFixed(1)}s breath from ${secs(b.at)} into your pitch (${n + 1} of ${list.length}).`),
+    playButton('breath', 'Play it', () => breathBefore(seg)),
+    list.length > 1
+      ? h('button', { onclick: () => ((S.settings.breathPick = (n + 1) % list.length), saveSettings().then(flashSaved), paintBreath()) }, 'Try another')
+      : null,
+  );
+}
+
 function slider(obj, k, label, min, max, step, lo, hi) {
   const out = h('span', { class: 'tag' }, Number(obj[k]).toFixed(2));
   return h(
@@ -1614,11 +1690,19 @@ function setupView() {
       'div',
       { class: 'card' },
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.matchLevels, onchange: check(st, 'matchLevels') }), "Match each lead's intro to the pitch's volume (recommended)"),
+      h(
+        'label',
+        { class: 'check' },
+        h('input', { type: 'checkbox', checked: st.breath, onchange: (e) => (check(st, 'breath')(e), paintBreath()) }),
+        "Put one of your pitch's own breaths between the intro and the pitch, so the join sounds natural",
+      ),
+      h('div', { id: 'breath-info', class: 'row-flex small' }),
       h('label', { class: 'field' }, 'Extra pause between parts (ms, 0 = seamless crossfade)', h('input', { type: 'number', min: 0, max: 1000, value: st.gapMs, oninput: num(st, 'gapMs') })),
       h('label', { class: 'field' }, 'Silence before the clip starts in Instagram (ms)', h('input', { type: 'number', min: 0, max: 2000, value: st.leadInMs, oninput: num(st, 'leadInMs') })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.monitorWatching, onchange: check(st, 'monitorWatching') }), 'Play the clip out loud when I use Send while watching (background sends are always silent)'),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.autoOpen, onchange: check(st, 'autoOpen') }), "Open the lead's Instagram profile when I open a lead"),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.autoSend, onchange: check(st, 'autoSend') }), "Send hits Instagram's send button for me (off: it stops after recording so I can check it and send myself)"),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.engageAfterSend, onchange: check(st, 'engageAfterSend') }), 'After a voice note sends, follow them and like their 1st and 4th posts (pinned posts skipped)'),
     ),
 
     h('h2', {}, 'Airtable'),
@@ -1761,6 +1845,10 @@ function followHint() {
 }
 
 function logText(e) {
+  if (e.afterSend && (e.result === 'followed' || e.result === 'already')) {
+    const likes = e.likes ? `liked ${e.likes} post${e.likes === 1 ? '' : 's'}` : e.private ? 'private, nothing to like' : 'no posts liked';
+    return `After the voice note: ${e.result === 'followed' ? 'followed' : 'already following'}, ${likes}`;
+  }
   if (e.result === 'followed') return e.liked ? 'Followed and liked their latest post' : e.private ? 'Followed (private, nothing to like)' : "Followed (didn't like a post)";
   if (e.result === 'already') return e.liked ? 'Already following; liked their latest post' : 'Already following';
   if (e.result === 'notfound') return 'Account not found, skipped';
@@ -1869,6 +1957,7 @@ function render() {
   const body = S.view === 'setup' ? setupView() : S.view === 'follow' ? followView() : p ? detailView(p) : leadsView();
   $app.replaceChildren(header(), queueStrip(), body);
   paintQueue();
+  if (S.view === 'setup') paintBreath();
   showRightPane();
 }
 

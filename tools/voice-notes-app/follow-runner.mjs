@@ -49,9 +49,11 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
 
   const run = (wc, step) => wc.executeJavaScript(`(${F.followPage})(${JSON.stringify(step)})`, true);
   const open = (wc, url) => wc.loadURL(url).catch(() => {});
+  const pause = () => new Promise((r) => setTimeout(r, fast ? 100 : 1500 + Math.random() * 2500));
 
-  async function visit(handle) {
-    const wc = view().webContents;
+  // Follows the account in `wc` if needed, then likes the posts at `likeAt` (0 = newest; pinned posts don't
+  // count). Posts already liked are left alone.
+  async function visit(wc, handle, likeAt = [0]) {
     await open(wc, `${igBase}/${encodeURIComponent(handle)}/`);
     const p = await run(wc, 'profile');
     if (p.state === 'blocked') return { result: 'blocked', note: p.note };
@@ -72,19 +74,21 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
 
     // Private accounts (or a pending request) have nothing to like.
     const isPrivate = p.private || requested;
-    let liked = false;
-    if (!isPrivate && p.post) {
-      await open(wc, new URL(p.post, igBase).href);
+    let likes = 0;
+    const hrefs = isPrivate ? [] : likeAt.map((i) => p.posts[i]).filter(Boolean);
+    for (const href of hrefs) {
+      await pause();
+      await open(wc, new URL(href, igBase).href);
       const post = await run(wc, 'post');
-      if (post.state === 'blocked') return { result: 'blocked', followed, note: post.note };
-      liked = post.state === 'liked';
-      if (post.state === 'like' && (await click(wc, await run(wc, 'clickLike')))) {
+      if (post.state === 'blocked') return { result: 'blocked', followed, liked: likes > 0, likes, note: post.note };
+      if (post.state === 'liked') likes++;
+      else if (post.state === 'like' && (await click(wc, await run(wc, 'clickLike')))) {
         const l = await run(wc, 'afterLike');
-        if (l.state === 'blocked') return { result: 'blocked', followed, note: l.note };
-        liked = l.state === 'liked';
+        if (l.state === 'blocked') return { result: 'blocked', followed, liked: likes > 0, likes, note: l.note };
+        if (l.state === 'liked') likes++;
       }
     }
-    return { result: followed ? 'followed' : 'already', followed, liked, private: isPrivate };
+    return { result: followed ? 'followed' : 'already', followed, liked: likes > 0, likes, private: isPrivate };
   }
 
   async function settle(lead, r) {
@@ -134,7 +138,7 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
       } else {
         current = lead;
         setPhase('working');
-        const r = await visit(lead.handle).catch((e) => ({ result: 'failed', note: e.message }));
+        const r = await visit(view().webContents, lead.handle).catch((e) => ({ result: 'failed', note: e.message }));
         current = null;
         queue = queue.slice(1);
         await settle(lead, r);
@@ -165,6 +169,29 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
       perDay = F.clampPerDay(cfg.perDay);
       if (!busy && ['setup', 'cap'].includes(phase.kind)) tick();
       else emit(snapshot());
+    },
+    // After a voice note sends: follow them and like their 1st and 4th posts, in the tab that sent it. Skipped
+    // while Instagram's push-back pause is on; a new push-back starts one. Follows count toward today's total.
+    async engage(wc, { handle, airtableId }) {
+      const now = Date.now();
+      if (state.pausedUntil > now) return { result: 'paused', until: state.pausedUntil };
+      const r = await visit(wc, handle, [0, 3]).catch((e) => ({ result: 'failed', note: e.message }));
+      if (r.followed || r.clicked) F.recordFollow(state, now);
+      if (r.result === 'blocked') state.pausedUntil = now + F.LIMITS.blockPauseMs;
+      addLog({ handle, result: r.result, followed: !!r.followed, liked: !!r.liked, likes: r.likes || 0, private: !!r.private, note: r.note || '', afterSend: true });
+      await save();
+      emit(snapshot());
+      if (airtableId && at?.token) {
+        try {
+          if (r.followed) {
+            await leads.markFollowedAirtable(at, airtableId, r.liked, new Date(now));
+            onFollowed({ airtableId, followedAt: new Date(now).toISOString() });
+          } else if (r.liked) await leads.markLikedAirtable(at, airtableId);
+        } catch (e) {
+          addLog({ handle, result: 'error', note: `Followed, but Airtable said: ${e.message}` });
+        }
+      }
+      return r;
     },
     setEnabled(on) {
       state.enabled = on;

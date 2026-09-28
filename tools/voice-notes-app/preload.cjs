@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('api', {
   showInstagram: () => ipcRenderer.invoke('ig:show'),
   grab: () => ipcRenderer.invoke('ig:grab'),
   igDo: (action, handle, target) => ipcRenderer.invoke('ig:do', action, handle, target),
+  engage: (handle, airtableId) => ipcRenderer.invoke('ig:engage', handle, airtableId),
   onStatus: (cb) => ipcRenderer.on('ig:status', (_e, m) => cb(m)),
   saveClip: (wav, name) => ipcRenderer.invoke('clip:save', wav, name),
   reveal: (file) => ipcRenderer.invoke('clip:reveal', file),

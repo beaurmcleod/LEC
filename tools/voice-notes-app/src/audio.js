@@ -144,6 +144,102 @@ export function matchLoudness(s, targetLufs, maxDb = 18) {
   return { samples: out, db };
 }
 
+// ---------- Breaths ----------
+// Finds the breaths in a take: quiet, noisy (unpitched) stretches inside the pauses between phrases. Each frame
+// is 10 ms. Voiced speech repeats at its pitch (80-400 Hz), which shows up as a strong autocorrelation peak;
+// a breath is noise, so it doesn't. A breath's sound sits around 600-4500 Hz; an "s" is brighter than that,
+// so a word-final or word-initial "s" next to a pause isn't mistaken for one.
+const DS = 6; // analyse at 8 kHz
+
+function frameStats(s) {
+  const n = Math.floor(s.length / FRAME);
+  const low = new Float32Array(Math.floor(s.length / DS));
+  for (let i = 0; i < low.length; i++) {
+    let sum = 0;
+    for (let k = 0; k < DS; k++) sum += s[i * DS + k];
+    low[i] = sum / DS;
+  }
+  const win = 240; // 30 ms at 8 kHz
+  const out = [];
+  for (let f = 0; f < n; f++) {
+    let e = 0;
+    let d = 0;
+    for (let i = f * FRAME + 1, end = i + FRAME - 1; i < end; i++) {
+      e += s[i] * s[i];
+      d += (s[i] - s[i - 1]) ** 2;
+    }
+    // Rough spectral centroid from how much the signal changes sample to sample.
+    const centroid = e > 0 ? (SR / (2 * Math.PI)) * Math.sqrt(d / e) : 0;
+    const c = Math.floor((f * FRAME) / DS);
+    let voiced = 0;
+    if (c + win + 100 < low.length) {
+      let e0 = 0;
+      for (let i = 0; i < win; i++) e0 += low[c + i] * low[c + i];
+      for (let lag = 20; lag <= 100 && e0 > 0; lag++) {
+        let r = 0;
+        let el = 0;
+        for (let i = 0; i < win; i++) {
+          r += low[c + i] * low[c + i + lag];
+          el += low[c + i + lag] * low[c + i + lag];
+        }
+        voiced = Math.max(voiced, r / Math.sqrt(e0 * el + 1e-20));
+      }
+    }
+    out.push({ db: 10 * Math.log10(e / FRAME + 1e-12), centroid, voiced });
+  }
+  return out;
+}
+
+// Returns [{ start, end, seconds, at }] in samples, best candidates first.
+export function findBreaths(s) {
+  const st = frameStats(s);
+  if (st.length < 50) return [];
+  const sorted = st.map((x) => x.db).sort((a, b) => a - b);
+  const floor = sorted[Math.floor(sorted.length * 0.1)];
+  const peak = sorted[sorted.length - 1];
+  const loud = sorted.filter((d) => d > peak - 25);
+  const ref = 10 * Math.log10(loud.reduce((a, d) => a + 10 ** (d / 10), 0) / loud.length);
+  const speech = (x) => (x.voiced > 0.5 && x.db > floor + 10) || x.db > ref - 6;
+  const breathy = (x) => !speech(x) && x.db > floor + 6 && x.centroid > 600 && x.centroid < 4500;
+
+  const found = [];
+  let f = 0;
+  while (f < st.length) {
+    if (speech(st[f])) {
+      f++;
+      continue;
+    }
+    // A pause: the frames up to the next speech.
+    const p0 = f;
+    while (f < st.length && !speech(st[f])) f++;
+    const p1 = f;
+    if (p0 === 0 || p1 >= st.length || p1 - p0 < 25) continue;
+    // The breathy stretch inside it, allowing short dips, at least 30 ms clear of the words on either side.
+    let best = null;
+    for (let i = p0 + 3; i < p1 - 3; i++) {
+      if (!breathy(st[i])) continue;
+      let j = i;
+      for (let k = i + 1, miss = 0; k < p1 - 3; k++) {
+        if (breathy(st[k])) (j = k), (miss = 0);
+        else if (++miss > 3) break;
+      }
+      const frames = j - i + 1;
+      let top = -Infinity;
+      for (let k = i; k <= j; k++) top = Math.max(top, st[k].db);
+      if (frames >= 15 && frames <= 100 && top > floor + 12 && (!best || frames > best.frames)) best = { i, j, frames };
+      i = j;
+    }
+    if (best) found.push({ start: best.i * FRAME, end: (best.j + 1) * FRAME, seconds: best.frames / 100, at: (best.i * FRAME) / SR });
+  }
+  // The most typical breaths first: close to half a second.
+  return found.sort((a, b) => Math.abs(a.seconds - 0.45) - Math.abs(b.seconds - 0.45));
+}
+
+// The breath with a little of the pause around it, faded at both ends, ready to go between two parts.
+export function breathClip(s, b, padMs = 60) {
+  return fade(s.slice(Math.max(0, b.start - ms(padMs)), Math.min(s.length, b.end + ms(padMs))), 20);
+}
+
 export function fade(s, fadeMs = 12) {
   const n = Math.min(ms(fadeMs), Math.floor(s.length / 2));
   for (let i = 0; i < n; i++) {

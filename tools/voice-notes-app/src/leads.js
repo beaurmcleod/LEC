@@ -430,3 +430,5 @@ export async function pullFollowQueue(at, { skip = {}, want = 5 } = {}) {
 export function markFollowedAirtable(at, recordId, liked, when = new Date()) {
   return patch(at, recordId, { 'IG followed at': when.toISOString(), 'IG liked': !!liked });
 }
+
+export const markLikedAirtable = (at, recordId) => patch(at, recordId, { 'IG liked': true });
