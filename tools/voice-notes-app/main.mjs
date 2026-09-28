@@ -7,6 +7,9 @@ import { promisify } from 'node:util';
 import { createFollowRunner } from './follow-runner.mjs';
 import * as leads from './src/leads.js';
 import { speak } from './src/voice.js';
+import { dmPage } from './src/dm-page.js';
+import { draftReply, testClaude } from './src/claude.js';
+import { createInvite, testTorrey } from './src/torrey.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const IG_BASE = (process.env.IG_BASE || 'https://www.instagram.com').replace(/\/$/, '');
@@ -316,7 +319,11 @@ ipcMain.handle('ig:grab', () => ig().executeJavaScript(GRAB));
 ipcMain.handle('ig:do', (_e, action, handle, target = 'dm') =>
   quietly(async () => {
     const wc = tab(target);
-    if (action === 'openDm') return openDm(wc, handle);
+    if (action === 'openDm') {
+      await openDm(wc, handle);
+      // The thread's own address, so replies can be matched to the lead later.
+      return pathOf(wc.getURL());
+    }
     if (action === 'clickMic' && !(await igClick(wc, 'mic'))) throw new Error("Couldn't find the mic button in the DM.");
     if (action === 'clickSend' && !(await igClick(wc, 'send'))) throw new Error("Couldn't find Instagram's send button.");
   }),
@@ -349,6 +356,61 @@ ipcMain.handle('clip:reveal', (_e, file) => shell.showItemInFolder(file));
 ipcMain.handle('pane:show', (_e, which) => win.contentView.addChildView({ follow: followView, send: sendView }[which] || igView));
 // After a voice note sends: follow them and like their 1st and 4th posts, in the hidden send tab.
 ipcMain.handle('ig:engage', (_e, handle, airtableId) => quietly(() => follower.engage(tab('send'), { handle, airtableId })));
+
+// ---------- Replies: read the DM inbox and answer in a thread, in the hidden send tab ----------
+const runDm = (wc, action, arg) => wc.executeJavaScript(`(${dmPage})(${JSON.stringify(action)}, ${JSON.stringify(arg ?? null)})`, true);
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+ipcMain.handle('dm:inbox', () =>
+  quietly(async () => {
+    const wc = tab('send');
+    await wc.loadURL(`${IG_BASE}/direct/inbox/`).catch(() => {});
+    return runDm(wc, 'inbox');
+  }),
+);
+ipcMain.handle('dm:thread', (_e, href) =>
+  quietly(async () => {
+    const wc = tab('send');
+    await wc.loadURL(new URL(href, IG_BASE).href).catch(() => {});
+    return runDm(wc, 'thread');
+  }),
+);
+// Types the text into the thread's message box with real (trusted) input and sends it.
+ipcMain.handle('dm:send', (_e, { href, handle, text }) =>
+  quietly(async () => {
+    const wc = tab('send');
+    if (href) await wc.loadURL(new URL(href, IG_BASE).href).catch(() => {});
+    else await openDm(wc, handle);
+    // A click right after a page load can arrive before the page takes input, so make sure the caret really
+    // is in the box (and the text really went in) before pressing send. Otherwise the message is lost silently.
+    let inBox = false;
+    for (let i = 0; i < 4 && !inBox; i++) {
+      const box = await runDm(wc, 'box');
+      if (!box) throw new Error("Couldn't find the message box in their DM.");
+      await clickPoint(wc, box);
+      await pause(300 + i * 300);
+      inBox = await runDm(wc, 'boxFocused');
+      if (!inBox && i >= 1) inBox = await runDm(wc, 'focusBox');
+    }
+    if (!inBox) throw new Error("Couldn't put the cursor in their message box.");
+    await wc.insertText(text);
+    await pause(400);
+    if (!(await runDm(wc, 'boxHas', text.slice(0, 40)))) throw new Error("The reply didn't go into the message box.");
+    const send = await runDm(wc, 'sendButton');
+    if (send) await clickPoint(wc, send);
+    else {
+      wc.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+      wc.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+    }
+    const r = await runDm(wc, 'confirm', text);
+    if (r.state === 'stuck') throw new Error("Typed the reply, but Instagram didn't send it. Open the thread and press Send.");
+    return r;
+  }),
+);
+ipcMain.handle('reply:draft', (_e, key, prompt) => draftReply(key, prompt));
+ipcMain.handle('reply:test', (_e, key) => testClaude(key));
+ipcMain.handle('torrey:invite', (_e, cfg, args) => createInvite(cfg, args));
+ipcMain.handle('torrey:test', (_e, cfg) => testTorrey(cfg));
+ipcMain.handle('airtable:patch', (_e, at, id, fields) => leads.patchAirtable(at, id, fields));
 ipcMain.handle('follow:config', (_e, at) => follower.configure(at));
 ipcMain.handle('follow:set', (_e, on) => follower.setEnabled(!!on));
 ipcMain.handle('follow:state', () => follower.snapshot());

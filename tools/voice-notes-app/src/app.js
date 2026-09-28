@@ -1,6 +1,7 @@
 import * as store from './store.js';
 import * as audio from './audio.js';
 import * as leads from './leads.js';
+import * as replies from './replies.js';
 
 // Read this off the screen when recording the pitch. About 32 seconds at a normal pace.
 const PITCH_SCRIPT = `Figured a real voice beats another copy-paste DM. I'm Garrett with Torrey Labs — we're a peptide company here in San Diego, every batch third-party tested.
@@ -88,6 +89,9 @@ const DEFAULT_SETTINGS = {
   followGate: true,
   followPerDay: 50,
   engageAfterSend: true,
+  claude: { key: '' },
+  torrey: { url: 'https://hvqerbhurepxjdyokzxx.supabase.co', key: '', site: 'https://torreylabs.store', percent: 20 },
+  replies: { watch: true, everyMin: 5, from: 'Garrett' },
   airtable: {
     token: '',
     baseId: 'appdAJbStcwrV2bq5',
@@ -131,6 +135,7 @@ const S = {
   prospects: [],
   lens: {},
   said: {},
+  replies: { checking: false, lastAt: 0, note: '', issue: '' },
   rec: null,
   busy: '',
   armed: null,
@@ -690,7 +695,10 @@ async function deliver(p, samples, { target, monitor, say, onPlaying = () => {} 
   const seconds = samples.length / audio.SR;
   say('Opening their DM...');
   const dmOpen = await window.api.igDo('openDm', p.handle, target).then(
-    () => true,
+    (href) => {
+      if (typeof href === 'string' && href.startsWith('/direct/t/')) p.dm = { ...p.dm, href };
+      return true;
+    },
     () => false,
   );
 
@@ -792,6 +800,10 @@ async function runQueue() {
       if (p) await engage(p);
       continue;
     }
+    if (job.reply) {
+      if (p) await sendReplyNow(p, job.reply);
+      continue;
+    }
     if (!p || p.status !== 'sending') continue;
     const cur = (S.bg.current = { pid: p.id, handle: p.handle, text: 'Starting...', until: 0 });
     paintQueue();
@@ -844,6 +856,176 @@ async function engage(p) {
   paintQueue();
 }
 
+// ---------- Replies: watch the DM inbox, answer a clear yes with their code, draft the rest ----------
+const RF = replies.REPLY_FIELDS;
+const INTENT_LABEL = { yes: 'Yes', no: 'No', question: 'Question', unclear: 'Unclear' };
+
+async function airtableReply(p, fields) {
+  const at = S.settings.airtable;
+  if (!at.writeBack || !at.token || !p.airtableId) return;
+  try {
+    await window.api.patchAirtable(at, p.airtableId, fields);
+  } catch (e) {
+    toast(`Airtable said: ${errText(e)}`, 8000);
+  }
+}
+
+// The inbox shows a name (or handle) per thread, not the handle itself, so a thread is matched by the
+// address remembered when the note was sent, and otherwise by the name.
+function matchThread(t, list) {
+  const byHref = list.find((p) => p.dm?.href && p.dm.href === t.href);
+  if (byHref) return byHref;
+  const name = String(t.name || '').trim().toLowerCase();
+  if (!name) return null;
+  const same = (v) => v && String(v).trim().toLowerCase() === name;
+  return list.find((p) => same(p.handle) || same(p.name) || same(p.business) || same(`${p.first || ''}`)) || null;
+}
+
+const ourPreview = (s) => /^(you sent|you:|you replied|you reacted|you shared)/i.test(String(s || '').trim());
+
+// Looks through the inbox for leads who wrote back since the last look. Runs in the hidden send tab, so it
+// waits for any send or follow to finish first, and sends wait for it.
+async function checkReplies({ manual = false } = {}) {
+  const r = S.settings.replies;
+  if (!manual && !r.watch) return;
+  if (!manual && Date.now() - S.replies.lastAt < r.everyMin * 60 * 1000) return;
+  if (S.bg.current || S.bg.jobs.length || S.sending || S.rec) {
+    if (manual) toast('Wait for the current send to finish, then check again.');
+    return;
+  }
+  const candidates = S.prospects.filter((p) => p.status === 'sent' && p.handle);
+  if (!candidates.length) {
+    S.replies = { ...S.replies, lastAt: Date.now(), note: 'Nothing sent yet, so nothing to check.' };
+    return refreshQuietly();
+  }
+  S.replies.checking = true;
+  S.bg.current = { pid: null, handle: '', text: '', until: 0, check: true };
+  paintQueue();
+  let found = 0;
+  let issue = '';
+  try {
+    const inbox = await window.api.dmInbox();
+    if (inbox.state === 'loggedout') throw new Error('Instagram is logged out. Sign in on the right.');
+    for (const t of inbox.threads || []) {
+      const p = matchThread(t, candidates);
+      if (!p) continue;
+      const before = p.dm?.preview ?? null;
+      p.dm = { ...p.dm, href: t.href, name: t.name };
+      // Unchanged since last look, or the last message in the thread is ours: nothing new from them.
+      if (t.preview === before || ourPreview(t.preview)) {
+        p.dm.preview = t.preview;
+        continue;
+      }
+      const thread = await window.api.dmThread(t.href);
+      const msgs = thread.messages || [];
+      let i = msgs.length;
+      while (i > 0 && !msgs[i - 1].mine) i--;
+      const theirs = msgs.slice(i).filter((m) => !m.voice).map((m) => m.text);
+      p.dm.preview = t.preview;
+      if (!theirs.length) continue;
+      found++;
+      await handleReply(p, theirs.join('\n'), msgs.slice(0, i));
+    }
+  } catch (e) {
+    issue = errText(e);
+  }
+  S.replies = {
+    checking: false,
+    lastAt: Date.now(),
+    issue,
+    note: issue ? `Couldn't check: ${issue}` : found ? `${found} new ${found === 1 ? 'reply' : 'replies'}` : 'No new replies',
+  };
+  S.bg.current = null;
+  paintQueue();
+  await saveProspects();
+  refreshQuietly();
+  runQueue();
+}
+
+// What a reply gets: a clear yes is answered right away with their code; a no is marked and left alone;
+// a question or anything unclear becomes a draft under Replies for you to approve.
+async function handleReply(p, text, history) {
+  const st = S.settings;
+  p.reply = { text, at: Date.now(), history: history.slice(-8), pending: true, intent: '', draft: '', why: '', issue: '' };
+  await airtableReply(p, { [RF.status]: 'Replied', [RF.lastReply]: text, [RF.received]: new Date().toISOString(), [RF.handled]: false });
+  let intent = 'unclear';
+  let draft = '';
+  let why = '';
+  try {
+    if (st.claude.key) {
+      const d = await window.api.replyDraft(st.claude.key, replies.replyPrompt(p, { text, history, from: st.replies.from, percent: st.torrey.percent, site: st.torrey.site }));
+      ({ intent, why } = d);
+      draft = d.reply;
+    } else {
+      intent = replies.quickIntent(text);
+      if (intent === 'yes') draft = replies.fallbackMessage(p, { ...replies.SLOTS, from: st.replies.from, percent: st.torrey.percent });
+      why = st.claude.key ? '' : 'Read without Claude (no API key in Setup).';
+    }
+  } catch (e) {
+    p.reply.issue = errText(e);
+  }
+  Object.assign(p.reply, { intent, draft, why });
+  if (intent === 'no') {
+    p.reply.pending = false;
+    await airtableReply(p, { [RF.status]: 'Not interested', [RF.intent]: 'No', [RF.handled]: true });
+    toast(`@${p.handle} said no thanks. Marked not interested.`);
+    return;
+  }
+  if (intent === 'yes' && draft && !p.reply.issue) return sendReplyNow(p, { text: draft, withCode: true });
+  await airtableReply(p, { [RF.intent]: INTENT_LABEL[intent] || 'Unclear', [RF.suggested]: draft, [RF.handled]: false });
+  toast(`@${p.handle} replied. A draft is waiting under Replies.`, 6000);
+}
+
+// Reserves their code on torreylabs.store if needed, fills it into the message, and types it into the thread.
+async function sendReplyNow(p, { text, withCode = false }) {
+  const st = S.settings;
+  let vals = null;
+  S.bg.current = { pid: p.id, handle: p.handle, text: '', until: 0, reply: true };
+  paintQueue();
+  try {
+    if (withCode) {
+      if (!p.partner?.code) {
+        if (!st.torrey.key) throw new Error('Add the Torrey Labs Cloud key in Setup to issue partner codes.');
+        const { code, token } = await window.api.torreyInvite(st.torrey, {
+          candidates: replies.codeCandidates(p),
+          label: `${p.name || p.handle} (@${p.handle}), from a voice note`,
+          rate: Math.min(0.5, Math.max(0, (Number(st.torrey.percent) || 20) / 100)),
+        });
+        p.partner = { code, invite: replies.inviteLink(st.torrey.site, token), link: replies.partnerLink(st.torrey.site, code), at: Date.now() };
+        await saveProspects();
+      }
+      vals = p.partner;
+      text = replies.hasSlots(text) ? replies.fillSlots(text, vals) : `${text.trim()}\n\n${replies.codeLines(vals)}`;
+    }
+    const r = await window.api.dmSend({ href: p.dm?.href, handle: p.handle, text });
+    p.reply = { ...p.reply, pending: false, sent: text, sentAt: Date.now(), issue: r?.state === 'sent' ? '' : "Sent, but the app couldn't confirm it landed. Check the thread." };
+    p.dm = { ...p.dm, preview: `You: ${text.slice(0, 60)}` };
+    await airtableReply(p, {
+      [RF.suggested]: text,
+      [RF.handled]: true,
+      [RF.intent]: INTENT_LABEL[p.reply.intent] || (vals ? 'Yes' : 'Unclear'),
+      ...(vals ? { [RF.status]: 'Code sent', [RF.code]: vals.code, [RF.link]: vals.link, [RF.invite]: vals.invite, [RF.codeSentAt]: new Date().toISOString() } : {}),
+    });
+    toast(`Replied to @${p.handle}${vals ? ` with their code ${vals.code}` : ''} ✓`);
+  } catch (e) {
+    p.reply = { ...p.reply, pending: true, draft: text, issue: errText(e) };
+    await airtableReply(p, { [RF.suggested]: text, [RF.handled]: false });
+    toast(`Couldn't reply to @${p.handle}: ${errText(e)}. It's waiting under Replies.`, 8000);
+  }
+  S.bg.current = null;
+  paintQueue();
+  await saveProspects();
+  refreshQuietly();
+}
+
+function queueReply(p, reply) {
+  S.bg.jobs.push({ pid: p.id, reply });
+  toast(`Replying to @${p.handle}...`);
+  runQueue();
+}
+
+const pendingReplies = () => S.prospects.filter((p) => p.reply?.pending);
+
 // Updates the screen after a background change, unless that would interrupt recording or typing.
 function refreshQuietly() {
   if (S.rec || S.view === 'setup' || document.activeElement?.matches?.('input, textarea')) return paintQueue();
@@ -863,9 +1045,13 @@ function paintQueue() {
   const left = cur.until ? ` · ${countdown(cur.until - Date.now())} left` : '';
   const queued = S.bg.jobs.filter((j) => !j.engage).length;
   const more = queued ? ` · ${queued} more queued` : '';
-  const what = cur.engage
-    ? [h('b', {}, `Following @${cur.handle}`), ' and liking 2 posts...']
-    : [h('b', {}, `Sending to @${cur.handle}`), ` ${cur.text.replace(/\s*\(\d+:\d+\)\.\.\.$/, '...')}`];
+  const what = cur.check
+    ? [h('b', {}, 'Checking Instagram for replies...')]
+    : cur.reply
+      ? [h('b', {}, `Replying to @${cur.handle}`), '...']
+      : cur.engage
+        ? [h('b', {}, `Following @${cur.handle}`), ' and liking 2 posts...']
+        : [h('b', {}, `Sending to @${cur.handle}`), ` ${cur.text.replace(/\s*\(\d+:\d+\)\.\.\.$/, '...')}`];
   el.replaceChildren(
     h('span', { class: 'grow' }, ...what, `${left}${more}`),
     h('button', { class: 'link', onclick: toggleWatch }, S.watchSend ? 'Hide' : 'Watch'),
@@ -1194,6 +1380,12 @@ function header() {
         'Follow',
         h('span', { id: 'follow-dot', class: `dot ${followDot()}` }),
       ),
+      h(
+        'button',
+        { class: `tab ${S.view === 'replies' ? 'on' : ''}`, onclick: () => ((S.view = 'replies'), render()) },
+        'Replies',
+        h('span', { id: 'reply-badge', class: 'badge', hidden: !pendingReplies().length }, pendingReplies().length),
+      ),
       h('button', { class: `tab ${S.view === 'setup' ? 'on' : ''}`, onclick: goSetup }, 'Setup'),
     ),
   );
@@ -1360,7 +1552,9 @@ function leadRow(p) {
   const total = S.template.length;
   const done = total - missingParts(p).length;
   let pill;
-  if (p.status === 'sent') pill = h('span', { class: 'tag ok' }, 'sent');
+  if (p.reply?.pending) pill = h('span', { class: 'tag warn' }, 'replied');
+  else if (p.partner) pill = h('span', { class: 'tag ok' }, 'code sent');
+  else if (p.status === 'sent') pill = h('span', { class: 'tag ok' }, 'sent');
   else if (p.status === 'sending') pill = h('span', { class: 'tag' }, 'sending...');
   else if (p.sendIssue) pill = h('span', { class: 'tag bad', title: p.sendIssue }, 'send failed');
   else if (p.status === 'skipped') pill = h('span', { class: 'tag' }, 'skipped');
@@ -1555,6 +1749,16 @@ function detailView(p) {
         handleTag(p),
       ),
       h('p', { id: 'lead-who', class: 'muted', hidden: !who }, who),
+      p.reply
+        ? h(
+            'p',
+            { class: 'small' },
+            h('b', {}, p.reply.pending ? 'Replied, waiting on you: ' : 'Replied: '),
+            `“${p.reply.text.slice(0, 140)}${p.reply.text.length > 140 ? '…' : ''}” `,
+            h('button', { class: 'link', onclick: () => ((S.view = 'replies'), render()) }, 'Open Replies'),
+          )
+        : null,
+      p.partner ? h('p', { class: 'muted small' }, `Partner code ${p.partner.code} · ${p.partner.link}`) : null,
       h(
         'details',
         { class: 'ref' },
@@ -1838,6 +2042,29 @@ async function paintJoin(p) {
   el.replaceChildren(...out.map((t) => h('div', {}, t)));
 }
 
+// Setup's Test buttons for the reply keys.
+async function testKey(which) {
+  const st = S.settings;
+  const say = (text, cls) => {
+    const el = document.getElementById(`${which}-test`);
+    if (el) (el.textContent = text), (el.className = `small ${cls}`);
+  };
+  const key = which === 'claude' ? st.claude.key : st.torrey.key;
+  if (!key) return say(which === 'claude' ? 'Paste your Claude API key above first.' : 'Paste the service role key above first.', 'bad');
+  say('Checking...', 'muted');
+  try {
+    if (which === 'claude') {
+      const r = await window.api.replyTest(st.claude.key);
+      say(`Connected (${r.model}).`, 'ok');
+    } else {
+      const r = await window.api.torreyTest(st.torrey);
+      say(`Connected: ${r.invites} partner invite${r.invites === 1 ? '' : 's'} on the store, ${r.claimed} claimed.`, 'ok');
+    }
+  } catch (e) {
+    say(errText(e), 'bad');
+  }
+}
+
 function slider(obj, k, label, min, max, step, lo, hi) {
   const out = h('span', { class: 'tag' }, Number(obj[k]).toFixed(2));
   return h(
@@ -1876,6 +2103,120 @@ function resetVoice() {
   Object.assign(S.settings.eleven, VOICE_DEFAULTS);
   saveSettings().then(flashSaved);
   render();
+}
+
+const ago = (t) => {
+  const m = Math.round((Date.now() - t) / 60000);
+  return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`;
+};
+
+function replyCard(p) {
+  const r = p.reply;
+  const st = S.settings;
+  const box = h('textarea', {
+    'aria-label': `Reply to @${p.handle}`,
+    oninput: (e) => {
+      r.draft = e.target.value;
+      saveProspects();
+    },
+  }, r.draft || '');
+  const send = (withCode) => {
+    const text = box.value.trim();
+    if (!text) return toast('Write the reply first.');
+    r.draft = text;
+    queueReply(p, { text, withCode });
+    render();
+  };
+  return h(
+    'div',
+    { class: 'card reply', 'data-reply': p.handle },
+    h(
+      'div',
+      { class: 'row-flex' },
+      h('b', { class: 'grow' }, p.name || `@${p.handle}`, ' ', h('span', { class: 'muted small' }, `@${p.handle}${p.business && p.business !== p.name ? ` · ${p.business}` : ''}`)),
+      r.intent ? h('span', { class: `tag ${r.intent === 'yes' ? 'ok' : r.intent === 'no' ? 'bad' : 'warn'}` }, INTENT_LABEL[r.intent] || r.intent) : null,
+      h('span', { class: 'muted small' }, ago(r.at)),
+    ),
+    (r.history || []).slice(-3).map((m) => h('div', { class: `msg ${m.mine ? 'mine' : 'theirs'} muted small` }, m.text)),
+    h('div', { class: 'msg theirs' }, r.text),
+    r.why ? h('p', { class: 'muted small why' }, r.why) : null,
+    r.issue ? h('p', { class: 'status error' }, r.issue) : null,
+    box,
+    h(
+      'div',
+      { class: 'row-flex' },
+      h('button', { class: 'enter', onclick: () => send(false), disabled: !!S.bg.current }, 'Send'),
+      h('button', { onclick: () => send(true), disabled: !!S.bg.current, title: p.partner ? `Their code is ${p.partner.code}` : 'Reserves their code on torreylabs.store and adds the invite to the message' }, p.partner ? 'Send + their code' : 'Send + a code'),
+      h('button', { class: 'link', onclick: () => window.api.igDo('openDm', p.handle, 'dm').then(() => window.api.showInstagram()).catch((e) => toast(errText(e))) }, 'Open the thread'),
+      h('span', { class: 'grow' }),
+      h(
+        'button',
+        {
+          class: 'link',
+          onclick: async () => {
+            r.pending = false;
+            r.dismissed = true;
+            await airtableReply(p, { [RF.handled]: true });
+            await saveProspects();
+            render();
+          },
+        },
+        'Mark handled',
+      ),
+    ),
+    !st.claude.key ? h('p', { class: 'muted small' }, 'Drafts are written by Claude once its API key is in Setup. Until then, write it here.') : null,
+  );
+}
+
+function repliesView() {
+  const st = S.settings;
+  const pending = pendingReplies().sort((a, b) => b.reply.at - a.reply.at);
+  const done = S.prospects.filter((p) => p.reply && !p.reply.pending).sort((a, b) => (b.reply.sentAt || b.reply.at) - (a.reply.sentAt || a.reply.at));
+  const sent = S.prospects.filter((p) => p.status === 'sent').length;
+  return h(
+    'main',
+    {},
+    h(
+      'div',
+      { class: 'card sync' },
+      h(
+        'div',
+        { class: 'row-flex' },
+        h(
+          'span',
+          { class: `grow small ${S.replies.issue ? 'bad' : 'muted'}` },
+          S.replies.checking
+            ? 'Checking Instagram for replies...'
+            : `${st.replies.watch ? `Watching for replies every ${st.replies.everyMin} min` : 'Not watching for replies (Setup)'}${S.replies.lastAt ? ` · last check ${ago(S.replies.lastAt)}: ${S.replies.note}` : sent ? ' · no check yet' : ''}`,
+        ),
+        h('button', { onclick: () => checkReplies({ manual: true }), disabled: S.replies.checking || !!S.bg.current }, 'Check now'),
+      ),
+    ),
+    !st.claude.key || !st.torrey.key
+      ? h(
+          'p',
+          { class: 'status' },
+          [!st.claude.key ? 'Add the Claude API key in Setup so replies are written for each person.' : '', !st.torrey.key ? 'Add the Torrey Labs Cloud key in Setup so partner codes can be issued.' : ''].filter(Boolean).join(' '),
+          ' ',
+          h('button', { class: 'link', onclick: goSetup }, 'Open Setup'),
+        )
+      : null,
+    h('h2', {}, pending.length ? `Waiting on you (${pending.length})` : 'Nothing waiting on you'),
+    pending.length
+      ? pending.map(replyCard)
+      : h('p', { class: 'muted small' }, 'A clear yes gets their code automatically. A no is marked not interested. Questions and anything unclear show up here with a draft to approve.'),
+    done.length ? h('h2', {}, 'Answered') : null,
+    done.slice(0, 40).map((p) =>
+      h(
+        'div',
+        { class: 'log-row reply-done' },
+        h('span', { class: 'muted small' }, ago(p.reply.sentAt || p.reply.at)),
+        h('b', { class: 'small' }, `@${p.handle}`),
+        h('span', { class: `small ${p.reply.intent === 'no' ? 'muted' : 'ok'}` }, p.reply.intent === 'no' ? 'said no' : p.reply.dismissed ? 'handled by hand' : p.partner ? `sent their code ${p.partner.code}` : 'replied'),
+        p.reply.sent ? h('span', { class: 'muted small', title: p.reply.sent }, `“${p.reply.sent.slice(0, 70)}${p.reply.sent.length > 70 ? '…' : ''}”`) : null,
+      ),
+    ),
+  );
 }
 
 function setupView() {
@@ -1957,6 +2298,23 @@ function setupView() {
       h('label', { class: 'field' }, 'Max leads per sync', h('input', { type: 'number', min: 1, max: 1000, value: at.max, oninput: num(at, 'max') })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.autoSync, onchange: check(st, 'autoSync') }), 'Check for new leads on launch and every 15 minutes'),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: at.writeBack, onchange: check(at, 'writeBack') }), 'When a note is sent, update Airtable: Status = Sent, Channel = Instagram, Sent at = today, Touches = 1'),
+    ),
+
+    h('h2', {}, 'Replies (Instagram)'),
+    h(
+      'div',
+      { class: 'card' },
+      h('p', { class: 'muted small' }, 'When someone writes back to a voice note, the app reads the reply in the hidden Instagram tab. A clear yes gets their partner code and invite right away; a no is marked not interested; a question or anything unclear waits under Replies with a draft for you to approve.'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.replies.watch, onchange: check(st.replies, 'watch') }), 'Watch the DM inbox for replies'),
+      h('div', { class: 'grid2' }, h('label', { class: 'field' }, 'Check every (minutes)', h('input', { type: 'number', min: 1, max: 120, value: st.replies.everyMin, oninput: (e) => ((st.replies.everyMin = Math.min(120, Math.max(1, parseInt(e.target.value, 10) || 5))), saveSettings().then(flashSaved)) })), h('label', { class: 'field' }, 'Sign replies as', h('input', { value: st.replies.from, oninput: txt(st.replies, 'from') }))),
+      h('label', { class: 'field' }, 'Claude API key (writes each reply in your voice)', h('input', { type: 'password', value: st.claude.key, oninput: txt(st.claude, 'key'), placeholder: 'sk-ant-...' })),
+      h('div', { class: 'row-flex' }, h('button', { onclick: () => testKey('claude'), disabled: !!S.busy }, 'Test Claude'), h('span', { id: 'claude-test', class: 'small muted' })),
+      h('p', { class: 'muted small' }, 'Make a key at console.anthropic.com. It stays in this app.'),
+      h('label', { class: 'field' }, 'Torrey Labs Cloud URL', h('input', { value: st.torrey.url, oninput: txt(st.torrey, 'url'), placeholder: 'https://xxxx.supabase.co' })),
+      h('label', { class: 'field' }, 'Torrey Labs Cloud service role key (issues partner codes)', h('input', { type: 'password', value: st.torrey.key, oninput: txt(st.torrey, 'key') })),
+      h('div', { class: 'row-flex' }, h('button', { onclick: () => testKey('torrey'), disabled: !!S.busy }, 'Test Torrey Labs Cloud'), h('span', { id: 'torrey-test', class: 'small muted' })),
+      h('p', { class: 'muted small' }, "In Lovable, open the Torrey Labs project's Cloud tab: the project URL and the service role key are in its settings. The key can write to the store's database, so it only ever lives in this app."),
+      h('div', { class: 'grid2' }, h('label', { class: 'field' }, 'Store address in messages', h('input', { value: st.torrey.site, oninput: txt(st.torrey, 'site') })), h('label', { class: 'field' }, 'Partner share (%)', h('input', { type: 'number', min: 0, max: 50, value: st.torrey.percent, oninput: (e) => ((st.torrey.percent = Math.min(50, Math.max(0, parseInt(e.target.value, 10) || 0))), saveSettings().then(flashSaved)) }))),
     ),
 
     h('h2', {}, 'Auto-voice (optional)'),
@@ -2186,7 +2544,7 @@ let pane = 'dm';
 function render() {
   const p = current();
   if (S.currentId && !p) S.currentId = null;
-  const body = S.view === 'setup' ? setupView() : S.view === 'follow' ? followView() : p ? detailView(p) : leadsView();
+  const body = S.view === 'setup' ? setupView() : S.view === 'follow' ? followView() : S.view === 'replies' ? repliesView() : p ? detailView(p) : leadsView();
   $app.replaceChildren(header(), queueStrip(), body);
   paintQueue();
   if (S.view === 'setup') paintBreath();
@@ -2245,6 +2603,9 @@ document.addEventListener('keydown', (e) => {
     ...saved,
     airtable: { ...DEFAULT_SETTINGS.airtable, ...saved.airtable },
     eleven: { ...DEFAULT_SETTINGS.eleven, ...saved.eleven },
+    claude: { ...DEFAULT_SETTINGS.claude, ...saved.claude },
+    torrey: { ...DEFAULT_SETTINGS.torrey, ...saved.torrey },
+    replies: { ...DEFAULT_SETTINGS.replies, ...saved.replies },
   };
   // The cap used to default to 100, which is fewer leads than the formula matches.
   if (S.settings.airtable.max === 100) S.settings.airtable.max = DEFAULT_SETTINGS.airtable.max;
@@ -2261,4 +2622,7 @@ document.addEventListener('keydown', (e) => {
   if (S.settings.autoSync) sync({ quiet: true });
   setInterval(() => S.settings.autoSync && sync({ quiet: true }), SYNC_MS);
   setInterval(() => (paintSync(), paintSentToday()), 60 * 1000);
+  // Replies: a first look shortly after launch, then on the schedule in Setup.
+  setTimeout(() => checkReplies(), 45 * 1000);
+  setInterval(() => checkReplies(), 60 * 1000);
 })();

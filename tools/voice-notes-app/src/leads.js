@@ -432,3 +432,4 @@ export function markFollowedAirtable(at, recordId, liked, when = new Date()) {
 }
 
 export const markLikedAirtable = (at, recordId) => patch(at, recordId, { 'IG liked': true });
+export const patchAirtable = (at, recordId, fields) => patch(at, recordId, fields);

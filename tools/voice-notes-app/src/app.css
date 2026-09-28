@@ -262,3 +262,10 @@ textarea.read-along { font-size: 15px; line-height: 1.55; min-height: 190px; col
 .queue { display: flex; gap: 8px; align-items: center; margin: 0 12px; padding: 8px 12px; border-radius: 10px; background: var(--chip); font-size: 13px; }
 .queue[hidden] { display: none; }
 .tag.bad { color: var(--bad); }
+.reply { display: grid; gap: 8px; }
+.reply .msg { padding: 8px 10px; border-radius: 10px; background: var(--chip); white-space: pre-wrap; font-size: 13px; }
+.reply .msg.mine { background: var(--accent); color: var(--accent-text); margin-left: 24px; }
+.reply .msg.theirs { margin-right: 24px; }
+.reply textarea { width: 100%; min-height: 120px; font: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); resize: vertical; }
+.reply .why { font-style: italic; }
+.log-row.reply-done { align-items: baseline; }
