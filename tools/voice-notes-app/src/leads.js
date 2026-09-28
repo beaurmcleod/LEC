@@ -104,26 +104,57 @@ function baseVerb(v) {
 }
 
 const lowerFirst = (s) => s.charAt(0).toLowerCase() + s.slice(1);
-const yours = (s) => s.replace(/\b(their|his|her)\b/gi, 'your').replace(/\bthey're\b/gi, "you're");
 
-// The Airtable "Personal hook" (one real detail, written as a note about them) said to them as one sentence:
-// "Runs a weekly beach workout" -> "saw you run a weekly beach workout."
-// "being named Best Oceanside Trainer" -> "saw you got named Best Oceanside Trainer."
-// "your 200-hour yoga teacher training" -> "saw your 200-hour yoga teacher training."
-export function spokenHook(raw) {
+// Just the first point of a detail, so the whole intro stays one short sentence: stops at "plus", a dash,
+// a semicolon or an aside ("— that's a long run"). A detail still over 12 words stops at its first comma
+// or "and" after the fifth word.
+const MAX_DETAIL_WORDS = 12;
+function firstPoint(s) {
+  let out = s.split(/(?<=[.!?])\s+/)[0].split(/\s+(?:plus|[—–-])\s+|;\s+|,\s+(?:plus|which|that's|so that)\s+/i)[0];
+  const words = out.split(' ');
+  if (words.length > MAX_DETAIL_WORDS) {
+    const cut = words.findIndex((w, i) => i >= 5 && (/,$/.test(w) || /^and$/i.test(words[i + 1] || '')));
+    if (cut > 0) out = words.slice(0, cut + 1).join(' ');
+  }
+  return out.replace(/[\s.!?;:,]+$/, '');
+}
+const yours = (s) => s.replace(/\b(their|his|her|its)\b/gi, 'your').replace(/\bthey're\b/gi, "you're");
+
+// The Airtable "Personal hook" (one real detail, written as a note about them) said to them, as the start of
+// a sentence (no end punctuation):
+// "Runs a weekly beach workout" -> "saw you run a weekly beach workout"
+// "being named Best Oceanside Trainer" -> "saw you got named Best Oceanside Trainer"
+// "your 200-hour yoga teacher training" -> "saw your 200-hour yoga teacher training"
+export function spokenHook(raw, name = '') {
   let s = String(raw || '')
-    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/\s*(\([^)]*\)|\[[^\]]*\])/g, '')
     .replace(/\b(that|you|they)(s|ve|re)\b/gi, "$1'$2")
     .replace(/\by(a)ll\b/gi, "y'$1ll")
     .replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (m, y, mo, d) => `${MONTHS[+mo - 1] || mo} ${+d}`)
     .replace(/\s+/g, ' ')
     .trim();
-  const end = /[!?]$/.test(s) ? s.slice(-1) : '.';
-  s = s.replace(/[\s.!?;:,]+$/, '');
+  s = firstPoint(s);
   if (!s) return '';
   const words = s.split(' ');
   const first = words[0].toLowerCase();
   const from = (i) => words.slice(i).join(' ');
+  const said = (verb, i) => {
+    const v = verb.toLowerCase();
+    if (v === 'is') return `saw you're ${yours(from(i))}`;
+    if (v === 'was') return `saw you were ${yours(from(i))}`;
+    if (v === 'has') return `saw you${/(ed|en|un|wn|ght)$/.test(words[i] || '') ? "'ve" : ' have'} ${yours(from(i))}`;
+    return `saw you ${baseVerb(v)} ${yours(from(i))}`;
+  };
+  // Notes that name the lead ("Maya runs a gym", "founder Estella has taught", "Leah, the founder, is")
+  // are said to them: "saw you run a gym".
+  const names = String(name).toLowerCase().split(/[^\p{L}']+/u).filter((n) => n.length > 1 && n !== 'and');
+  const bare = (w) => (w || '').toLowerCase().replace(/[,.]$/, '');
+  let at = /^(founder|co-founder|owner|co-owner|coach)$/i.test(words[0]) ? 1 : 0;
+  if (names.includes(bare(words[at]).replace(/'s$/, ''))) {
+    if (/'s$/.test(bare(words[at]))) return `saw your ${yours(from(at + 1))}`;
+    if (/,$/.test(words[at])) while (++at < words.length && !/,$/.test(words[at]));
+    if (words[at + 1]) return said(words[at + 1], at + 2).replace(/\s+/g, ' ').trim();
+  }
   const line = (() => {
     if (/^(saw|loved?|congrats|huge)$/.test(first)) return lowerFirst(s);
     if (/^(you|you've|you're|y'all)$/.test(first))
@@ -160,12 +191,12 @@ export function spokenHook(raw) {
     if (PAST.test(verb)) return `saw you ${pre}${verb} ${rest}`;
     return `saw ${s}`;
   })();
-  return line.replace(/\s+/g, ' ').trim() + end;
+  return line.replace(/\s+/g, ' ').trim();
 }
 
 // The line in the Airtable "Bridge" (the DM sent after the joke lands) that reacts to something about them:
 // "ha, you're a good sport. Bankers Hill's lucky to have that red facade on Grape Street." -> the second
-// sentence. Used when a lead has no Personal hook.
+// sentence, without its period. Used when a lead has no Personal hook.
 export function spokenBridge(raw) {
   const first = String(raw || '').split(/\n\s*\n/)[0].trim();
   const said = first.split(/(?<=[.!?])\s+/).find(
@@ -173,7 +204,7 @@ export function spokenBridge(raw) {
       !/^(ha|haha|lol|appreciate you|thanks for|glad|good one|you're a good sport)\b/i.test(x) &&
       !/speaking of|real reason|torrey|peptide|\b(i'?m|we|our|us)\b|cool if|mind if|partner|link|\d+%|order|lab report|question/i.test(x),
   );
-  return said ? said.replace(/\s+/g, ' ').trim() : '';
+  return said ? firstPoint(said.replace(/\s+/g, ' ').trim()) : '';
 }
 
 export function deriveName(p) {

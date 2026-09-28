@@ -9,11 +9,15 @@ Your clients are probably already asking you about peptides for weight loss or r
 
 Worth a look? Reply and I'll send the details.`;
 
-// The intro names one real thing about them (their Airtable "Personal hook") and ties what they do to us,
-// the way the outreach emails open. With no hook it falls back to their role and business.
-const INTRO_SCRIPT = 'Hey {name} — {detail} A lot of {crowd} ask us where to find peptides with real lab reports.';
-const OLD_INTRO = "Hey {name} — saw you're the {role} at {business}.";
-const FALLBACK_DETAIL = "saw you're the {role} at {business}.";
+// The intro is one short sentence: one real thing about them (their Airtable "Personal hook") tied to what we
+// do, the way the outreach emails open. With no hook it falls back to their role and business.
+const INTRO_SCRIPT = 'Hey {name} — {detail}, and a lot of {crowd} ask us for lab-tested peptides.';
+// Earlier defaults. An untouched copy is upgraded on launch.
+const OLD_INTROS = [
+  "Hey {name} — saw you're the {role} at {business}.",
+  'Hey {name} — {detail} A lot of {crowd} ask us where to find peptides with real lab reports.',
+];
+const FALLBACK_DETAIL = "saw you're the {role} at {business}";
 
 // One custom intro line per lead, then the whole pitch in one take. Setup can split the pitch into more parts.
 const DEFAULT_TEMPLATE = [
@@ -30,15 +34,15 @@ const OLD_SHAPES = {
 // Earlier layouts had two custom lines ("Hi {name}!" and "I see you're the...") and, before that, a pitch split
 // in two. An untouched copy moves to the single intro line. A recorded pitch is kept (halves joined), and the
 // old per-lead lines are cleared so every lead shows the new intro as not recorded yet. Edited layouts stay
-// as they are, but the pitch still gets the script if it has none, and an untouched copy of the plain
-// role-and-business intro becomes the hook intro (recordings are kept).
+// as they are, but the pitch still gets the script if it has none, and an untouched copy of an earlier
+// default intro becomes the current one (recordings are kept, and tagged "old wording").
 async function migrateTemplate(t) {
   const shape = t.map((seg) => `${seg.id}:${seg.kind}`).join(',');
   const pitchIds = OLD_SHAPES[shape];
   const untouched = t.filter((seg) => seg.kind === 'slot').every((seg) => seg.script === OLD_SCRIPTS[seg.id]);
   if (!pitchIds || !untouched) {
     const pitch = t.find((seg) => seg.kind === 'fixed' && seg.id === 'pitch');
-    const intro = t.find((seg) => seg.kind === 'slot' && seg.script === OLD_INTRO);
+    const intro = t.find((seg) => seg.kind === 'slot' && OLD_INTROS.includes(seg.script));
     const noScript = pitch && pitch.script == null;
     if (noScript) pitch.script = PITCH_SCRIPT;
     if (intro) intro.script = INTRO_SCRIPT;
@@ -260,9 +264,9 @@ function personName(p) {
   return leads.spokenName(name);
 }
 
-// Lead details cleaned up for saying out loud. {detail} is their Personal hook as a sentence ("saw you run
-// HYROX prep."); with no hook, the Bridge's line about them, then their role and business. {crowd} is who
-// they are ("trainers").
+// Lead details cleaned up for saying out loud. {detail} is the first point of their Personal hook, said to
+// them ("saw you run HYROX prep"); with no hook, the Bridge's line about them, then their role and
+// business. {crowd} is who they are ("trainers").
 function scriptVars(p) {
   const name = personName(p);
   const v = {
@@ -275,7 +279,7 @@ function scriptVars(p) {
     crowd: leads.crowd(p.category, p.role, p.business),
   };
   v.detail =
-    leads.spokenHook(p.hook) || leads.spokenBridge(p.bridge) || adaptScript(FALLBACK_DETAIL, v).replace(/\{(\w+)\}/g, (m, k) => v[k] || '');
+    leads.spokenHook(p.hook, p.first || name) || leads.spokenBridge(p.bridge) || adaptScript(FALLBACK_DETAIL, v).replace(/\{(\w+)\}/g, (m, k) => v[k] || '');
   return v;
 }
 
@@ -1515,7 +1519,7 @@ function segmentCard(seg, i) {
       : [
           h('label', { class: 'field' }, 'What you say (per lead)', h('input', { value: seg.script, placeholder: 'Hey {name}!', oninput: (e) => ((seg.script = e.target.value), saveTemplate().then(flashSaved)) })),
           /\{(detail|crowd)\}/.test(seg.script || '')
-            ? h('p', { class: 'muted small' }, '{detail} is their Personal hook from Airtable said to them ("saw you run HYROX prep."), or their role and business if there isn\'t one. {crowd} is who they are, from Category ("trainers", "gym owners").')
+            ? h('p', { class: 'muted small' }, '{detail} is the first point of their Personal hook from Airtable, said to them ("saw you run HYROX prep"), or their role and business if there isn\'t one. {crowd} is who they are, from Category ("trainers", "gym owners").')
             : null,
         ],
   );
