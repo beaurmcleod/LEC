@@ -9,13 +9,14 @@ Your clients are probably already asking you about peptides for weight loss or r
 
 Worth a look? Reply and I'll send the details.`;
 
-// The intro is one short sentence: one real thing about them (their Airtable "Personal hook") tied to what we
-// do, the way the outreach emails open. With no hook it falls back to their role and business.
-const INTRO_SCRIPT = 'Hey {name} — {detail}, and a lot of {crowd} ask us for lab-tested peptides.';
+// The intro is kept short and leaves the pitch to do the talking. {detail} (their Airtable "Personal hook")
+// and {crowd} are there for a longer, email-style opener.
+const INTRO_SCRIPT = 'Hey {name}, saw that you have a pretty impressive {kind}.';
 // Earlier defaults. An untouched copy is upgraded on launch.
 const OLD_INTROS = [
   "Hey {name} — saw you're the {role} at {business}.",
   'Hey {name} — {detail} A lot of {crowd} ask us where to find peptides with real lab reports.',
+  'Hey {name} — {detail}, and a lot of {crowd} ask us for lab-tested peptides.',
 ];
 const FALLBACK_DETAIL = "saw you're the {role} at {business}";
 
@@ -107,7 +108,7 @@ const MODELS = [
   ['eleven_multilingual_v2', 'Multilingual v2 (steadiest, all sliders apply)'],
 ];
 
-const PLACEHOLDERS = ['name', 'first', 'detail', 'crowd', 'role', 'business', 'handle', 'note', 'hook', 'category'];
+const PLACEHOLDERS = ['name', 'first', 'kind', 'detail', 'crowd', 'role', 'business', 'handle', 'note', 'hook', 'category'];
 // Refreshed from Airtable on every sync, unless you've edited that field here.
 const REFRESH_FIELDS = ['first', 'role', 'business', 'category', 'hook', 'bridge', 'bio', 'research', 'notes', 'atStatus', 'followedAt'];
 const MAX_SECONDS = 59;
@@ -266,7 +267,7 @@ function personName(p) {
 
 // Lead details cleaned up for saying out loud. {detail} is the first point of their Personal hook, said to
 // them ("saw you run HYROX prep"); with no hook, the Bridge's line about them, then their role and
-// business. {crowd} is who they are ("trainers").
+// business. {crowd} is who they are ("trainers"), and {kind} their kind of business ("recovery studio").
 function scriptVars(p) {
   const name = personName(p);
   const v = {
@@ -277,6 +278,7 @@ function scriptVars(p) {
     business: leads.spokenBusiness(p.business),
     handle: p.handle ? `@${p.handle}` : '',
     crowd: leads.crowd(p.category, p.role, p.business),
+    kind: leads.kind(p.category, p.role, p.business),
   };
   v.detail =
     leads.spokenHook(p.hook, p.first || name) || leads.spokenBridge(p.bridge) || adaptScript(FALLBACK_DETAIL, v).replace(/\{(\w+)\}/g, (m, k) => v[k] || '');
@@ -1518,8 +1520,12 @@ function segmentCard(seg, i) {
         ]
       : [
           h('label', { class: 'field' }, 'What you say (per lead)', h('input', { value: seg.script, placeholder: 'Hey {name}!', oninput: (e) => ((seg.script = e.target.value), saveTemplate().then(flashSaved)) })),
-          /\{(detail|crowd)\}/.test(seg.script || '')
-            ? h('p', { class: 'muted small' }, '{detail} is the first point of their Personal hook from Airtable, said to them ("saw you run HYROX prep"), or their role and business if there isn\'t one. {crowd} is who they are, from Category ("trainers", "gym owners").')
+          /\{(kind|detail|crowd)\}/.test(seg.script || '')
+            ? h(
+                'p',
+                { class: 'muted small' },
+                '{kind} is their kind of business, from Category ("recovery studio", "gym"). {detail} is the first point of their Personal hook from Airtable, said to them ("saw you run HYROX prep"). {crowd} is who they are ("trainers", "gym owners").',
+              )
             : null,
         ],
   );

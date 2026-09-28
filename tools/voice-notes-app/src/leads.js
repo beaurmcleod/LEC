@@ -52,39 +52,49 @@ export function spokenName(n) {
   return s.length > 1 && s === s.toUpperCase() && /\p{L}/u.test(s) ? titleCase(s) : s;
 }
 
-// Who they are, in the plural, for "a lot of ___ ask us...". Keyed by the Airtable Category.
-const CROWDS = {
-  'personal trainer': 'trainers',
-  'gym / crossfit': 'gym owners',
-  'recovery studio': 'recovery studios',
-  'iv / wellness clinic': 'wellness clinics',
-  'med spa': 'med spas',
-  chiropractor: 'chiropractors',
-  'physical therapy': 'physical therapists',
-  'sports medicine': 'sports medicine docs',
-  'nutrition / coach': 'coaches',
-  'athlete / creator': 'athletes',
+// Who they are, keyed by the Airtable Category: [the crowd, for "a lot of ___ ask us...";
+// their kind of business, for "saw that you have a pretty impressive ___"].
+const CATEGORIES = {
+  'personal trainer': ['trainers', 'training business'],
+  'gym / crossfit': ['gym owners', 'gym'],
+  'recovery studio': ['recovery studios', 'recovery studio'],
+  'iv / wellness clinic': ['wellness clinics', 'wellness clinic'],
+  'med spa': ['med spas', 'med spa'],
+  chiropractor: ['chiropractors', 'chiropractic practice'],
+  'physical therapy': ['physical therapists', 'PT practice'],
+  'sports medicine': ['sports medicine docs', 'practice'],
+  'nutrition / coach': ['coaches', 'coaching business'],
+  'athlete / creator': ['athletes', 'page'],
 };
 
-// With no Category (or "Other"), a guess from their role, then their business name.
-const CROWD_GUESSES = [
-  [/\bdpt\b|physical therap/i, 'physical therapists'],
-  [/chiro/i, 'chiropractors'],
-  [/med ?spa|aesthetic/i, 'med spas'],
-  [/\biv\b|infusion/i, 'wellness clinics'],
-  [/trainer/i, 'trainers'],
-  [/coach|instructor|teacher/i, 'coaches'],
-  [/recover|sauna|cryo|float|stretch/i, 'recovery studios'],
-  [/crossfit|\bgym\b|boxing|jiu.?jitsu|\bbjj\b|martial|muay/i, 'gym owners'],
-  [/pilates|yoga|barre|spin|cycl|studio/i, 'studio owners'],
+// With no Category (or "Other"), a guess from their role and business name.
+const GUESSES = [
+  [/\bdpt\b|physical therap/i, 'physical therapists', 'PT practice'],
+  [/chiro/i, 'chiropractors', 'chiropractic practice'],
+  [/med ?spa|aesthetic/i, 'med spas', 'med spa'],
+  [/\biv\b|infusion/i, 'wellness clinics', 'wellness clinic'],
+  [/trainer/i, 'trainers', 'training business'],
+  [/coach|instructor|teacher/i, 'coaches', 'coaching business'],
+  [/recover|sauna|cryo|float|stretch/i, 'recovery studios', 'recovery studio'],
+  [/crossfit|\bgym\b|boxing|jiu.?jitsu|\bbjj\b|martial|muay/i, 'gym owners', 'gym'],
+  [/pilates|yoga|barre|spin|cycl|studio/i, 'studio owners', 'studio'],
 ];
 
+const categoryOf = (category) => CATEGORIES[String(category || '').toLowerCase().replace(/\s*\/\s*/g, ' / ').trim()];
+const guess = (texts, i) => {
+  for (const text of texts) for (const g of GUESSES) if (g[0].test(text)) return g[i];
+  return '';
+};
+
 export function crowd(category, role = '', business = '') {
-  const c = CROWDS[String(category || '').toLowerCase().replace(/\s*\/\s*/g, ' / ').trim()];
+  const c = categoryOf(category)?.[0];
   if (c === 'gym owners' && /coach|trainer/i.test(role)) return 'coaches';
-  if (c) return c;
-  for (const text of [role, business]) for (const [re, who] of CROWD_GUESSES) if (re.test(text)) return who;
-  return /owner|founder/i.test(role) ? 'studio owners' : 'people in your world';
+  return c || guess([role, business], 1) || (/owner|founder/i.test(role) ? 'studio owners' : 'people in your world');
+}
+
+// Their kind of business. The business name says more than the role here ("Fire & Flow Hot Yoga" is a studio).
+export function kind(category, role = '', business = '') {
+  return categoryOf(category)?.[1] || guess([business, role], 2) || 'business';
 }
 
 const MONTHS = ['Jan', 'Feb', 'March', 'April', 'May', 'June', 'July', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
