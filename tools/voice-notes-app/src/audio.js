@@ -144,12 +144,218 @@ export function matchLoudness(s, targetLufs, maxDb = 18) {
   return { samples: out, db };
 }
 
+// ---------- Spectrum ----------
+// In-place radix-2 FFT; the inverse swaps the real and imaginary parts around a forward pass.
+function fft(re, im) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      [re[i], re[j]] = [re[j], re[i]];
+      [im[i], im[j]] = [im[j], im[i]];
+    }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = (-2 * Math.PI) / len;
+    const wr = Math.cos(ang);
+    const wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let cr = 1;
+      let ci = 0;
+      for (let k = 0; k < len / 2; k++) {
+        const a = i + k;
+        const b = a + len / 2;
+        const tr = re[b] * cr - im[b] * ci;
+        const ti = re[b] * ci + im[b] * cr;
+        re[b] = re[a] - tr;
+        im[b] = im[a] - ti;
+        re[a] += tr;
+        im[a] += ti;
+        const ncr = cr * wr - ci * wi;
+        ci = cr * wi + ci * wr;
+        cr = ncr;
+      }
+    }
+  }
+}
+function ifft(re, im) {
+  fft(im, re);
+  const n = re.length;
+  for (let i = 0; i < n; i++) {
+    re[i] /= n;
+    im[i] /= n;
+  }
+}
+const hann = (n) => Float32Array.from({ length: n }, (_, i) => 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / n));
+
+// Power spectrum of one windowed frame (n samples from `at`), bins 0..n/2.
+function powerSpectrum(s, at, win, re, im) {
+  const n = win.length;
+  for (let i = 0; i < n; i++) {
+    const k = at + i;
+    re[i] = k >= 0 && k < s.length ? s[k] * win[i] : 0;
+    im[i] = 0;
+  }
+  fft(re, im);
+  const out = new Float32Array(n / 2 + 1);
+  for (let k = 0; k <= n / 2; k++) out[k] = re[k] * re[k] + im[k] * im[k];
+  return out;
+}
+
+// Long-term spectrum of the speech in a take, in 24 bands of about a third of an octave from 80 Hz to 12 kHz,
+// each in dB. Quiet frames (pauses) are left out so the pauses' room tone doesn't count as tone.
+const BAND_N = 24;
+const BAND_LO = 80;
+const BAND_HI = 12000;
+const bandEdge = (i) => BAND_LO * (BAND_HI / BAND_LO) ** (i / BAND_N);
+export function toneBands(s) {
+  const N = 2048;
+  const win = hann(N);
+  const re = new Float32Array(N);
+  const im = new Float32Array(N);
+  const db = frameDb(s);
+  const thr = maxOf(db) - 25;
+  const acc = new Float64Array(N / 2 + 1);
+  let frames = 0;
+  for (let at = 0; at + N <= s.length; at += N / 2) {
+    const f = Math.floor((at + N / 2) / FRAME);
+    if (db[f] === undefined || db[f] < thr) continue;
+    const P = powerSpectrum(s, at, win, re, im);
+    for (let k = 0; k < P.length; k++) acc[k] += P[k];
+    frames++;
+  }
+  const bands = new Float32Array(BAND_N);
+  if (!frames) return bands.fill(-120);
+  const hz = SR / N;
+  for (let b = 0; b < BAND_N; b++) {
+    const k0 = Math.max(1, Math.round(bandEdge(b) / hz));
+    const k1 = Math.max(k0 + 1, Math.round(bandEdge(b + 1) / hz));
+    let sum = 0;
+    for (let k = k0; k < k1; k++) sum += acc[k];
+    bands[b] = 10 * Math.log10(sum / ((k1 - k0) * frames) + 1e-20);
+  }
+  return bands;
+}
+
+// Bands with real content in both takes: within 45 dB of each take's loudest band. Empty bands are just noise
+// floor, and comparing two noise floors says nothing about tone.
+function heardBands(a, b) {
+  const ma = maxOf(a) - 45;
+  const mb = maxOf(b) - 45;
+  return Array.from({ length: BAND_N }, (_, i) => a[i] > ma && b[i] > mb);
+}
+
+// How different two takes sound in tone: the spread of their band-by-band level differences (dB, RMS), and the
+// tilt: how much brighter (+) or darker (-) `a` is than `b`, from the bands above 2 kHz against those below 500 Hz.
+export function toneGap(a, b) {
+  const use = heardBands(a, b);
+  const d = Array.from({ length: BAND_N }, (_, i) => a[i] - b[i]);
+  const mean = (arr) => (arr.length ? arr.reduce((x, y) => x + y, 0) / arr.length : 0);
+  const rel = d.map((v) => v - mean(d.filter((_, i) => use[i])));
+  const idx = (lo, hi) => rel.filter((_, i) => use[i] && Math.sqrt(bandEdge(i) * bandEdge(i + 1)) >= lo && Math.sqrt(bandEdge(i) * bandEdge(i + 1)) < hi);
+  const used = rel.filter((_, i) => use[i]);
+  return { spread: used.length ? Math.sqrt(used.reduce((x, v) => x + v * v, 0) / used.length) : 0, tilt: mean(idx(2000, Infinity)) - mean(idx(0, 500)), bands: use.filter(Boolean).length };
+}
+
+// EQs a take so its tone matches `ref` (a toneBands result): each band is turned up or down by the difference,
+// at most maxDb, smoothed across bands. Applied as a zero-phase filter through an overlap-add STFT, so
+// nothing else about the take changes.
+export function toneMatch(s, ref, maxDb = 8) {
+  const own = toneBands(s);
+  const before = toneGap(own, ref);
+  const use = heardBands(own, ref);
+  // Level is handled elsewhere, so only the shape of the spectrum is matched, and only where both takes have
+  // something to compare.
+  const diffs = Array.from(ref, (r, i) => r - own[i]).filter((_, i) => use[i]);
+  const offset = diffs.length ? diffs.reduce((x, y) => x + y, 0) / diffs.length : 0;
+  let g = Array.from(ref, (r, i) => (use[i] ? Math.max(-maxDb, Math.min(maxDb, r - own[i] - offset)) : 0));
+  for (let pass = 0; pass < 2; pass++) g = g.map((v, i) => 0.25 * (g[i - 1] ?? v) + 0.5 * v + 0.25 * (g[i + 1] ?? v));
+  const N = 2048;
+  const hop = N / 4;
+  const win = hann(N);
+  const hz = SR / N;
+  // Per-bin gain, interpolated between band centres on a log-frequency axis and tapering to unity outside.
+  const centres = Array.from({ length: BAND_N }, (_, i) => Math.log(Math.sqrt(bandEdge(i) * bandEdge(i + 1))));
+  const gain = new Float32Array(N / 2 + 1);
+  for (let k = 0; k <= N / 2; k++) {
+    const f = Math.log(Math.max(1, k * hz));
+    let db;
+    if (f <= centres[0]) db = g[0] * Math.max(0, 1 - (centres[0] - f) / Math.log(2));
+    else if (f >= centres[BAND_N - 1]) db = g[BAND_N - 1] * Math.max(0, 1 - (f - centres[BAND_N - 1]) / Math.log(2));
+    else {
+      let i = 0;
+      while (centres[i + 1] < f) i++;
+      const t = (f - centres[i]) / (centres[i + 1] - centres[i]);
+      db = g[i] * (1 - t) + g[i + 1] * t;
+    }
+    gain[k] = 10 ** (db / 20);
+  }
+  const out = new Float32Array(s.length);
+  const re = new Float32Array(N);
+  const im = new Float32Array(N);
+  for (let at = -N + hop; at < s.length; at += hop) {
+    for (let i = 0; i < N; i++) {
+      const k = at + i;
+      re[i] = k >= 0 && k < s.length ? s[k] * win[i] : 0;
+      im[i] = 0;
+    }
+    fft(re, im);
+    for (let k = 0; k <= N / 2; k++) {
+      re[k] *= gain[k];
+      im[k] *= gain[k];
+      if (k && k < N / 2) {
+        re[N - k] *= gain[k];
+        im[N - k] *= gain[k];
+      }
+    }
+    ifft(re, im);
+    // A Hann window at 75% overlap sums to 2.
+    for (let i = 0; i < N; i++) {
+      const k = at + i;
+      if (k >= 0 && k < s.length) out[k] += re[i] / 2;
+    }
+  }
+  // Changing the tone changes how loud it reads; put the level back so this composes with level matching.
+  const back = loudness(s) - loudness(out);
+  const level = Number.isFinite(back) ? softLimit(out, 10 ** (back / 20)) : out;
+  return { samples: level, before, after: toneGap(toneBands(level), ref), maxChange: Math.max(...g.map(Math.abs)) };
+}
+
+// A level change in dB, with the soft limiter so a boost never clips.
+export const gainDb = (s, db) => (db ? softLimit(s, 10 ** (db / 20)) : s);
+
+// The room, in dB: the level of the quietest 100 ms of a take (the pause at either end, or between words).
+export function roomTone(s) {
+  const db = frameDb(s);
+  const w = 10;
+  if (db.length < w) return db.length ? Math.min(...db) : -Infinity;
+  let best = Infinity;
+  for (let i = 0; i + w <= db.length; i++) {
+    let p = 0;
+    for (let k = i; k < i + w; k++) p += 10 ** (db[k] / 10);
+    best = Math.min(best, 10 * Math.log10(p / w));
+  }
+  return best;
+}
+
+// Eases the last `tailMs` of a take down by `db` (a ramp in dB), so a take whose room noise is louder than what
+// follows steps down to it before the join instead of at it.
+export function easeTail(s, tailMs, db) {
+  const n = Math.min(ms(tailMs), s.length);
+  const out = s.slice();
+  for (let i = 0; i < n; i++) out[s.length - n + i] *= 10 ** ((db * (i + 1)) / n / 20);
+  return out;
+}
+
 // ---------- Breaths ----------
-// Finds the breaths in a take: quiet, noisy (unpitched) stretches inside the pauses between phrases. Each frame
-// is 10 ms. Voiced speech repeats at its pitch (80-400 Hz), which shows up as a strong autocorrelation peak;
-// a breath is noise, so it doesn't. A breath's sound sits around 600-4500 Hz; an "s" is brighter than that,
-// so a word-final or word-initial "s" next to a pause isn't mistaken for one.
-const DS = 6; // analyse at 8 kHz
+// Finds the breaths in a take: quiet, noisy, unpitched stretches inside the pauses between phrases. Each frame is
+// 10 ms. Voiced speech repeats at its pitch (80-400 Hz), which shows up as a strong autocorrelation peak; a
+// breath is noise, so it doesn't, and its spectrum is flat rather than a comb of harmonics. A breath's energy
+// is spread from a few hundred Hz to a few kHz; an "s" is nearly all above 3.5 kHz and room hum nearly all
+// below 400 Hz, so neither is mistaken for one.
+const DS = 6; // voicing is checked at 8 kHz
 
 function frameStats(s) {
   const n = Math.floor(s.length / FRAME);
@@ -159,38 +365,54 @@ function frameStats(s) {
     for (let k = 0; k < DS; k++) sum += s[i * DS + k];
     low[i] = sum / DS;
   }
-  const win = 240; // 30 ms at 8 kHz
+  const N = 1024;
+  const win = hann(N);
+  const re = new Float32Array(N);
+  const im = new Float32Array(N);
+  const hz = SR / N;
+  const bin = (f) => Math.round(f / hz);
+  const [b60, b400, b3500, b6000, b10k] = [60, 400, 3500, 6000, 10000].map(bin);
+  const acWin = 240; // 30 ms at 8 kHz
   const out = [];
   for (let f = 0; f < n; f++) {
     let e = 0;
-    let d = 0;
-    for (let i = f * FRAME + 1, end = i + FRAME - 1; i < end; i++) {
-      e += s[i] * s[i];
-      d += (s[i] - s[i - 1]) ** 2;
+    for (let i = f * FRAME, end = i + FRAME; i < end; i++) e += s[i] * s[i];
+    const P = powerSpectrum(s, f * FRAME + FRAME / 2 - N / 2, win, re, im);
+    let lo = 0;
+    let mid = 0;
+    let hi = 0;
+    for (let k = b60; k < b400; k++) lo += P[k];
+    for (let k = b400; k < b3500; k++) mid += P[k];
+    for (let k = b3500; k < b10k; k++) hi += P[k];
+    const total = lo + mid + hi + 1e-20;
+    let logSum = 0;
+    let linSum = 0;
+    for (let k = b400; k < b6000; k++) {
+      logSum += Math.log(P[k] + 1e-20);
+      linSum += P[k];
     }
-    // Rough spectral centroid from how much the signal changes sample to sample.
-    const centroid = e > 0 ? (SR / (2 * Math.PI)) * Math.sqrt(d / e) : 0;
+    const flat = Math.exp(logSum / (b6000 - b400)) / (linSum / (b6000 - b400) + 1e-20);
     const c = Math.floor((f * FRAME) / DS);
     let voiced = 0;
-    if (c + win + 100 < low.length) {
+    if (c + acWin + 100 < low.length) {
       let e0 = 0;
-      for (let i = 0; i < win; i++) e0 += low[c + i] * low[c + i];
+      for (let i = 0; i < acWin; i++) e0 += low[c + i] * low[c + i];
       for (let lag = 20; lag <= 100 && e0 > 0; lag++) {
         let r = 0;
         let el = 0;
-        for (let i = 0; i < win; i++) {
+        for (let i = 0; i < acWin; i++) {
           r += low[c + i] * low[c + i + lag];
           el += low[c + i + lag] * low[c + i + lag];
         }
         voiced = Math.max(voiced, r / Math.sqrt(e0 * el + 1e-20));
       }
     }
-    out.push({ db: 10 * Math.log10(e / FRAME + 1e-12), centroid, voiced });
+    out.push({ db: 10 * Math.log10(e / FRAME + 1e-12), lo: lo / total, mid: mid / total, hi: hi / total, flat, voiced });
   }
   return out;
 }
 
-// Returns [{ start, end, seconds, at }] in samples, best candidates first.
+// Returns [{ start, end, seconds, at, db }] in samples, best candidates first.
 export function findBreaths(s) {
   const st = frameStats(s);
   if (st.length < 50) return [];
@@ -200,7 +422,7 @@ export function findBreaths(s) {
   const loud = sorted.filter((d) => d > peak - 25);
   const ref = 10 * Math.log10(loud.reduce((a, d) => a + 10 ** (d / 10), 0) / loud.length);
   const speech = (x) => (x.voiced > 0.5 && x.db > floor + 10) || x.db > ref - 6;
-  const breathy = (x) => !speech(x) && x.db > floor + 6 && x.centroid > 600 && x.centroid < 4500;
+  const breathy = (x) => !speech(x) && x.db > floor + 6 && x.db > ref - 45 && x.lo <= 0.6 && x.hi <= 0.6 && x.flat >= 0.15;
 
   const found = [];
   let f = 0;
@@ -213,7 +435,7 @@ export function findBreaths(s) {
     const p0 = f;
     while (f < st.length && !speech(st[f])) f++;
     const p1 = f;
-    if (p0 === 0 || p1 >= st.length || p1 - p0 < 25) continue;
+    if (p0 === 0 || p1 >= st.length || p1 - p0 < 20) continue;
     // The breathy stretch inside it, allowing short dips, at least 30 ms clear of the words on either side.
     let best = null;
     for (let i = p0 + 3; i < p1 - 3; i++) {
@@ -226,10 +448,10 @@ export function findBreaths(s) {
       const frames = j - i + 1;
       let top = -Infinity;
       for (let k = i; k <= j; k++) top = Math.max(top, st[k].db);
-      if (frames >= 15 && frames <= 100 && top > floor + 12 && (!best || frames > best.frames)) best = { i, j, frames };
+      if (frames >= 12 && frames <= 100 && top > floor + 10 && top > ref - 42 && (!best || frames > best.frames)) best = { i, j, frames, top };
       i = j;
     }
-    if (best) found.push({ start: best.i * FRAME, end: (best.j + 1) * FRAME, seconds: best.frames / 100, at: (best.i * FRAME) / SR });
+    if (best) found.push({ start: best.i * FRAME, end: (best.j + 1) * FRAME, seconds: best.frames / 100, at: (best.i * FRAME) / SR, db: Math.round(best.top - ref) });
   }
   // The most typical breaths first: close to half a second.
   return found.sort((a, b) => Math.abs(a.seconds - 0.45) - Math.abs(b.seconds - 0.45));
@@ -259,17 +481,20 @@ export function processTake(samples, { chopStartMs = 0, chopEndMs = 0 } = {}) {
 }
 
 // With no extra gap, parts overlap by an equal-power crossfade so the trimmed room tone flows across the joins.
-export function concat(parts, gapMs = 0, xfadeMs = 30) {
+// Also returns where each part starts in the result.
+export function join(parts, gapMs = 0, xfadeMs = 30) {
   const gap = ms(gapMs);
   const xf = gap > 0 ? 0 : ms(xfadeMs);
   const overlap = (i) => (i ? Math.min(xf, parts[i].length, parts[i - 1].length) : 0);
   let total = 0;
   parts.forEach((p, i) => (total = (i ? total + gap - overlap(i) : 0) + p.length));
   const out = new Float32Array(total);
+  const starts = [];
   let end = 0;
   parts.forEach((p, i) => {
     const ov = overlap(i);
     const start = i ? end + gap - ov : 0;
+    starts.push(start);
     for (let k = 0; k < ov; k++) {
       const t = ((k + 0.5) / ov) * (Math.PI / 2);
       out[start + k] = out[start + k] * Math.cos(t) + p[k] * Math.sin(t);
@@ -277,8 +502,9 @@ export function concat(parts, gapMs = 0, xfadeMs = 30) {
     out.set(ov ? p.subarray(ov) : p, start + ov);
     end = start + p.length;
   });
-  return out;
+  return { samples: out, starts };
 }
+export const concat = (parts, gapMs = 0, xfadeMs = 30) => join(parts, gapMs, xfadeMs).samples;
 
 export function encodeWav(samples, sr = SR) {
   const buf = new ArrayBuffer(44 + samples.length * 2);

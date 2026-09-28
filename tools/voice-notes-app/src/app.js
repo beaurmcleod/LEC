@@ -73,8 +73,11 @@ function readTime(text) {
 const DEFAULT_SETTINGS = {
   gapMs: 0,
   matchLevels: true,
+  toneMatch: true,
+  introDb: 0,
   breath: true,
   breathPick: 0,
+  breathDb: 0,
   leadInMs: 300,
   monitorWatching: false,
   autoOpen: true,
@@ -495,18 +498,21 @@ async function revoiceAll() {
   if (done === jobs.length) toast(`Re-voiced ${done} line${done === 1 ? '' : 's'} with the new wording.`);
 }
 
-// How loud the recorded-once parts (the pitch) are, remembered until one is re-recorded.
-let pitchLoudness = { key: '', lufs: -Infinity };
-async function pitchLevel() {
+// The recorded-once parts (the pitch) joined up, with how loud they are, their tone and their room tone,
+// remembered until one is re-recorded.
+let pitchCache = { key: '' };
+async function pitchInfo() {
   const fixed = S.template.filter((s) => s.kind === 'fixed');
   const key = fixed.map((s) => `${fixedKey(s)}:${S.lens[fixedKey(s)]}`).join('|');
-  if (key !== pitchLoudness.key) {
+  if (key !== pitchCache.key) {
     const parts = await Promise.all(fixed.map((s) => getAudio(fixedKey(s))));
     const joined = audio.concat(parts.filter(Boolean), 0);
-    pitchLoudness = { key, lufs: joined.length ? audio.loudness(joined) : -Infinity };
+    const has = joined.length > 0;
+    pitchCache = { key, lufs: has ? audio.loudness(joined) : -Infinity, bands: has ? audio.toneBands(joined) : null, room: has ? audio.roomTone(joined) : -Infinity };
   }
-  return pitchLoudness.lufs;
+  return pitchCache;
 }
+const pitchLevel = async () => (await pitchInfo()).lufs;
 
 // The breaths in a recorded-once part, remembered until it's re-recorded.
 const breathCache = new Map();
@@ -525,23 +531,74 @@ async function breathBefore(seg) {
   if (!S.settings.breath || seg?.kind !== 'fixed') return null;
   const list = await breathsIn(seg);
   if (!list.length) return null;
-  const b = list[S.settings.breathPick % list.length];
-  return audio.breathClip(await getAudio(fixedKey(seg)), b);
+  const n = S.settings.breathPick % list.length;
+  const b = list[n];
+  return { clip: audio.breathClip(await getAudio(fixedKey(seg)), b), b, n, total: list.length };
 }
 
-async function buildClip(p) {
+// Builds a lead's whole voice note. Each custom line is EQ'd to the pitch's tone, turned up or down to the
+// pitch's loudness, then trimmed by your Intro volume setting; a breath from the pitch goes between it and the
+// pitch. Returns the samples, where the first join is, and what was measured on the way (for the readout).
+async function assembleClip(p) {
   const missing = missingParts(p);
   if (missing.length) throw new Error(`Still needs: ${missing.map((s) => s.label).join(', ')}`);
-  // Each lead's own lines are turned up or down to sound as loud as the pitch.
-  const target = S.settings.matchLevels ? await pitchLevel() : -Infinity;
+  const st = S.settings;
+  const pitch = await pitchInfo();
   const parts = [];
+  const kinds = [];
+  const info = { pitchLufs: pitch.lufs, pitchRoom: pitch.room, lines: [], breath: null };
   for (const [i, seg] of S.template.entries()) {
-    const samples = await getAudio(partKey(p, seg));
-    parts.push(seg.kind === 'slot' && Number.isFinite(target) ? audio.matchLoudness(samples, target).samples : samples);
-    const breath = seg.kind === 'slot' ? await breathBefore(S.template[i + 1]) : null;
-    if (breath) parts.push(breath);
+    let samples = await getAudio(partKey(p, seg));
+    if (seg.kind === 'slot') {
+      const line = { label: seg.label, lufs: audio.loudness(samples) };
+      if (pitch.bands) {
+        if (st.toneMatch) {
+          const r = audio.toneMatch(samples, pitch.bands);
+          samples = r.samples;
+          line.tone = r.before;
+          line.toneAfter = r.after;
+        } else line.tone = audio.toneGap(audio.toneBands(samples), pitch.bands);
+      }
+      if (st.matchLevels && Number.isFinite(pitch.lufs)) samples = audio.matchLoudness(samples, pitch.lufs).samples;
+      samples = audio.gainDb(samples, st.introDb);
+      line.after = audio.loudness(samples);
+      // A noisier room than the pitch's: ease the intro's trailing pause down to the pitch's room level.
+      line.room = audio.roomTone(samples);
+      const roomDrop = pitch.room - line.room;
+      if (Number.isFinite(roomDrop) && roomDrop < -3) {
+        samples = audio.easeTail(samples, 140, Math.max(-24, roomDrop));
+        line.eased = true;
+      }
+      info.lines.push(line);
+      parts.push(samples);
+      kinds.push('slot');
+      const breath = await breathBefore(S.template[i + 1]);
+      if (breath) {
+        parts.push(audio.gainDb(breath.clip, st.breathDb));
+        kinds.push('breath');
+        info.breath ??= { ...breath.b, n: breath.n + 1, total: breath.total };
+      }
+    } else {
+      parts.push(samples);
+      kinds.push('fixed');
+    }
   }
-  return audio.concat(parts, S.settings.gapMs);
+  const { samples, starts } = audio.join(parts, st.gapMs);
+  const slot = kinds.indexOf('slot');
+  const fixed = kinds.findIndex((k, i) => i > slot && k === 'fixed');
+  const joinAt = slot >= 0 && fixed >= 0 ? { end: starts[slot] + parts[slot].length, pitch: starts[fixed] } : null;
+  return { samples, info, joinAt };
+}
+
+const buildClip = async (p) => (await assembleClip(p)).samples;
+
+// Just the seam: the last stretch of the intro, the breath, and the first words of the pitch.
+async function joinClip(p) {
+  const { samples, joinAt } = await assembleClip(p);
+  if (!joinAt) return samples;
+  const from = Math.max(0, joinAt.end - 1.5 * audio.SR);
+  const to = Math.min(samples.length, joinAt.pitch + 2.5 * audio.SR);
+  return audio.fade(samples.slice(from, to), 15);
 }
 
 // ---------- Send: open their DM, play the clip into the mic, hit send ----------
@@ -1489,6 +1546,7 @@ function detailView(p) {
     missing.length
       ? h('button', { class: 'big', disabled: true }, `Record ${missing.map((s) => s.label).join(', ')} first`)
       : playButton(`preview:${p.id}`, `▶ Preview the whole clip (${fmt(clipSeconds(p))})`, () => buildClip(p), { class: 'big', disabled: !!S.rec || !!S.sending }, '■ Stop preview'),
+    missing.length ? null : joinPanel(p),
 
     step('3', 'Send'),
     sendButton(p),
@@ -1600,11 +1658,117 @@ async function paintBreath() {
   const b = list[n];
   el.replaceChildren(
     h('span', { class: 'grow muted' }, `Using a ${b.seconds.toFixed(1)}s breath from ${secs(b.at)} into your pitch (${n + 1} of ${list.length}).`),
-    playButton('breath', 'Play it', () => breathBefore(seg)),
+    playButton('breath', 'Play it', async () => (await breathBefore(seg))?.clip),
     list.length > 1
-      ? h('button', { onclick: () => ((S.settings.breathPick = (n + 1) % list.length), saveSettings().then(flashSaved), paintBreath()) }, 'Try another')
+      ? h(
+          'button',
+          {
+            onclick: () => {
+              S.settings.breathPick = (n + 1) % list.length;
+              stopPlay();
+              saveSettings().then(flashSaved);
+              paintBreath();
+              if (document.getElementById('join-panel')) paintJoin(current());
+            },
+          },
+          'Try another',
+        )
       : null,
   );
+}
+
+// The join between the intro and the pitch, with the knobs to tune it by ear and a readout of what the app
+// measured. Lives under Listen so a join that sounds off can be fixed without leaving the lead.
+function joinPanel(p) {
+  const st = S.settings;
+  const changed = () => {
+    stopPlay();
+    saveSettings().then(flashSaved);
+    paintJoin(p);
+  };
+  const check = (k, label) =>
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st[k], onchange: (e) => ((st[k] = e.target.checked), k === 'breath' && paintBreath(), changed()) }), label);
+  const dbSlider = (k, label, min, max, step) => {
+    const show = (v) => `${v > 0 ? '+' : ''}${v} dB`;
+    const out = h('span', { class: 'tag', 'data-out': k }, show(st[k]));
+    return h(
+      'div',
+      { class: 'slider' },
+      h('div', { class: 'row-flex' }, h('span', { class: 'grow' }, label), out),
+      h('input', {
+        type: 'range',
+        min,
+        max,
+        step,
+        value: st[k],
+        'aria-label': label,
+        oninput: (e) => ((st[k] = Number(e.target.value)), (out.textContent = show(st[k]))),
+        onchange: changed,
+      }),
+    );
+  };
+  return h(
+    'div',
+    { class: 'card join', id: 'join-panel' },
+    h(
+      'div',
+      { class: 'row-flex' },
+      h('b', { class: 'grow' }, 'The join into the pitch'),
+      playButton(`join:${p.id}`, '▶ Play just the join', () => joinClip(p), { disabled: !!S.rec || !!S.sending }, '■ Stop'),
+    ),
+    h('div', { id: 'join-readout', class: 'muted small' }, 'Measuring...'),
+    check('matchLevels', "Match the intro to the pitch's volume"),
+    dbSlider('introDb', 'Intro volume trim', -6, 6, 0.5),
+    check('toneMatch', "Match the intro's tone to the pitch (EQ)"),
+    check('breath', 'A breath from the pitch between the intro and the pitch'),
+    h('div', { id: 'breath-info', class: 'row-flex small' }),
+    dbSlider('breathDb', 'Breath volume', -12, 12, 1),
+    h(
+      'label',
+      { class: 'field' },
+      'Extra silence before the pitch (ms, 0 = seamless)',
+      h('input', { type: 'number', min: 0, max: 1000, value: st.gapMs, onchange: (e) => ((st.gapMs = Math.max(0, parseInt(e.target.value, 10) || 0)), changed()) }),
+    ),
+  );
+}
+
+// What the app measured on this lead's join, in plain words.
+let joinPaint = 0;
+async function paintJoin(p) {
+  const el = document.getElementById('join-readout');
+  if (!el) return;
+  const run = ++joinPaint;
+  let out;
+  try {
+    const { info } = await assembleClip(p);
+    if (run !== joinPaint) return;
+    const f = (x) => (Number.isFinite(x) ? x.toFixed(1) : '?');
+    const line = info.lines[0];
+    out = [];
+    if (line) {
+      const diff = line.after - info.pitchLufs;
+      out.push(`Volume: your intro take ${f(line.lufs)} LUFS, ${f(line.after)} in the note; pitch ${f(info.pitchLufs)}. ${Math.abs(diff) <= 1 ? 'Matched.' : `Intro is ${f(Math.abs(diff))} dB ${diff > 0 ? 'louder' : 'quieter'}.`}`);
+      if (line.tone) {
+        const t = line.tone.tilt;
+        const before = Math.abs(t) < 1.5 ? 'about the same tone as the pitch' : `${f(Math.abs(t))} dB ${t < 0 ? 'darker' : 'brighter'} than the pitch`;
+        out.push(`Tone: your take is ${before}${line.toneAfter ? `; ${f(line.toneAfter.spread)} dB off after the EQ` : ' (EQ off)'}.`);
+      }
+      const roomDiff = line.room - info.pitchRoom;
+      out.push(
+        `Room tone: intro ${f(line.room)} dB, pitch ${f(info.pitchRoom)} dB.${line.eased ? " The intro's tail is eased down to the pitch's level before the join." : ''}${roomDiff > 8 ? ' For the cleanest join, record the intro in the same spot and at the same distance as the pitch.' : ''}`,
+      );
+    }
+    out.push(
+      info.breath
+        ? `Breath: a ${info.breath.seconds.toFixed(1)}s breath from ${secs(info.breath.at)} into the pitch (${info.breath.n} of ${info.breath.total}), ${info.breath.db} dB below the pitch's speech${S.settings.breathDb ? `, turned ${S.settings.breathDb > 0 ? 'up' : 'down'} ${Math.abs(S.settings.breathDb)} dB` : ''}.`
+        : S.settings.breath
+          ? 'Breath: none found in the pitch, so the intro runs straight into it.'
+          : 'Breath: off.',
+    );
+  } catch (e) {
+    out = [errText(e)];
+  }
+  el.replaceChildren(...out.map((t) => h('div', {}, t)));
 }
 
 function slider(obj, k, label, min, max, step, lo, hi) {
@@ -1697,6 +1861,8 @@ function setupView() {
         "Put one of your pitch's own breaths between the intro and the pitch, so the join sounds natural",
       ),
       h('div', { id: 'breath-info', class: 'row-flex small' }),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.toneMatch, onchange: check(st, 'toneMatch') }), "Match the intro's tone to the pitch (EQ), so a take recorded closer to or farther from the mic still sounds like the same voice"),
+      h('p', { class: 'muted small' }, "Fine-tune the join by ear under Listen on any lead's page: play just the join, trim the intro or breath volume, or add silence."),
       h('label', { class: 'field' }, 'Extra pause between parts (ms, 0 = seamless crossfade)', h('input', { type: 'number', min: 0, max: 1000, value: st.gapMs, oninput: num(st, 'gapMs') })),
       h('label', { class: 'field' }, 'Silence before the clip starts in Instagram (ms)', h('input', { type: 'number', min: 0, max: 2000, value: st.leadInMs, oninput: num(st, 'leadInMs') })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.monitorWatching, onchange: check(st, 'monitorWatching') }), 'Play the clip out loud when I use Send while watching (background sends are always silent)'),
@@ -1958,6 +2124,10 @@ function render() {
   $app.replaceChildren(header(), queueStrip(), body);
   paintQueue();
   if (S.view === 'setup') paintBreath();
+  else if (p && document.getElementById('join-panel')) {
+    paintBreath();
+    paintJoin(p);
+  }
   showRightPane();
 }
 
