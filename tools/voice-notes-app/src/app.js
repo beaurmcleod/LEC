@@ -689,49 +689,59 @@ function setSend(pid, state, text) {
   }
 }
 
-// Opens their DM in one of the Instagram tabs, plays the clip into the mic and hits send, then checks the
-// inbox and the thread to see the note really posted. Returns '' once it's confirmed sent, or which step needs a
-// person ('nodm', 'nomic', 'early', 'nosend', 'unposted', 'unverified', 'vanished', 'rejected:...', 'yours');
-// throws on errors. Every attempt, sent or not, leaves a record of what Instagram did: in the lead's "Send log"
-// in Airtable, and with a screenshot under diagnostics.
+// Opens their DM in one of the Instagram tabs, plays the clip into the mic and hits send, then waits for
+// Instagram's own answer: the voice note counts as sent only when Instagram's servers answer the send with the
+// new message's id. Returns '' once that's in, or which step needs a person ('nodm', 'nomic', 'early',
+// 'nosend', 'unposted', 'unverified', 'rejected:...', 'yours'); throws on errors. Every attempt leaves a
+// record: a short one in the lead's "Send log" in Airtable when it went out, the full step-by-step one when it
+// didn't, and the full one with a screenshot under diagnostics either way.
 async function deliver(p, samples, opts) {
   const { target } = opts;
   const trace = [];
+  const proof = { line: '' };
   const mark = async (step) => {
     const about = await window.api.describeTab(target).catch((e) => `(couldn't read the tab: ${e.message})`);
     trace.push(`## ${step} · ${new Date().toLocaleTimeString()}\n${about}`);
   };
+  const started = Date.now();
   await window.api.watchStart(target).catch(() => {});
   let left = '';
   let error = null;
   try {
-    left = await deliverSteps(p, samples, opts, trace, mark);
+    left = await deliverSteps(p, samples, opts, trace, mark, proof);
   } catch (e) {
     error = e;
     await mark('Stopped by an error').catch(() => {});
   }
   const network = await window.api.watchStop(target).catch((e) => `(couldn't read the network record: ${e.message})`);
-  const outcome = error ? `ERROR: ${errText(error)}` : left === '' ? 'SENT (the inbox and the thread both show it)' : left === 'yours' ? 'left for you to press Send' : `NOT SENT: ${left}`;
+  const outcome = error ? `ERROR: ${errText(error)}` : left === '' ? 'SENT' : left === 'yours' ? 'left for you to press Send' : `NOT SENT: ${left}`;
   const build = S.build ? `build ${S.build.commit}` : 'development build';
-  const report = [`Send to @${p.handle} (${p.name || ''}): ${outcome}`, `${new Date().toLocaleString()} · ${build} · ${target === 'dm' ? 'while watching' : 'in the background'}`, trace.join('\n\n'), `## ${network}`].join('\n\n');
+  const head = [`Send to @${p.handle} (${p.name || ''}): ${outcome}`, `${new Date().toLocaleString()} · ${build} · ${target === 'dm' ? 'while watching' : 'in the background'} · ${Math.round((Date.now() - started) / 1000)}s`, proof.line].filter(Boolean);
+  const full = [...head, trace.join('\n\n'), `## ${network}`].join('\n\n');
   const code = error ? 'error' : left === '' ? 'sent' : left.split(':')[0];
-  const file = await window.api.snap(target, `${p.handle}-${code}`, report).catch(() => '');
+  const file = await window.api.snap(target, `${p.handle}-${code}`, full).catch(() => '');
   if (left || error) p.sendShot = file;
   else delete p.sendShot;
-  logSend(p, report);
+  logSend(p, left === '' && !error ? head.join('\n') : full);
   if (error) throw error;
   return left;
 }
 
-async function deliverSteps(p, samples, { target, monitor, say, onPlaying = () => {} }, trace, mark) {
+// What Instagram's servers answered to the upload and the send, since `since`. Waits up to `ms` for the send's
+// answer (or a failed upload, which means no send is coming).
+async function sendProof(target, since, ms) {
+  let got = { watching: false, upload: null, send: null };
+  for (const end = Date.now() + ms; ; await new Promise((r) => setTimeout(r, 400))) {
+    got = await window.api.sendProof(target, since).catch(() => got);
+    if (got.send || (got.upload && !got.upload.ok) || !got.watching || Date.now() > end) return got;
+  }
+}
+const answerText = (x, what) => (!x ? `no ${what} seen` : x.ok ? `${what} ok (${x.id})` : `${what} failed: ${x.error}`);
+
+async function deliverSteps(p, samples, { target, monitor, say, onPlaying = () => {} }, trace, mark, proof) {
   const seconds = samples.length / audio.SR;
   const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  // The inbox as it is before the send, so afterwards a note that wasn't there before can be told from one
-  // sent to someone else a few minutes ago.
-  say('Reading the inbox...');
-  const before = await window.api.dmInbox(target).then((r) => (r?.state === 'ok' ? r.threads || [] : []), () => []);
-  trace.push(`Inbox before the send (${before.length} rows): ${JSON.stringify(before.slice(0, 8).map(({ name, preview }) => ({ name, preview })))}`);
   say('Opening their DM...');
   const dmOpen = await window.api.igDo('openDm', p.handle, target).then(
     (href) => {
@@ -741,6 +751,8 @@ async function deliverSteps(p, samples, { target, monitor, say, onPlaying = () =
     () => false,
   );
   if (dmOpen) await mark('Their DM, opened');
+  // The chat as it is before the send, for the fallback check when Instagram's answers can't be watched.
+  const countsBefore = dmOpen ? await window.api.dmCounts(target).catch(() => ({ byAuthor: {} })) : { byAuthor: {} };
 
   say('Loading the clip...');
   const armed = waitForStatus(['armed'], 10000, target);
@@ -771,6 +783,7 @@ async function deliverSteps(p, samples, { target, monitor, say, onPlaying = () =
   if (!S.settings.autoSend) return 'yours';
   say('Sending...');
   await mark('Clip finished, about to press Send');
+  const clickAt = Date.now() - 250;
   const stopped = waitForStatus(['stopped'], 8000, target);
   const sendWhat = await window.api.igDo('clickSend', null, target).then(
     (w) => w || 'clicked',
@@ -780,40 +793,37 @@ async function deliverSteps(p, samples, { target, monitor, say, onPlaying = () =
   const st = sendWhat ? await stopped : { state: 'timeout' };
   if (st.state !== 'stopped') return 'nosend';
 
-  // Instagram letting go of the mic is no proof of a send: it does that on a discard too. Look at what the
-  // thread shows a moment later, and if a Send control is still there (a recording that needed a second
-  // press), press it once more.
-  await pause(2500);
-  await mark('2.5 s after the Send click');
-  const again = await window.api.igDo('clickSendAgain', null, target).catch(() => null);
-  if (again) {
-    trace.push(`A Send control was still on screen, so it was pressed again: ${again}`);
-    await pause(2500);
-    await mark('2.5 s after the second Send press');
+  // Instagram letting go of the mic is no proof of a send: it does that on a discard too. The proof is its
+  // servers' answer to the send: the new message's id.
+  say('Waiting for Instagram to confirm...');
+  let got = await sendProof(target, clickAt, 12000);
+  if (got.watching && !got.send && !got.upload) {
+    // Nothing went out yet. If a Send control is still on screen (a recording that needed a second press),
+    // press it once more.
+    const again = await window.api.igDo('clickSendAgain', null, target).catch(() => null);
+    if (again) {
+      trace.push(`A Send control was still on screen, so it was pressed again: ${again}`);
+      got = await sendProof(target, clickAt, 12000);
+    }
   }
+  await mark('After the send');
+  proof.line = got.watching
+    ? `Instagram's answer: ${answerText(got.upload, 'upload')}; ${answerText(got.send, 'send')}`
+    : "Instagram's answers couldn't be watched, so the chat on screen was checked instead";
+  trace.push(proof.line);
+  if (got.send?.ok) return '';
+  if (got.send) return `rejected:${got.send.error}`;
+  if (got.upload && !got.upload.ok) return `rejected:${got.upload.error}`;
+  if (got.watching) return 'unposted';
 
-  // The proof is the inbox: the thread's last message has to be our voice note, sent moments ago.
-  say('Checking it landed...');
-  const names = [p.name, p.business, p.first, p.handle].filter(Boolean);
-  const res = await window.api.confirmSent({ target, href: p.dm?.href || '', names, before });
-  trace.push(`## Inbox check: ${res.state}${res.via ? ` (row found by ${res.via})` : ''} "${res.preview || ''}"\nRows read (${res.rows?.length ?? 0}): ${JSON.stringify(res.rows || [])}`);
-  if (res.state === 'refused') return `rejected:${res.preview}`;
-  if (res.state === 'empty' || res.state === 'loggedout') return 'unverified';
-  if (res.state !== 'sent') return 'unposted';
-
-  // A note can show in the inbox for a moment while it uploads and then fail. Give it a few seconds, then look
-  // at the thread for Instagram's own failure notice, and at the inbox once more.
-  say('Double-checking it stayed...');
-  await pause(6000);
-  const href = res.href || p.dm?.href || '';
-  const health = await window.api.recheckThread({ target, href }).catch((e) => ({ failure: '', error: e.message }));
-  await mark('The thread, 6 s later');
-  if (health.failure) return `rejected:${health.failure}`;
-  const again2 = await window.api.confirmSent({ target, href, names, before });
-  trace.push(`## Inbox check again: ${again2.state}${again2.via ? ` (row found by ${again2.via})` : ''} "${again2.preview || ''}"`);
-  if (again2.state === 'refused') return `rejected:${again2.preview}`;
-  if (again2.state !== 'sent') return 'vanished';
-  return '';
+  // Fallback when the network couldn't be watched: one more message of ours in the chat, and no failure notice.
+  await pause(3000);
+  const after = await window.api.dmCounts(target).catch(() => ({ byAuthor: {}, failure: '' }));
+  trace.push(`Chat before: ${JSON.stringify(countsBefore.byAuthor)} · after: ${JSON.stringify(after.byAuthor)}${after.failure ? ` · "${after.failure}"` : ''}`);
+  if (after.failure) return `rejected:${after.failure}`;
+  const lead = new Set([p.handle, p.name, p.business].filter(Boolean).map((x) => x.toLowerCase()));
+  const grew = Object.entries(after.byAuthor).some(([who, n]) => !lead.has(who.toLowerCase()) && n > (countsBefore.byAuthor[who] || 0));
+  return grew ? '' : 'unverified';
 }
 
 // Every send's record goes into the lead's "Send log" in Airtable, so it can be read without anyone copying it
@@ -834,9 +844,8 @@ const HAND_OFF = {
   early: 'Instagram stopped recording early. The clip is reloaded: click the mic to try again.',
   nosend: 'Clip is in their DM. Hit send in Instagram, then Mark sent.',
   yours: 'Clip is in their DM. Hit send in Instagram, then Mark sent.',
-  unposted: "Send was clicked, but the voice note isn't in the inbox. Check Instagram: if it's there, Mark sent; if not, try again.",
-  unverified: "Send was clicked, but the app couldn't read Instagram's inbox to confirm. Check Instagram: if the note is there, Mark sent.",
-  vanished: 'The voice note showed in the inbox for a moment, then was gone. Instagram likely rejected it. Check the thread.',
+  unposted: "Send was clicked, but nothing reached Instagram's servers. Check the chat: if the note is there, Mark sent; if not, try again.",
+  unverified: "Send was clicked, but the app couldn't confirm it with Instagram. Check the chat: if the note is there, Mark sent.",
 };
 // Why a background send didn't go through.
 const BG_FAIL = {
@@ -844,9 +853,8 @@ const BG_FAIL = {
   nomic: "couldn't start a voice message in their DM",
   early: 'Instagram stopped recording early',
   nosend: "couldn't hit Instagram's send button",
-  unposted: "Instagram didn't post the voice note (it isn't in the inbox)",
-  unverified: "couldn't read Instagram's inbox to confirm the note posted",
-  vanished: 'the voice note showed in the inbox for a moment, then was gone',
+  unposted: "Instagram never received the send (no send reached its servers after Send was clicked)",
+  unverified: "couldn't confirm with Instagram that the note went out",
 };
 
 async function clipFor(p) {
@@ -1003,6 +1011,7 @@ async function checkReplies({ manual = false } = {}) {
   try {
     const inbox = await window.api.dmInbox();
     if (inbox.state === 'loggedout') throw new Error('Instagram is logged out. Sign in on the right.');
+    if (inbox.state === 'unreadable') throw new Error("the app can't read Instagram's new inbox layout yet, so replies aren't being picked up");
     for (const t of inbox.threads || []) {
       const p = matchThread(t, candidates);
       if (!p) continue;

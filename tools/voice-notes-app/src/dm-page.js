@@ -19,6 +19,8 @@ export async function dmPage(action, arg) {
   if (action === 'inbox') {
     await waitFor(() => loggedOut() || document.querySelector('a[href^="/direct/t/"]'), 8000);
     if (loggedOut()) return { state: 'loggedout', threads: [] };
+    // No thread links at all: a layout this reader doesn't know (rows that aren't links), not an empty inbox.
+    if (!document.querySelector('a[href^="/direct/t/"]')) return { state: 'unreadable', threads: [] };
     await sleep(600);
     const threads = [];
     for (const a of [...document.querySelectorAll('a[href^="/direct/t/"]')].filter(shown)) {
@@ -81,10 +83,10 @@ export async function dmPage(action, arg) {
     };
     // Every button and input on screen, with where it is: the controls a click could land on.
     const buttons = [...document.querySelectorAll('button, [role=button], [role=textbox], [contenteditable=true], input, audio, video')].filter(shown).map(one);
-    const labels = [...document.querySelectorAll('[aria-label]')].filter(shown).map(one);
+    const labels = [...document.querySelectorAll('[aria-label]')].filter((el) => shown(el) && !/^(Carousel|Clip)$/.test(el.getAttribute('aria-label'))).map(one);
     return {
       url: location.href,
-      text: (document.body.innerText || '').slice(0, 4000),
+      text: (document.body.innerText || '').replace(/\nMeta\nAbout\n[\s\S]*?© \d{4} Instagram from Meta/, '\n(page footer)').slice(0, 4000),
       buttons: buttons.slice(0, 120),
       labels: labels.slice(0, 200),
       // Only what's new since the last look; each look is kept in the send's record.
@@ -93,13 +95,16 @@ export async function dmPage(action, arg) {
     };
   }
 
-  // A thread a few seconds after a send: any sign Instagram couldn't deliver it.
-  if (action === 'threadHealth') {
-    await waitFor(() => loggedOut() || document.querySelector('[role=textbox]'), 12000);
-    await sleep(1200);
-    const body = document.body.innerText || '';
-    const bad = /[^\n]*(failed to send|couldn'?t send|could not send|not delivered|tap to retry|click to retry|message failed|wasn'?t sent|unable to send|can'?t receive your message|try again later)[^\n]*/i.exec(body);
-    return { failure: bad ? bad[0].trim().slice(0, 200) : '', loggedOut: loggedOut() };
+  // The open chat: how many messages each author has on screen (Instagram labels every message's actions
+  // "React to message from <name>"), and any notice that a message failed.
+  if (action === 'messageCounts') {
+    const byAuthor = {};
+    for (const el of document.querySelectorAll('[aria-label^="React to message from "]')) {
+      const who = el.getAttribute('aria-label').slice('React to message from '.length).trim();
+      byAuthor[who] = (byAuthor[who] || 0) + 1;
+    }
+    const bad = /[^\n]*(failed to send|couldn'?t send|could not send|not delivered|tap to retry|click to retry|message failed|wasn'?t sent|unable to send|can'?t receive your message|try again later)[^\n]*/i.exec(document.body.innerText || '');
+    return { byAuthor, failure: bad ? bad[0].trim().slice(0, 200) : '' };
   }
 
   // Where to click to put the caret in the message box.

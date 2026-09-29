@@ -8,7 +8,6 @@ import { createFollowRunner } from './follow-runner.mjs';
 import * as leads from './src/leads.js';
 import { speak } from './src/voice.js';
 import { dmPage } from './src/dm-page.js';
-import { judgeInbox } from './src/dm-check.js';
 import { draftReply, testClaude } from './src/claude.js';
 import { createInvite, testTorrey } from './src/torrey.js';
 
@@ -420,29 +419,6 @@ ipcMain.handle('dm:send', (_e, { href, handle, text }) =>
     return r;
   }),
 );
-// After a send: is our voice note in the inbox? Instagram lets go of the mic on a discard too, so the only
-// proof is the thread showing "You sent a voice message" moments ago. Compared with the inbox as it was before.
-ipcMain.handle('dm:confirmSent', (_e, { target = 'send', href = '', names = [], before = [] } = {}) =>
-  quietly(async () => {
-    const wc = tab(target);
-    let result = { state: 'empty', via: '', preview: '' };
-    let rows = [];
-    for (let i = 0; i < 5; i++) {
-      await wc.loadURL(`${IG_BASE}/direct/inbox/`).catch(() => {});
-      const inbox = await runDm(wc, 'inbox').catch(() => ({ state: 'error', threads: [] }));
-      if (inbox.state === 'loggedout') return { state: 'loggedout', preview: '', rows: [] };
-      rows = inbox.threads || [];
-      result = judgeInbox(rows, { href, names, before });
-      if (result.state === 'sent' || result.state === 'refused') break;
-      // A page that shows no rows at all isn't one the app can read; don't wait for it.
-      if (!rows.length && i >= 1) break;
-      // A note that is still uploading can take a few seconds to show.
-      await pause(3500);
-    }
-    return { ...result, rows: rows.slice(0, 12).map(({ href, name, preview }) => ({ href, name, preview })) };
-  }),
-);
-
 // What a tab shows right now, as text: the address, every labeled control and the visible words.
 const aboutText = (about) =>
   [
@@ -461,6 +437,46 @@ const aboutText = (about) =>
 // only the method, the address without its query, the operation name and the start of the reply.
 const watches = new Map();
 const INTERESTING = /graphql|api\/v1|rupload|upload|direct|ajax|messag|thread|media/i;
+
+// Instagram's answers to the two requests that make a voice note: the audio upload (ajax/mercury/upload.php,
+// answered with an audio id) and the send (the IGDirectMediaSendMutation GraphQL call, answered with the new
+// message's id). A message id from Instagram is the proof a note went out.
+const isUpload = (r) => r.method === 'POST' && /mercury\/upload|rupload/i.test(r.where);
+const isSend = (r) => r.method === 'POST' && /send/i.test(r.op) && /direct|messag|media|voice|audio/i.test(r.op);
+const parseAnswer = (text) => {
+  try {
+    return JSON.parse(String(text).replace(/^for \(;;\);/, ''));
+  } catch {
+    return null;
+  }
+};
+const findKey = (o, key, depth = 0) => {
+  if (!o || typeof o !== 'object' || depth > 10) return undefined;
+  if (o[key] != null) return o[key];
+  for (const v of Object.values(o)) {
+    const found = findKey(v, key, depth + 1);
+    if (found != null) return found;
+  }
+  return undefined;
+};
+const errorOf = (o) => {
+  const e = Array.isArray(o?.errors) ? o.errors[0] : null;
+  if (e) return String(e.message || e.summary || e.description || JSON.stringify(e)).slice(0, 200);
+  if (o?.error) return String(o.errorSummary || o.errorDescription || `error ${o.error}`).slice(0, 200);
+  return '';
+};
+function readUpload(text, status) {
+  const o = parseAnswer(text);
+  const id = findKey(o, 'audio_id') ?? findKey(o, 'video_id') ?? findKey(o, 'media_id') ?? findKey(o, 'upload_id');
+  const error = errorOf(o) || (status >= 400 ? `Instagram answered ${status}` : id ? '' : `no audio id in Instagram's answer: ${String(text).slice(0, 150)}`);
+  return { at: Date.now(), ok: !error && !!id, id: id ? String(id) : '', error };
+}
+function readSend(text, status) {
+  const o = parseAnswer(text);
+  const id = findKey(o, 'message_id') ?? findKey(o, 'item_id');
+  const error = errorOf(o) || (status >= 400 ? `Instagram answered ${status}` : id ? '' : `no message id in Instagram's answer: ${String(text).slice(0, 150)}`);
+  return { at: Date.now(), ok: !error && !!id, id: id ? String(id) : '', error };
+}
 async function watchStart(target) {
   await watchStop(target);
   const wc = tab(target);
@@ -477,7 +493,9 @@ async function watchStart(target) {
       wc.debugger.attach('1.3');
       w.attached = true;
     }
-  } catch {}
+  } catch (e) {
+    w.note = `Couldn't watch Instagram's answers or keep the page focused: ${e.message}`;
+  }
   if (wc.debugger.isAttached()) {
     w.onMessage = (_e, method, params) => {
       if (method === 'Network.requestWillBeSent') {
@@ -497,13 +515,21 @@ async function watchStart(target) {
         if (r) r.status = params.response.status;
       } else if (method === 'Network.loadingFailed') {
         const r = w.reqs.get(params.requestId);
-        if (r) r.failed = params.canceled ? 'canceled' : params.errorText;
+        if (r) {
+          r.failed = params.canceled ? 'canceled' : params.errorText;
+          if (isUpload(r)) w.upload = { at: Date.now(), ok: false, id: '', error: `the upload didn't finish (${r.failed})` };
+          if (isSend(r)) w.send = { at: Date.now(), ok: false, id: '', op: r.op, error: `the send didn't reach Instagram (${r.failed})` };
+        }
       } else if (method === 'Network.loadingFinished') {
         const r = w.reqs.get(params.requestId);
-        if (r && (r.method !== 'GET' || r.status >= 400) && INTERESTING.test(r.where))
-          r.body = wc.debugger
+        if (r && (r.method !== 'GET' || r.status >= 400) && INTERESTING.test(r.where)) {
+          const full = wc.debugger
             .sendCommand('Network.getResponseBody', { requestId: params.requestId })
-            .then((b) => (b.base64Encoded ? '(binary)' : String(b.body).replace(/\s+/g, ' ').slice(0, 400)), () => '');
+            .then((b) => (b.base64Encoded ? '(binary)' : String(b.body)), () => '');
+          r.body = full.then((t) => t.replace(/\s+/g, ' ').slice(0, 400));
+          if (isUpload(r)) full.then((t) => (w.upload = readUpload(t, r.status)));
+          if (isSend(r)) full.then((t) => (w.send = { ...readSend(t, r.status), op: r.op }));
+        }
       } else if (method === 'Network.webSocketFrameSent' || method === 'Network.webSocketFrameReceived') {
         const out = method.endsWith('Sent');
         const data = params.response?.payloadData || '';
@@ -549,26 +575,29 @@ async function watchStop(target) {
   }
   const ws = w.ws;
   return [
+    w.note || '',
     `Network while sending (${rows.length} requests other than plain page loads):`,
     ...rows.slice(-70),
     ws.sent || ws.recv ? `Live connection: ${ws.sent} frames out (${ws.bytesOut} chars), ${ws.recv} in (${ws.bytesIn} chars)` : 'Live connection: no frames',
     ...ws.words,
     w.console.length ? `Page console:\n${w.console.join('\n')}` : 'Page console: no errors or warnings',
   ]
+    .filter(Boolean)
     .join('\n')
     .slice(0, 16000);
 }
 ipcMain.handle('diag:watchStart', (_e, target) => watchStart(target));
+// What Instagram answered to the upload and the send since `since` (ms), while a send is being watched.
+ipcMain.handle('diag:sendProof', (_e, target, since = 0) => {
+  const w = watches.get(target);
+  const fresh = (x) => (x && x.at >= since ? x : null);
+  return { watching: !!w?.onMessage, upload: fresh(w?.upload), send: fresh(w?.send) };
+});
 ipcMain.handle('diag:watchStop', (_e, target) => watchStop(target));
 
-// A few seconds after a send: load the thread again and look for Instagram's own word that it failed.
-ipcMain.handle('dm:recheck', (_e, { target = 'send', href }) =>
-  quietly(async () => {
-    const wc = tab(target);
-    if (href) await wc.loadURL(new URL(href, IG_BASE).href).catch(() => {});
-    return runDm(wc, 'threadHealth').catch((e) => ({ failure: '', error: e.message }));
-  }),
-);
+// The chat on screen: how many messages each author has in it, and any failure notice. Used to confirm a send
+// only when Instagram's answers can't be watched.
+ipcMain.handle('dm:counts', (_e, target = 'send') => runDm(tab(target), 'messageCounts').catch(() => ({ byAuthor: {}, failure: '' })));
 const describeTab = (target) =>
   runDm(tab(target), 'describe').then(aboutText, (e) => `(couldn't read the page: ${e.message})`);
 ipcMain.handle('diag:describe', (_e, target) => describeTab(target));
