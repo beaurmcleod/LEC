@@ -143,6 +143,44 @@ export async function dmPage(action, arg) {
     };
   }
 
+  // The open chat as a conversation, oldest first: who sent each message (`arg` is the lead's handle; anyone else
+  // is us), its text, and whether it's a voice message. Each message carries Instagram's "React to message from
+  // <username>" label; a message is the smallest container around that label that holds something besides it.
+  if (action === 'chatMessages') {
+    const lead = String(arg || '').toLowerCase().replace(/^@/, '');
+    const box = [...document.querySelectorAll('[role=textbox]')].filter(shown).pop();
+    let chat = document.body;
+    for (let el = box?.parentElement; el && el !== document.body; el = el.parentElement) {
+      if (el.getBoundingClientRect().height >= 250) {
+        chat = el;
+        break;
+      }
+    }
+    const REACT = 'React to message from ';
+    const labels = [...chat.querySelectorAll(`[aria-label^="${REACT}"]`)];
+    const count = (el) => el.querySelectorAll(`[aria-label^="${REACT}"]`).length;
+    const noise = /^(seen|sent|delivered|sending\.*|view transcription|reply|react|more|edited|\d{1,2}:\d{2}( ?[ap]m)?|\d+:\d{2}|(mon|tue|wed|thu|fri|sat|sun)[a-z]* \d{1,2}:\d{2} ?[ap]m|[a-z]{3} \d{1,2}, \d{4},? \d{1,2}:\d{2} ?[ap]m|today|yesterday)$/i;
+    const seen = new Set();
+    const messages = [];
+    for (const label of labels) {
+      let row = null;
+      for (let a = label.parentElement; a && a !== chat.parentElement && count(a) === 1; a = a.parentElement) {
+        const hasContent = text(a).length > 0 || a.querySelector('[aria-label="Play"], [aria-label="Pause"], img, video');
+        if (hasContent) {
+          row = a;
+          break;
+        }
+      }
+      if (!row || seen.has(row)) continue;
+      seen.add(row);
+      const who = label.getAttribute('aria-label').slice(REACT.length).trim();
+      const lines = (row.innerText || '').split('\n').map((l) => l.trim()).filter((l) => l && !noise.test(l) && l.toLowerCase() !== who.toLowerCase());
+      const voice = !!row.querySelector('[aria-label="Play"], [aria-label="Pause"]');
+      messages.push({ who, mine: !!lead && who.toLowerCase() !== lead, text: lines.join('\n').slice(0, 2000), voice });
+    }
+    return { messages, chat: chat === document.body ? 'whole page' : 'chat window', loggedOut: loggedOut() };
+  }
+
   // Where to click to put the caret in the message box.
   if (action === 'box') {
     const box = await waitFor(() => document.querySelector('[role=textbox][contenteditable]'), 8000);
@@ -173,7 +211,7 @@ export async function dmPage(action, arg) {
   // After typing: the Send button, if Instagram shows one (Enter usually sends too).
   if (action === 'sendButton') {
     await sleep(300);
-    const el = [...document.querySelectorAll('button, [role=button]')].find((b) => shown(b) && /^send$/i.test(text(b)));
+    const el = [...document.querySelectorAll('button, [role=button]')].find((b) => shown(b) && (/^send$/i.test(text(b)) || /^send$/i.test(b.getAttribute('aria-label') || '')));
     if (!el) return null;
     const r = el.getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };

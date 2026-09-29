@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('api', {
   dmSend: (args) => ipcRenderer.invoke('dm:send', args),
   chatVoice: (target, handle) => ipcRenderer.invoke('dm:chatVoice', target, handle),
   checkLead: (target, handle) => ipcRenderer.invoke('dm:checkLead', target, handle),
+  readChat: (target, handle) => ipcRenderer.invoke('dm:readChat', target, handle),
   sendProof: (target, since) => ipcRenderer.invoke('diag:sendProof', target, since),
   watchStart: (target) => ipcRenderer.invoke('diag:watchStart', target),
   watchStop: (target) => ipcRenderer.invoke('diag:watchStop', target),

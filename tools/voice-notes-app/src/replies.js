@@ -12,13 +12,32 @@ export const validCode = (c) => CODE_RE.test(c) && !c.includes('--') && !RESERVE
 
 const letters = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-// The codes to try for a lead, best first: their first name, their business ("Hot Haven" -> HOTHAVEN), their
+// Words that say what kind of place it is rather than which one: dropped from a business name to make its code.
+const FILLER = new Set([
+  'THE', 'AND', 'OF', 'LLC', 'INC', 'CO', 'COMPANY', 'STUDIO', 'STUDIOS', 'FITNESS', 'GYM', 'GYMS', 'TRAINING', 'PERSONAL',
+  'PERFORMANCE', 'WELLNESS', 'RECOVERY', 'ATHLETICS', 'ATHLETIC', 'CLUB', 'CENTER', 'CENTRE', 'LAB', 'LABS', 'HEALTH',
+  'COACHING', 'COLLECTIVE', 'SAUNA', 'SPA', 'MEDSPA', 'CLINIC', 'THERAPY', 'STRENGTH', 'CONDITIONING', 'SD', 'SAN', 'DIEGO',
+]);
+
+// A business name as a code: the part before any tagline ("HOT HAVEN - Sauna Studio" -> HOT HAVEN), without the
+// words that only say what kind of place it is ("Electrum Performance" -> ELECTRUM), joined up. Keeps the full
+// name when dropping those words would leave too little ("Fit Monkeys" -> FITMONKEYS).
+export function businessCode(business) {
+  const head = String(business || '').split(/\s+[-|•:–—]\s+|[,(]/)[0];
+  const words = head.toUpperCase().replace(/&/g, ' AND ').replace(/[^A-Z0-9 ]/g, '').split(/\s+/).filter(Boolean);
+  const core = words.filter((w) => !FILLER.has(w)).join('');
+  const all = words.filter((w) => !['THE', 'LLC', 'INC'].includes(w)).join('');
+  const code = core.length >= 4 ? core : all;
+  return code.slice(0, 20);
+}
+
+// The codes to try for a lead, best first: their business ("Hot Haven" -> HOTHAVEN), their first name, their
 // handle, then the same with two digits. The store keeps codes unique, so the app tries the next one on a clash.
 export function codeCandidates(p, digits = () => String(10 + Math.floor(Math.random() * 90))) {
-  const biz = letters(String(p.business || '').split(/\s+[-|•:–—]\s+/)[0]);
+  const biz = p.business && p.business !== p.first ? businessCode(p.business) : '';
   const first = letters(p.first || (p.name !== p.business ? p.name : ''));
-  const handle = letters(p.handle);
-  const bases = [first, biz, handle].filter((c) => c.length >= 4 && c.length <= 25);
+  const handle = letters(p.handle).slice(0, 20);
+  const bases = [biz, first, handle].filter((c) => c.length >= 4 && c.length <= 25);
   const out = [];
   for (const c of bases) if (validCode(c) && !out.includes(c)) out.push(c);
   for (const c of bases) {
@@ -94,10 +113,12 @@ export function replyPrompt(p, { text, history = [], from = 'Garrett', percent =
 If they ask something you can't answer from these facts, say you'll find out and get back to them rather than guessing.
 
 Decide the intent of their reply:
-- "yes": they want in, or are clearly asking for the link or code. Your reply must include, written exactly as these placeholders, their partner code ${code}, their share link ${link}, and their portal invite ${invite}, worked in naturally. The app fills them in.
+- "yes": they want in, or are clearly asking for the link or code. Thank them briefly, then give them their code and how to get set up.
+- "question": they're interested but asked something or want more info. Answer it plainly from the facts above, then give them their code and how to get set up anyway, so they can start whenever they're ready.
 - "no": they're declining. Reply with one gracious sentence, no pitch.
-- "question": they asked something before deciding. Answer it, then invite them to say the word and you'll send their code. Do not include the code or links yet.
-- "unclear": you can't tell what they mean (a laugh, an emoji, a "who is this"). Reply naturally and briefly to move it forward.`,
+- "unclear": you can't tell what they mean (a laugh, an emoji, a "who is this"). Reply naturally and briefly to move it forward, without the code.
+
+For "yes" and "question", the reply must include, written exactly as these placeholders, their partner code ${code}, their share link ${link}, and their portal invite ${invite}. The app fills them in. Work them in as short plain steps: 1) open ${invite} and make an account with your email: the code is already set on it; 2) your portal shows your link, a QR code, every referral and your payouts; 3) share ${link} or tell people to use code ${code}. Say the code is theirs, made for them.`,
     user: [...facts, convo, `Their reply just now: "${text}"`].filter(Boolean).join('\n\n'),
     schema: {
       type: 'object',

@@ -93,7 +93,7 @@ const DEFAULT_SETTINGS = {
   engageAfterSend: true,
   claude: { key: '' },
   torrey: { url: 'https://hvqerbhurepxjdyokzxx.supabase.co', key: '', site: 'https://torreylabs.store', percent: 20 },
-  replies: { watch: true, everyMin: 5, from: 'Garrett' },
+  replies: { watch: true, everyMin: 10, from: 'Garrett', auto: true, delayMin: 15 },
   airtable: {
     token: '',
     baseId: 'appdAJbStcwrV2bq5',
@@ -931,9 +931,10 @@ async function queueSend(p) {
 async function runQueue() {
   if (S.bg.current) return;
   while (S.bg.jobs.length) {
-    // Checks of failed sends wait behind everything else, so they never hold up a send.
-    const first = S.bg.jobs.findIndex((j) => !j.audit);
-    const job = S.bg.jobs.splice(first >= 0 ? first : 0, 1)[0];
+    // Sends first, then replies going out, then looks at chats for replies, then checks of failed sends.
+    const rank = (j) => (j.engage ? 0 : j.samples ? 1 : j.reply ? 2 : j.replycheck ? 3 : j.audit ? 4 : 1);
+    const next = S.bg.jobs.reduce((best, j, k) => (rank(j) < rank(S.bg.jobs[best]) ? k : best), 0);
+    const job = S.bg.jobs.splice(next, 1)[0];
     const p = S.prospects.find((x) => x.id === job.pid);
     if (job.engage) {
       if (p) await engage(p);
@@ -945,6 +946,11 @@ async function runQueue() {
     }
     if (job.audit) {
       if (p && p.status === 'todo' && p.sendIssue) await auditOne(p);
+      continue;
+    }
+    if (job.replycheck) {
+      if (p && p.status === 'sent') await replyCheckOne(p);
+      else replyBatchStep(false);
       continue;
     }
     if (!p || p.status !== 'sending') continue;
@@ -1052,97 +1058,105 @@ async function airtableReply(p, fields) {
   }
 }
 
-// The inbox shows a name (or handle) per thread, not the handle itself, so a thread is matched by the
-// address remembered when the note was sent, and otherwise by the name.
-function matchThread(t, list) {
-  const byHref = list.find((p) => p.dm?.href && p.dm.href === t.href);
-  if (byHref) return byHref;
-  const name = String(t.name || '').trim().toLowerCase();
-  if (!name) return null;
-  const same = (v) => v && String(v).trim().toLowerCase() === name;
-  return list.find((p) => same(p.handle) || same(p.name) || same(p.business) || same(`${p.first || ''}`)) || null;
+// Replies are read from each sent lead's own chat (their profile's Message button opens it; nothing is sent), since
+// Instagram's inbox list can't be read reliably. How often: leads messaged in the last two days every `everyMin`
+// minutes (10 at least), the last two weeks hourly, up to 30 days every 6 hours.
+function replyCadence(p) {
+  const last = Math.max(p.sentAt || 0, p.reply?.sentAt || 0, p.reply?.at || 0);
+  const age = Date.now() - last;
+  if (!last || age > 30 * DAY_MS) return null;
+  if (age < 2 * DAY_MS) return Math.max(10, Number(S.settings.replies.everyMin) || 10) * 60 * 1000;
+  if (age < 14 * DAY_MS) return 60 * 60 * 1000;
+  return 6 * 60 * 60 * 1000;
 }
 
-const ourPreview = (s) => /^(you sent|you:|you replied|you reacted|you shared)/i.test(String(s || '').trim());
-
-// Looks through the inbox for leads who wrote back since the last look. Runs in the hidden send tab, so it
-// waits for any send or follow to finish first, and sends wait for it.
-async function checkReplies({ manual = false } = {}) {
+// Queues a look at every sent lead that's due. Each look is its own background job, behind any send.
+function checkReplies({ manual = false } = {}) {
   const r = S.settings.replies;
   if (!manual && !r.watch) return;
-  if (!manual && Date.now() - S.replies.lastAt < r.everyMin * 60 * 1000) return;
-  if (S.bg.current || S.bg.jobs.length || S.sending || S.rec) {
-    if (manual) toast('Wait for the current send to finish, then check again.');
+  const busy = new Set(S.bg.jobs.filter((j) => j.replycheck).map((j) => j.pid));
+  if (S.bg.current?.check) busy.add(S.bg.current.pid);
+  const due = S.prospects.filter((p) => {
+    if (p.status !== 'sent' || !p.handle || busy.has(p.id)) return false;
+    const every = replyCadence(p);
+    return every && (manual || !p.replyCheckedAt || Date.now() - p.replyCheckedAt >= every);
+  });
+  if (!due.length) {
+    if (manual) toast(busy.size ? 'Already checking.' : 'No sent leads from the last 30 days to check.');
     return;
   }
-  const candidates = S.prospects.filter((p) => p.status === 'sent' && p.handle);
-  if (!candidates.length) {
-    S.replies = { ...S.replies, lastAt: Date.now(), note: 'Nothing sent yet, so nothing to check.' };
-    return refreshQuietly();
-  }
+  S.replies.batch = { total: due.length, done: 0, found: 0 };
   S.replies.checking = true;
-  S.bg.current = { pid: null, handle: '', text: '', until: 0, check: true };
-  paintQueue();
-  let found = 0;
-  let issue = '';
-  try {
-    const inbox = await window.api.dmInbox();
-    if (inbox.state === 'loggedout') throw new Error('Instagram is logged out. Sign in on the right.');
-    if (inbox.state === 'unreadable') throw new Error("the app can't read Instagram's new inbox layout yet, so replies aren't being picked up");
-    for (const t of inbox.threads || []) {
-      const p = matchThread(t, candidates);
-      if (!p) continue;
-      const before = p.dm?.preview ?? null;
-      p.dm = { ...p.dm, href: t.href, name: t.name };
-      // Unchanged since last look, or the last message in the thread is ours: nothing new from them.
-      if (t.preview === before || ourPreview(t.preview)) {
-        p.dm.preview = t.preview;
-        continue;
-      }
-      const thread = await window.api.dmThread(t.href);
-      const msgs = thread.messages || [];
-      let i = msgs.length;
-      while (i > 0 && !msgs[i - 1].mine) i--;
-      const theirs = msgs.slice(i).filter((m) => !m.voice).map((m) => m.text);
-      p.dm.preview = t.preview;
-      if (!theirs.length) continue;
-      found++;
-      await handleReply(p, theirs.join('\n'), msgs.slice(0, i));
-    }
-  } catch (e) {
-    issue = errText(e);
-  }
-  S.replies = {
-    checking: false,
-    lastAt: Date.now(),
-    issue,
-    note: issue ? `Couldn't check: ${issue}` : found ? `${found} new ${found === 1 ? 'reply' : 'replies'}` : 'No new replies',
-  };
-  S.bg.current = null;
-  paintQueue();
-  await saveProspects();
+  for (const p of due) S.bg.jobs.push({ pid: p.id, replycheck: true });
+  if (manual) toast(`Checking ${due.length} chat${due.length === 1 ? '' : 's'} for replies...`);
   refreshQuietly();
   runQueue();
 }
 
-// What a reply gets: a clear yes is answered right away with their code; a no is marked and left alone;
-// a question or anything unclear becomes a draft under Replies for you to approve.
-async function handleReply(p, text, history) {
+function replyBatchStep(found) {
+  const b = S.replies.batch;
+  if (!b) return;
+  b.done++;
+  if (found) b.found++;
+  if (b.done < b.total) return;
+  S.replies = { ...S.replies, checking: false, batch: null, lastAt: Date.now(), note: b.found ? `${b.found} new ${b.found === 1 ? 'reply' : 'replies'}` : 'No new replies' };
+}
+
+// Their messages since our last one, and what came before, from a chat read oldest first.
+function theirLatest(messages) {
+  let i = messages.length;
+  while (i > 0 && !messages[i - 1].mine) i--;
+  const theirs = messages.slice(i);
+  const text = theirs.map((m) => m.text || (m.voice ? '[voice message]' : '')).filter(Boolean).join('\n');
+  return { ours: i > 0, theirs, text, history: messages.slice(0, i), voiceOnly: theirs.length > 0 && theirs.every((m) => m.voice && !m.text) };
+}
+
+// One lead's chat: anything new from them since our last message?
+async function replyCheckOne(p) {
+  S.bg.current = { pid: p.id, handle: p.handle, text: '', until: 0, check: true };
+  paintQueue();
+  const r = await window.api.readChat('send', p.handle).catch((e) => ({ state: 'error', error: errText(e), messages: [] }));
+  p.replyCheckedAt = Date.now();
+  let found = false;
+  if (r.state === 'loggedout') S.replies.issue = 'Instagram is logged out. Sign in on the right.';
+  else if (r.state === 'ok') {
+    S.replies.issue = '';
+    const got = theirLatest(r.messages || []);
+    // A reply is what they wrote after our voice note; it's new when it isn't the one already handled.
+    if (got.ours && got.text && got.text !== p.reply?.key) {
+      found = true;
+      await handleReply(p, got.text, got.history, { key: got.text, voiceOnly: got.voiceOnly });
+    }
+  }
+  replyBatchStep(found);
+  S.bg.current = null;
+  paintQueue();
+  await saveProspects();
+  refreshQuietly();
+}
+
+// What a reply gets: a yes or a question gets their code and how to set up, written for them, sent on its own
+// after the delay in Setup (15 minutes by default), unless you answer first. A no is marked and left alone.
+// Anything unclear, or a voice message, waits under Replies with a draft for you.
+async function handleReply(p, text, history, { key = text, voiceOnly = false, keepSendAt = false } = {}) {
   const st = S.settings;
-  p.reply = { text, at: Date.now(), history: history.slice(-8), pending: true, intent: '', draft: '', why: '', issue: '' };
-  await airtableReply(p, { [RF.status]: 'Replied', [RF.lastReply]: text, [RF.received]: new Date().toISOString(), [RF.handled]: false });
+  const prev = p.reply;
+  const at = keepSendAt && prev?.pending ? prev.at : Date.now();
+  p.reply = { key, text, at, history: history.slice(-8).map(({ mine, text: t, voice }) => ({ mine, text: t || (voice ? '[voice message]' : ''), voice })), pending: true, intent: '', draft: '', why: '', issue: '', auto: false, sendAt: null };
+  await airtableReply(p, { [RF.status]: 'Replied', [RF.lastReply]: text, [RF.received]: new Date(at).toISOString(), [RF.handled]: false });
   let intent = 'unclear';
   let draft = '';
   let why = '';
   try {
-    if (st.claude.key) {
-      const d = await window.api.replyDraft(st.claude.key, replies.replyPrompt(p, { text, history, from: st.replies.from, percent: st.torrey.percent, site: st.torrey.site }));
+    if (voiceOnly) why = 'They answered with a voice message. Listen to it in the chat and reply here.';
+    else if (st.claude.key) {
+      const d = await window.api.replyDraft(st.claude.key, replies.replyPrompt(p, { text, history: p.reply.history, from: st.replies.from, percent: st.torrey.percent, site: st.torrey.site }));
       ({ intent, why } = d);
       draft = d.reply;
     } else {
       intent = replies.quickIntent(text);
       if (intent === 'yes') draft = replies.fallbackMessage(p, { ...replies.SLOTS, from: st.replies.from, percent: st.torrey.percent });
-      why = st.claude.key ? '' : 'Read without Claude (no API key in Setup).';
+      why = 'Read without Claude (no API key in Setup), so only a plain yes or no is understood.';
     }
   } catch (e) {
     p.reply.issue = errText(e);
@@ -1154,17 +1168,63 @@ async function handleReply(p, text, history) {
     toast(`@${p.handle} said no thanks. Marked not interested.`);
     return;
   }
-  if (intent === 'yes' && draft && !p.reply.issue) return sendReplyNow(p, { text: draft, withCode: true });
   await airtableReply(p, { [RF.intent]: INTENT_LABEL[intent] || 'Unclear', [RF.suggested]: draft, [RF.handled]: false });
+  if ((intent === 'yes' || intent === 'question') && draft && !p.reply.issue && st.replies.auto) {
+    // A human pace: the delay in Setup, give or take a tenth. A reply that grew (they wrote again) keeps its turn.
+    const delay = Math.max(0, Number(st.replies.delayMin) || 0) * 60 * 1000;
+    let sendAt = at + delay + Math.round(delay * (Math.random() * 0.2 - 0.1));
+    if (keepSendAt && prev?.sendAt) sendAt = Math.max(prev.sendAt, Date.now() + 30 * 1000);
+    Object.assign(p.reply, { auto: true, sendAt });
+    const mins = Math.max(0, Math.round((sendAt - Date.now()) / 60000));
+    toast(`@${p.handle} ${intent === 'yes' ? 'said yes' : 'asked for more info'}. Their answer and code go out ${mins ? `in about ${mins} min` : 'shortly'} (Replies tab).`, 7000);
+    return;
+  }
   toast(`@${p.handle} replied. A draft is waiting under Replies.`, 6000);
 }
 
+// Auto-replies that are due go into the background queue.
+function dueReplies() {
+  for (const p of S.prospects) {
+    const r = p.reply;
+    if (!r?.pending || !r.auto || !r.sendAt || r.sendAt > Date.now()) continue;
+    if (S.bg.jobs.some((j) => j.reply && j.pid === p.id) || S.bg.current?.pid === p.id) continue;
+    S.bg.jobs.push({ pid: p.id, reply: { withCode: true, scheduled: true } });
+  }
+  runQueue();
+}
+
 // Reserves their code on torreylabs.store if needed, fills it into the message, and types it into the thread.
-async function sendReplyNow(p, { text, withCode = false }) {
+async function sendReplyNow(p, { text, withCode = false, scheduled = false }) {
   const st = S.settings;
   let vals = null;
+  if (scheduled && !(p.reply?.pending && p.reply.auto)) return; // cancelled while it waited
   S.bg.current = { pid: p.id, handle: p.handle, text: '', until: 0, reply: true };
   paintQueue();
+  const done = async () => {
+    S.bg.current = null;
+    paintQueue();
+    await saveProspects();
+    refreshQuietly();
+  };
+  if (scheduled) {
+    // Right before an auto-reply goes out, look at the chat again: if you answered them yourself, it's dropped;
+    // if they wrote more, the answer is written again with everything they said.
+    const chat = await window.api.readChat('send', p.handle).catch(() => null);
+    if (chat?.state === 'ok' && chat.messages?.length) {
+      const got = theirLatest(chat.messages);
+      if (!got.theirs.length) {
+        Object.assign(p.reply, { pending: false, auto: false, dismissed: true, note: 'You answered them in the chat, so the auto-reply was dropped.' });
+        await airtableReply(p, { [RF.handled]: true });
+        toast(`@${p.handle}: you already answered, so the auto-reply was dropped.`, 6000);
+        return done();
+      }
+      if (got.text && got.text !== p.reply.key) {
+        await handleReply(p, got.text, got.history, { key: got.text, voiceOnly: got.voiceOnly, keepSendAt: true });
+        return done();
+      }
+    }
+    text = p.reply.draft;
+  }
   try {
     if (withCode) {
       if (!p.partner?.code) {
@@ -1181,7 +1241,7 @@ async function sendReplyNow(p, { text, withCode = false }) {
       text = replies.hasSlots(text) ? replies.fillSlots(text, vals) : `${text.trim()}\n\n${replies.codeLines(vals)}`;
     }
     const r = await window.api.dmSend({ href: p.dm?.href, handle: p.handle, text });
-    p.reply = { ...p.reply, pending: false, sent: text, sentAt: Date.now(), issue: r?.state === 'sent' ? '' : "Sent, but the app couldn't confirm it landed. Check the thread." };
+    p.reply = { ...p.reply, pending: false, auto: false, sent: text, sentAt: Date.now(), issue: r?.state === 'sent' ? '' : "Sent, but the app couldn't confirm it landed. Check the thread." };
     p.dm = { ...p.dm, preview: `You: ${text.slice(0, 60)}` };
     await airtableReply(p, {
       [RF.suggested]: text,
@@ -1191,14 +1251,12 @@ async function sendReplyNow(p, { text, withCode = false }) {
     });
     toast(`Replied to @${p.handle}${vals ? ` with their code ${vals.code}` : ''} ✓`);
   } catch (e) {
-    p.reply = { ...p.reply, pending: true, draft: text, issue: errText(e) };
+    // A failed auto-reply turns into a draft for you, so it can't keep retrying on its own.
+    p.reply = { ...p.reply, pending: true, auto: false, draft: text, issue: errText(e) };
     await airtableReply(p, { [RF.suggested]: text, [RF.handled]: false });
     toast(`Couldn't reply to @${p.handle}: ${errText(e)}. It's waiting under Replies.`, 8000);
   }
-  S.bg.current = null;
-  paintQueue();
-  await saveProspects();
-  refreshQuietly();
+  return done();
 }
 
 function queueReply(p, reply) {
@@ -1226,10 +1284,10 @@ function paintQueue() {
   el.hidden = !cur;
   if (!cur) return el.replaceChildren();
   const left = cur.until ? ` · ${countdown(cur.until - Date.now())} left` : '';
-  const queued = S.bg.jobs.filter((j) => !j.engage).length;
+  const queued = S.bg.jobs.filter((j) => !j.engage && !j.replycheck && !j.audit).length;
   const more = queued ? ` · ${queued} more queued` : '';
   const what = cur.check
-    ? [h('b', {}, 'Checking Instagram for replies...')]
+    ? [h('b', {}, cur.handle ? `Checking @${cur.handle}'s chat` : 'Checking Instagram'), ' for replies...']
     : cur.audit
       ? [h('b', {}, `Checking @${cur.handle}'s chat`), ' for our voice note...']
     : cur.reply
@@ -2494,6 +2552,15 @@ function replyCard(p) {
     h('div', { class: 'msg theirs' }, r.text),
     r.why ? h('p', { class: 'muted small why' }, r.why) : null,
     r.issue ? h('p', { class: 'status error' }, r.issue) : null,
+    r.auto && r.sendAt
+      ? h(
+          'p',
+          { class: 'status armed row-flex', 'data-auto': '' },
+          h('span', { class: 'grow' }, `Goes out on its own ${r.sendAt > Date.now() ? `in ${countdown(r.sendAt - Date.now())}` : 'now'}, with ${p.partner ? `their code ${p.partner.code}` : 'their own code'}. Edit it below if you like; if you answer them in the chat first, it's dropped.`),
+          h('button', { class: 'link', onclick: () => ((r.sendAt = Date.now()), saveProspects(), dueReplies(), render()) }, 'Send now'),
+          h('button', { class: 'link', onclick: () => ((r.auto = false), saveProspects(), render()) }, 'Hold for me'),
+        )
+      : null,
     box,
     h(
       'div',
@@ -2538,11 +2605,13 @@ function repliesView() {
         h(
           'span',
           { class: `grow small ${S.replies.issue ? 'bad' : 'muted'}` },
-          S.replies.checking
-            ? 'Checking Instagram for replies...'
-            : `${st.replies.watch ? `Watching for replies every ${st.replies.everyMin} min` : 'Not watching for replies (Setup)'}${S.replies.lastAt ? ` · last check ${ago(S.replies.lastAt)}: ${S.replies.note}` : sent ? ' · no check yet' : ''}`,
+          S.replies.issue
+            ? `Couldn't check: ${S.replies.issue}`
+            : S.replies.checking && S.replies.batch
+              ? `Checking chats for replies (${S.replies.batch.done} of ${S.replies.batch.total})...`
+              : `${st.replies.watch ? `Watching your sent leads' chats (new ones every ${Math.max(10, st.replies.everyMin)} min)` : 'Not watching for replies (Setup)'}${S.replies.lastAt ? ` · last check ${ago(S.replies.lastAt)}: ${S.replies.note}` : sent ? ' · no check yet' : ''}`,
         ),
-        h('button', { onclick: () => checkReplies({ manual: true }), disabled: S.replies.checking || !!S.bg.current }, 'Check now'),
+        h('button', { onclick: () => checkReplies({ manual: true }), disabled: !!S.replies.checking }, 'Check now'),
       ),
     ),
     !st.claude.key || !st.torrey.key
@@ -2557,7 +2626,13 @@ function repliesView() {
     h('h2', {}, pending.length ? `Waiting on you (${pending.length})` : 'Nothing waiting on you'),
     pending.length
       ? pending.map(replyCard)
-      : h('p', { class: 'muted small' }, 'A clear yes gets their code automatically. A no is marked not interested. Questions and anything unclear show up here with a draft to approve.'),
+      : h(
+          'p',
+          { class: 'muted small' },
+          st.replies.auto
+            ? `A yes or a question for more info gets an answer written for them with their own partner code and how to set up, sent on its own after about ${st.replies.delayMin} min. A no is marked not interested. Anything unclear, or a voice message back, waits here for you.`
+            : 'Every reply waits here with a draft for you to approve (automatic answers are off in Setup). A no is marked not interested.',
+        ),
     done.length ? h('h2', {}, 'Answered') : null,
     done.slice(0, 40).map((p) =>
       h(
@@ -2565,7 +2640,7 @@ function repliesView() {
         { class: 'log-row reply-done' },
         h('span', { class: 'muted small' }, ago(p.reply.sentAt || p.reply.at)),
         h('b', { class: 'small' }, `@${p.handle}`),
-        h('span', { class: `small ${p.reply.intent === 'no' ? 'muted' : 'ok'}` }, p.reply.intent === 'no' ? 'said no' : p.reply.dismissed ? 'handled by hand' : p.partner ? `sent their code ${p.partner.code}` : 'replied'),
+        h('span', { class: `small ${p.reply.intent === 'no' ? 'muted' : 'ok'}` }, p.reply.intent === 'no' ? 'said no' : p.reply.note ? p.reply.note : p.reply.dismissed ? 'handled by hand' : p.partner ? `sent their code ${p.partner.code}` : 'replied'),
         p.reply.sent ? h('span', { class: 'muted small', title: p.reply.sent }, `“${p.reply.sent.slice(0, 70)}${p.reply.sent.length > 70 ? '…' : ''}”`) : null,
       ),
     ),
@@ -2660,9 +2735,11 @@ function setupView() {
     h(
       'div',
       { class: 'card' },
-      h('p', { class: 'muted small' }, 'When someone writes back to a voice note, the app reads the reply in the hidden Instagram tab. A clear yes gets their partner code and invite right away; a no is marked not interested; a question or anything unclear waits under Replies with a draft for you to approve.'),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.replies.watch, onchange: check(st.replies, 'watch') }), 'Watch the DM inbox for replies'),
-      h('div', { class: 'grid2' }, h('label', { class: 'field' }, 'Check every (minutes)', h('input', { type: 'number', min: 1, max: 120, value: st.replies.everyMin, oninput: (e) => ((st.replies.everyMin = Math.min(120, Math.max(1, parseInt(e.target.value, 10) || 5))), saveSettings().then(flashSaved)) })), h('label', { class: 'field' }, 'Sign replies as', h('input', { value: st.replies.from, oninput: txt(st.replies, 'from') }))),
+      h('p', { class: 'muted small' }, "When someone writes back to a voice note, the app reads it in their chat in the hidden Instagram tab. A yes or a question for more info gets an answer written for them, with a partner code made from their business name (or first name) and how to set up their portal, sent after the wait below. If you answer them yourself first, the app drops its answer. A no is marked not interested; anything unclear waits under Replies for you."),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.replies.watch, onchange: check(st.replies, 'watch') }), "Watch sent leads' chats for replies"),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.replies.auto, onchange: check(st.replies, 'auto') }), 'Answer a yes or a question for more info on its own, with their own partner code and how to set up'),
+      h('label', { class: 'field' }, 'Wait before answering (minutes)', h('input', { type: 'number', min: 0, max: 240, step: 'any', value: st.replies.delayMin, oninput: (e) => ((st.replies.delayMin = Math.min(240, Math.max(0, parseFloat(e.target.value) || 0))), saveSettings().then(flashSaved)) })),
+      h('div', { class: 'grid2' }, h('label', { class: 'field' }, 'Check new leads every (minutes)', h('input', { type: 'number', min: 10, max: 120, value: st.replies.everyMin, oninput: (e) => ((st.replies.everyMin = Math.min(120, Math.max(10, parseInt(e.target.value, 10) || 10))), saveSettings().then(flashSaved)) })), h('label', { class: 'field' }, 'Sign replies as', h('input', { value: st.replies.from, oninput: txt(st.replies, 'from') }))),
       h('label', { class: 'field' }, 'Claude API key (writes each reply in your voice)', h('input', { type: 'password', value: st.claude.key, oninput: txt(st.claude, 'key'), placeholder: 'sk-ant-...' })),
       h('div', { class: 'row-flex' }, h('button', { onclick: () => testKey('claude'), disabled: !!S.busy }, 'Test Claude'), h('span', { id: 'claude-test', class: 'small muted' })),
       h('p', { class: 'muted small' }, 'Make a key at console.anthropic.com. It stays in this app.'),
@@ -2965,6 +3042,8 @@ document.addEventListener('keydown', (e) => {
   };
   // The cap used to default to 100, which is fewer leads than the formula matches.
   if (S.settings.airtable.max === 100) S.settings.airtable.max = DEFAULT_SETTINGS.airtable.max;
+  // Replies are now read chat by chat, so a lead is looked at every 10 minutes at most.
+  if (S.settings.replies.everyMin < 10) S.settings.replies.everyMin = 10;
   S.prospects = (await store.get('kv', 'prospects')) || [];
   S.removed = { ids: [], handles: [], ...((await store.get('kv', 'removed')) || {}) };
   for (const p of S.prospects.filter((x) => x.status === 'sending')) {
@@ -2984,4 +3063,7 @@ document.addEventListener('keydown', (e) => {
   // Replies: a first look shortly after launch, then on the schedule in Setup.
   setTimeout(() => checkReplies(), 45 * 1000);
   setInterval(() => checkReplies(), 60 * 1000);
+  // Auto-replies whose time has come, and the countdowns on the Replies tab.
+  setInterval(dueReplies, 15 * 1000);
+  setInterval(() => S.view === 'replies' && pendingReplies().some((p) => p.reply.auto) && refreshQuietly(), 20 * 1000);
 })();

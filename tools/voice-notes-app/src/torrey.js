@@ -35,6 +35,14 @@ async function call(cfg, path, init = {}) {
 export async function createInvite(cfg, { candidates, label = '', rate = 0.2, token = inviteToken() }) {
   let taken = [];
   for (const code of candidates) {
+    // A code an existing partner already uses can be reserved as an invite, but the store can't hand it over
+    // when the invite is claimed (partners' codes are unique too), so skip it here.
+    const owner = await call(cfg, `affiliates?select=id&referral_code=eq.${encodeURIComponent(code)}&limit=1`);
+    if (!owner.res.ok) throw new Error(plainError(owner.res.status, owner.body));
+    if (Array.isArray(owner.body) && owner.body.length) {
+      taken.push(code);
+      continue;
+    }
     const { res, body } = await call(cfg, 'affiliate_invites', {
       method: 'POST',
       headers: { Prefer: 'return=representation' },

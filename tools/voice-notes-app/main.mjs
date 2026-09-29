@@ -290,12 +290,15 @@ const pathOf = (url) => {
   }
 };
 
+const chatOpen = (wc) => wc.executeJavaScript(`!!document.querySelector('[role=textbox][contenteditable=true]')`, true).catch(() => false);
+
 async function openDm(wc, handle) {
-  if (pathOf(wc.getURL()) !== `/${handle.toLowerCase()}`) {
-    await wc.loadURL(`${IG_BASE}/${encodeURIComponent(handle)}/`).catch(() => {});
-  } else if (wc.isLoading()) {
-    await new Promise((r) => wc.once('did-stop-loading', r));
-  }
+  const here = pathOf(wc.getURL()) === `/${handle.toLowerCase()}`;
+  if (here && wc.isLoading()) await new Promise((r) => wc.once('did-stop-loading', r));
+  // Instagram opens a chat as a window over the profile, so the tab can be on their profile with a chat already
+  // open (a reply check reads theirs right before the answer goes out). That window can hide the Message button
+  // and may not be theirs, so the profile is loaded fresh and their chat opened from it.
+  if (!here || (await chatOpen(wc))) await wc.loadURL(`${IG_BASE}/${encodeURIComponent(handle)}/`).catch(() => {});
   if (!(await igClick(wc, 'message'))) throw new Error("Couldn't find the Message button on their profile.");
   if (!(await wc.executeJavaScript(`(${igPage})('dm')`, true))) throw new Error("Their DM didn't open.");
 }
@@ -388,37 +391,82 @@ ipcMain.handle('dm:thread', (_e, href) =>
   }),
 );
 // Types the text into the thread's message box with real (trusted) input and sends it.
+// Opens a lead's chat (their profile's Message button) and reads the conversation. Nothing is sent. The older
+// messages can take a moment to load, so it reads a few times and keeps the fullest read.
+ipcMain.handle('dm:readChat', (_e, target = 'send', handle) =>
+  quietly(async () => {
+    const wc = tab(target);
+    try {
+      await openDm(wc, handle);
+    } catch (e) {
+      return { state: /log ?in/i.test(wc.getURL()) ? 'loggedout' : 'nodm', error: e.message, messages: [] };
+    }
+    let best = { messages: [] };
+    for (let i = 0; i < 4; i++) {
+      await pause(1200);
+      const r = await runDm(wc, 'chatMessages', handle).catch(() => null);
+      if (r?.loggedOut) return { state: 'loggedout', messages: [] };
+      if (r && r.messages.length >= best.messages.length) best = r;
+    }
+    return { state: 'ok', ...best };
+  }),
+);
+
 ipcMain.handle('dm:send', (_e, { href, handle, text }) =>
   quietly(async () => {
     const wc = tab('send');
-    if (href) await wc.loadURL(new URL(href, IG_BASE).href).catch(() => {});
+    // Today's Instagram opens a DM as a chat window over the profile; an older thread address still works.
+    if (href && href.startsWith('/direct/t/')) await wc.loadURL(new URL(href, IG_BASE).href).catch(() => {});
     else await openDm(wc, handle);
-    // A click right after a page load can arrive before the page takes input, so make sure the caret really
-    // is in the box (and the text really went in) before pressing send. Otherwise the message is lost silently.
-    let inBox = false;
-    for (let i = 0; i < 4 && !inBox; i++) {
-      const box = await runDm(wc, 'box');
-      if (!box) throw new Error("Couldn't find the message box in their DM.");
-      await clickPoint(wc, box);
-      await pause(300 + i * 300);
-      inBox = await runDm(wc, 'boxFocused');
-      if (!inBox && i >= 1) inBox = await runDm(wc, 'focusBox');
+    await watchStart('send');
+    try {
+      return await typeAndSend(wc, text, Date.now());
+    } finally {
+      await watchStop('send');
     }
-    if (!inBox) throw new Error("Couldn't put the cursor in their message box.");
-    await wc.insertText(text);
-    await pause(400);
-    if (!(await runDm(wc, 'boxHas', text.slice(0, 40)))) throw new Error("The reply didn't go into the message box.");
-    const send = await runDm(wc, 'sendButton');
-    if (send) await clickPoint(wc, send);
-    else {
-      wc.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
-      wc.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
-    }
-    const r = await runDm(wc, 'confirm', text);
-    if (r.state === 'stuck') throw new Error("Typed the reply, but Instagram didn't send it. Open the thread and press Send.");
-    return r;
   }),
 );
+
+// Types a reply into the open chat and sends it; the send's network answer is the proof.
+async function typeAndSend(wc, text, since) {
+  // A click right after a page load can arrive before the page takes input, so make sure the caret really
+  // is in the box (and the text really went in) before pressing send. Otherwise the message is lost silently.
+  let inBox = false;
+  for (let i = 0; i < 4 && !inBox; i++) {
+    const box = await runDm(wc, 'box');
+    if (!box) throw new Error("Couldn't find the message box in their DM.");
+    await clickPoint(wc, box);
+    await pause(300 + i * 300);
+    inBox = await runDm(wc, 'boxFocused');
+    if (!inBox && i >= 1) inBox = await runDm(wc, 'focusBox');
+  }
+  if (!inBox) throw new Error("Couldn't put the cursor in their message box.");
+  await wc.insertText(text);
+  await pause(400);
+  if (!(await runDm(wc, 'boxHas', text.slice(0, 40)))) throw new Error("The reply didn't go into the message box.");
+  const send = await runDm(wc, 'sendButton');
+  if (send) await clickPoint(wc, send);
+  else {
+    wc.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+    wc.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+  }
+  // The proof is Instagram's answer to the send, as for voice notes; the chat on screen is the fallback.
+  let proof = null;
+  for (const end = Date.now() + 12000; Date.now() < end; await pause(400)) {
+    const w = watches.get('send');
+    if (!w?.onMessage) break;
+    if (w.send && w.send.at >= since) {
+      proof = w.send;
+      break;
+    }
+  }
+  const r = await runDm(wc, 'confirm', text);
+  if (proof && !proof.ok) throw new Error(`Instagram said "${proof.error}"`);
+  if (proof?.ok) return { state: 'sent', id: proof.id };
+  if (r.state === 'stuck') throw new Error("Typed the reply, but Instagram didn't send it. Open the thread and press Send.");
+  return r;
+}
+
 // What a tab shows right now, as text: the address, every labeled control and the visible words.
 const aboutText = (about) =>
   [
@@ -442,7 +490,7 @@ const INTERESTING = /graphql|api\/v1|rupload|upload|direct|ajax|messag|thread|me
 // answered with an audio id) and the send (the IGDirectMediaSendMutation GraphQL call, answered with the new
 // message's id). A message id from Instagram is the proof a note went out.
 const isUpload = (r) => r.method === 'POST' && /mercury\/upload|rupload/i.test(r.where);
-const isSend = (r) => r.method === 'POST' && /send/i.test(r.op) && /direct|messag|media|voice|audio/i.test(r.op);
+const isSend = (r) => r.method === 'POST' && /send/i.test(r.op) && /direct|messag|media|voice|audio|text/i.test(r.op);
 const parseAnswer = (text) => {
   try {
     return JSON.parse(String(text).replace(/^for \(;;\);/, ''));
