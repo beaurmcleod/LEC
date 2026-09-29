@@ -3101,7 +3101,7 @@ function findView() {
     h(
       'div',
       { class: 'card' },
-      h('label', { class: 'field' }, 'One per line. Each is searched about twice a day.', h('textarea', { id: 'find-tags', rows: 8, oninput: (e) => ((st.tags = e.target.value), saveSettings().then(flashSaved)) }, st.tags)),
+      h('label', { class: 'field' }, 'One per line. They are searched in turn, each at most twice a day, as the daily limit allows.', h('textarea', { id: 'find-tags', rows: 8, oninput: (e) => ((st.tags = e.target.value), saveSettings().then(flashSaved)) }, st.tags)),
       h(
         'div',
         { class: 'row-flex' },
