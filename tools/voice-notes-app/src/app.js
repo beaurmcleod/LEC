@@ -1889,7 +1889,12 @@ function detailView(p) {
     step('3', 'Send'),
     sendButton(p),
     S.settings.autoSend && p.status === 'todo'
-      ? h('p', { class: 'muted small' }, 'Sends in the background, silently, and opens your next lead right away.')
+      ? h(
+          'p',
+          { class: 'muted small row-flex' },
+          h('span', { class: 'grow' }, 'Sends in the background, silently, and opens your next lead right away.'),
+          h('button', { onclick: () => sendNow(p), disabled: blocked, title: 'Runs the send in the Instagram pane on the right, so you can see each step' }, 'Send while watching'),
+        )
       : null,
     p.sendIssue && p.status === 'todo'
       ? h(
