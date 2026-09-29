@@ -86,6 +86,8 @@ const DEFAULT_SETTINGS = {
   autoSend: true,
   autoSync: true,
   readyOnly: true,
+  // Remove on a lead: 'delete' deletes its Airtable record, 'skip' marks it Skip there instead.
+  removeMode: 'delete',
   followGate: true,
   followPerDay: 50,
   engageAfterSend: true,
@@ -751,8 +753,9 @@ async function deliverSteps(p, samples, { target, monitor, say, onPlaying = () =
     () => false,
   );
   if (dmOpen) await mark('Their DM, opened');
-  // The chat as it is before the send, for the fallback check when Instagram's answers can't be watched.
-  const countsBefore = dmOpen ? await window.api.dmCounts(target).catch(() => ({ byAuthor: {} })) : { byAuthor: {} };
+  // How many voice messages their chat shows before this one: after the send there has to be one more.
+  const chatBefore = dmOpen ? await window.api.chatVoice(target).catch(() => ({ voices: 0 })) : { voices: 0 };
+  trace.push(`Chat before the send: ${JSON.stringify(chatBefore)}`);
 
   say('Loading the clip...');
   const armed = waitForStatus(['armed'], 10000, target);
@@ -811,19 +814,26 @@ async function deliverSteps(p, samples, { target, monitor, say, onPlaying = () =
     ? `Instagram's answer: ${answerText(got.upload, 'upload')}; ${answerText(got.send, 'send')}`
     : "Instagram's answers couldn't be watched, so the chat on screen was checked instead";
   trace.push(proof.line);
-  if (got.send?.ok) return '';
-  if (got.send) return `rejected:${got.send.error}`;
+  if (got.send && !got.send.ok) return `rejected:${got.send.error}`;
   if (got.upload && !got.upload.ok) return `rejected:${got.upload.error}`;
-  if (got.watching) return 'unposted';
+  if (got.watching && !got.send) return 'unposted';
 
-  // Fallback when the network couldn't be watched: one more message of ours in the chat, and no failure notice.
-  await pause(3000);
-  const after = await window.api.dmCounts(target).catch(() => ({ byAuthor: {}, failure: '' }));
-  trace.push(`Chat before: ${JSON.stringify(countsBefore.byAuthor)} · after: ${JSON.stringify(after.byAuthor)}${after.failure ? ` · "${after.failure}"` : ''}`);
-  if (after.failure) return `rejected:${after.failure}`;
-  const lead = new Set([p.handle, p.name, p.business].filter(Boolean).map((x) => x.toLowerCase()));
-  const grew = Object.entries(after.byAuthor).some(([who, n]) => !lead.has(who.toLowerCase()) && n > (countsBefore.byAuthor[who] || 0));
-  return grew ? '' : 'unverified';
+  // The second proof: the voice message itself, in their chat. One more voice message than before the send,
+  // no longer "Sending", and no failure notice.
+  say('Checking their chat...');
+  let chat = null;
+  for (const end = Date.now() + 25000; ; await pause(700)) {
+    chat = await window.api.chatVoice(target).catch((e) => ({ voices: 0, error: e.message }));
+    if (chat.failure || (chat.voices > chatBefore.voices && !chat.sending) || Date.now() > end) break;
+  }
+  const chatLine = `Chat after the send: ${JSON.stringify(chat)} (before: ${chatBefore.voices} voice message${chatBefore.voices === 1 ? '' : 's'})`;
+  trace.push(chatLine);
+  proof.line = [proof.line, chat.voices > chatBefore.voices && !chat.sending && !chat.failure ? `Their chat shows the new voice message (${chat.voices} now, ${chatBefore.voices} before)` : chatLine].join('\n');
+  if (chat.failure) return `rejected:${chat.failure}`;
+  if (chat.voices > chatBefore.voices && !chat.sending) return '';
+  await mark('Their chat, when the voice message should be there');
+  if (chat.voices > chatBefore.voices) return 'stillsending';
+  return got.send?.ok ? `notinchat:${got.send.id}` : 'unverified';
 }
 
 // Every send's record goes into the lead's "Send log" in Airtable, so it can be read without anyone copying it
@@ -835,7 +845,7 @@ async function logSend(p, report) {
 }
 
 // Why a send didn't go through, in plain words.
-const failText = (left) => (left.startsWith('rejected:') ? `Instagram said "${left.slice(9).replace(/[\s.·•]+(now|\d+\s*[a-z]+)\s*$/i, '')}"` : BG_FAIL[left] || left);
+const failText = (left) => (left.startsWith('rejected:') ? `Instagram said "${left.slice(9).replace(/[\s.·•]+(now|\d+\s*[a-z]+)\s*$/i, '')}"` : BG_FAIL[left.split(':')[0]] || left);
 
 // What to do by hand when sending while watching.
 const HAND_OFF = {
@@ -846,6 +856,8 @@ const HAND_OFF = {
   yours: 'Clip is in their DM. Hit send in Instagram, then Mark sent.',
   unposted: "Send was clicked, but nothing reached Instagram's servers. Check the chat: if the note is there, Mark sent; if not, try again.",
   unverified: "Send was clicked, but the app couldn't confirm it with Instagram. Check the chat: if the note is there, Mark sent.",
+  stillsending: 'The voice message is still "Sending" in their chat. Give it a moment: if it goes through, Mark sent; if it fails, try again.',
+  notinchat: "Instagram accepted the send, but the voice message isn't showing in their chat. Check the chat: if it's there, Mark sent.",
 };
 // Why a background send didn't go through.
 const BG_FAIL = {
@@ -855,6 +867,8 @@ const BG_FAIL = {
   nosend: "couldn't hit Instagram's send button",
   unposted: "Instagram never received the send (no send reached its servers after Send was clicked)",
   unverified: "couldn't confirm with Instagram that the note went out",
+  stillsending: 'the voice message was still "Sending" in their chat after 25 seconds',
+  notinchat: "Instagram accepted the send, but the voice message didn't show up in their chat",
 };
 
 async function clipFor(p) {
@@ -1184,7 +1198,7 @@ async function sendNow(p) {
   try {
     const left = await deliver(p, samples, { target: 'dm', monitor: S.settings.monitorWatching, say });
     if (left) {
-      say(HAND_OFF[left] || `${failText(left)}. Check the thread in Instagram, then Mark sent or try again.`, 'armed');
+      say(HAND_OFF[left.split(':')[0]] || `${failText(left)}. Check the thread in Instagram, then Mark sent or try again.`, 'armed');
       window.api.showInstagram();
       return;
     }
@@ -1237,6 +1251,7 @@ async function merge(incoming, { markNew = false } = {}) {
   let added = 0;
   let refreshed = 0;
   for (const inc of incoming) {
+    if (wasRemoved(inc)) continue;
     const ex = S.prospects.find(
       (p) =>
         (inc.airtableId && p.airtableId === inc.airtableId) ||
@@ -1268,7 +1283,7 @@ async function restoreSent(list) {
   let n = 0;
   const seen = new Set();
   for (const inc of list) {
-    if (!leads.sentOnInstagram(inc)) continue;
+    if (!leads.sentOnInstagram(inc) || wasRemoved(inc)) continue;
     const ex = S.prospects.find(
       (p) =>
         (inc.airtableId && p.airtableId === inc.airtableId) ||
@@ -1475,12 +1490,39 @@ async function setStatus(p, status, { advance = true } = {}) {
   }
 }
 
-async function deleteLead(p) {
-  if (!confirm(`Delete ${p.name || 'this lead'}?`)) return;
+// Leads removed here, by Airtable record and by handle, so a sync (or Google Maps finding the place again) doesn't
+// bring them back into the app.
+const saveRemoved = () => store.put('kv', 'removed', S.removed);
+const wasRemoved = (p) => (p.airtableId && S.removed.ids.includes(p.airtableId)) || (p.handle && S.removed.handles.includes(p.handle.toLowerCase()));
+
+// Takes a lead out of the app and out of Airtable: its record is deleted there, or marked Skip, as Setup says.
+async function removeLead(p) {
+  const at = S.settings.airtable;
+  const inAirtable = !!(p.airtableId && at.token);
+  const skip = S.settings.removeMode === 'skip';
+  const who = p.name || (p.handle ? `@${p.handle}` : 'this lead');
+  const what = !inAirtable ? 'It is only in this app.' : skip ? 'It stays in Airtable, marked Skip, so nothing messages it again.' : 'Its record is deleted from Airtable.';
+  if (!confirm(`Remove ${who}? ${what}`)) return;
+  if (inAirtable) {
+    try {
+      await window.api.removeAirtable(at, p.airtableId, { mode: skip ? 'skip' : 'delete', reason: p.sendIssue || '' });
+    } catch (e) {
+      return toast(`Didn't remove ${who}: Airtable said ${errText(e)}`, 8000);
+    }
+  }
   for (const seg of S.template) await delAudio(slotKey(p, seg));
+  if (p.airtableId) S.removed.ids.push(p.airtableId);
+  if (p.handle) S.removed.handles.push(p.handle.toLowerCase());
+  await saveRemoved();
+  const next = S.currentId === p.id ? nextTodo(p.id) : null;
   S.prospects = S.prospects.filter((x) => x.id !== p.id);
-  S.currentId = null;
   await saveProspects();
+  paintSentToday();
+  toast(`Removed ${who}${inAirtable ? (skip ? ' (marked Skip in Airtable)' : ' (deleted from Airtable)') : ''}.`);
+  if (S.currentId === p.id) {
+    if (next) return openLead(next.id);
+    S.currentId = null;
+  }
   render();
 }
 
@@ -1566,6 +1608,15 @@ function header() {
   );
 }
 
+// How many to-do leads ready to send have their intro in.
+function introCount() {
+  if (!slots().length || (S.filter !== 'todo' && S.filter !== 'all')) return null;
+  const todo = todoList();
+  if (!todo.length) return null;
+  const done = todo.filter((p) => ['recorded', 'auto'].includes(introState(p))).length;
+  return h('p', { id: 'intro-count', class: 'muted small' }, `Intros in: ${done} of ${todo.length} ready to send${done < todo.length ? ` · ${todo.length - done} still need one` : ''}`);
+}
+
 function leadsView() {
   const all = S.prospects.filter(shown);
   const count = (st) => all.filter((p) => p.status === st).length;
@@ -1646,6 +1697,7 @@ function leadsView() {
         'Ready only',
       ),
     ),
+    introCount(),
     list.length
       ? h('div', { class: 'list' }, list.map(leadRow))
       : h(
@@ -1732,9 +1784,34 @@ function waitRow(p) {
   );
 }
 
+// Whether a lead's custom intro is in: 'none' (not yet), 'old' (made with older wording), 'auto' (auto-voiced)
+// or 'recorded' (your mic). null when the voice note has no per-lead line.
+function introState(p) {
+  const segs = slots();
+  if (!segs.length) return null;
+  const keys = segs.map((seg) => slotKey(p, seg));
+  if (keys.some((k) => !S.lens[k])) return 'none';
+  if (segs.some((seg) => outdated(p, seg))) return 'old';
+  return keys.every((k) => S.said?.[k]?.by === 'tts') ? 'auto' : 'recorded';
+}
+const INTRO_TAG = {
+  none: ['tag warn', 'no intro yet'],
+  old: ['tag warn', 'intro: old wording'],
+  auto: ['tag ok', '✓ intro (auto-voiced)'],
+  recorded: ['tag ok', '✓ intro recorded'],
+};
+function introTag(p) {
+  const st = introState(p);
+  return st ? h('span', { class: `${INTRO_TAG[st][0]} intro-tag`, 'data-intro': st }, INTRO_TAG[st][1]) : null;
+}
+
+const leadIntroTag = (p) => {
+  const tag = introTag(p);
+  if (tag) tag.id = 'lead-intro';
+  return tag;
+};
+
 function leadRow(p) {
-  const total = S.template.length;
-  const done = total - missingParts(p).length;
   let pill;
   if (p.reply?.pending) pill = h('span', { class: 'tag warn' }, 'replied');
   else if (p.partner) pill = h('span', { class: 'tag ok' }, 'code sent');
@@ -1742,8 +1819,8 @@ function leadRow(p) {
   else if (p.status === 'sending') pill = h('span', { class: 'tag' }, 'sending...');
   else if (p.sendIssue) pill = h('span', { class: 'tag bad', title: p.sendIssue }, 'send failed');
   else if (p.status === 'skipped') pill = h('span', { class: 'tag' }, 'skipped');
-  else if (done === total) pill = h('span', { class: 'tag ok' }, 'ready to send');
-  else pill = h('span', { class: 'tag warn' }, `${done}/${total} parts`);
+  // To do: the row says whether their custom intro is in.
+  const intro = p.status === 'todo' ? introTag(p) : null;
   return h(
     'button',
     { class: 'lead', onclick: () => openLead(p.id) },
@@ -1754,6 +1831,7 @@ function leadRow(p) {
       h('span', { class: 'muted small' }, [p.handle ? `@${p.handle}` : 'no handle', p.role, p.business !== p.name ? p.business : ''].filter(Boolean).join(' · ')),
     ),
     p.isNew ? h('span', { class: 'tag new' }, 'new') : null,
+    intro,
     pill,
   );
 }
@@ -1847,6 +1925,7 @@ function paintLead(p) {
     el.textContent = renderScript(seg.script, p);
     swap(`tag-${seg.id}`, lineTag(p, seg));
   }
+  if (p.status === 'todo') swap('lead-intro', leadIntroTag(p));
   for (const el of document.querySelectorAll('[data-namehint]')) el.hidden = !!personName(p);
 }
 
@@ -1931,6 +2010,7 @@ function detailView(p) {
         { class: 'lead-title' },
         h('b', { id: 'lead-name' }, p.name || '(no name)'),
         handleTag(p),
+        p.status === 'todo' ? leadIntroTag(p) : null,
       ),
       h('p', { id: 'lead-who', class: 'muted', hidden: !who }, who),
       p.reply
@@ -1988,6 +2068,8 @@ function detailView(p) {
           h('button', { class: 'link', onclick: () => sendNow(p), disabled: blocked }, 'send while watching'),
           ' to do it in the Instagram pane.',
           p.sendShot ? [' ', h('button', { class: 'link', onclick: () => window.api.revealShot(p.sendShot) }, 'See what Instagram showed')] : null,
+          ' Page broken or account gone? ',
+          h('button', { class: 'link', onclick: () => removeLead(p) }, 'Remove this lead'),
         )
       : null,
     h('p', { id: 'send-status', class: `status ${sendStatus.state}`, hidden: !sendStatus.text }, sendStatus.text),
@@ -1999,7 +2081,7 @@ function detailView(p) {
           h('button', { class: 'link', onclick: () => setStatus(p, 'skipped'), disabled: sending }, 'Skip'),
           h('button', { class: 'link', onclick: () => saveFile(p), disabled: !!missing.length }, 'Save as file'),
           h('span', { class: 'grow' }),
-          h('button', { class: 'link', onclick: () => deleteLead(p), disabled: sending }, 'Delete'),
+          h('button', { class: 'link bad', onclick: () => removeLead(p), disabled: sending, title: S.settings.removeMode === 'skip' ? 'Takes it out of the app and marks it Skip in Airtable' : 'Takes it out of the app and deletes it from Airtable' }, 'Remove lead'),
         )
       : h(
           'div',
@@ -2007,7 +2089,7 @@ function detailView(p) {
           h('span', { class: 'tag' }, p.status === 'sending' ? 'sending in the background' : p.status),
           p.status === 'sending' ? null : h('button', { onclick: () => setStatus(p, 'todo') }, 'Move back to to-do'),
           h('span', { class: 'grow' }),
-          h('button', { class: 'link', onclick: () => deleteLead(p) }, 'Delete'),
+          h('button', { class: 'link bad', onclick: () => removeLead(p), title: S.settings.removeMode === 'skip' ? 'Takes it out of the app and marks it Skip in Airtable' : 'Takes it out of the app and deletes it from Airtable' }, 'Remove lead'),
         ),
   );
 }
@@ -2488,6 +2570,9 @@ function setupView() {
       h('label', { class: 'field' }, 'Max leads per sync', h('input', { type: 'number', min: 1, max: 1000, value: at.max, oninput: num(at, 'max') })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.autoSync, onchange: check(st, 'autoSync') }), 'Check for new leads on launch and every 15 minutes'),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: at.writeBack, onchange: check(at, 'writeBack') }), 'When a note is sent, update Airtable: Status = Sent, Channel = Instagram, Sent at = today, Touches = 1'),
+      h('p', { class: 'small' }, h('b', {}, 'Remove lead'), ' (on a lead\'s page) takes it out of the app and:'),
+      h('label', { class: 'check' }, h('input', { type: 'radio', name: 'remove-mode', checked: st.removeMode !== 'skip', onchange: () => ((st.removeMode = 'delete'), saveSettings().then(flashSaved)) }), 'deletes its record from Airtable. If Google Maps finds the place again, TL1 adds it back as New.'),
+      h('label', { class: 'check' }, h('input', { type: 'radio', name: 'remove-mode', checked: st.removeMode === 'skip', onchange: () => ((st.removeMode = 'skip'), saveSettings().then(flashSaved)) }), 'marks it Skip in Airtable (Status and Track), with the reason. It stays out for good.'),
     ),
 
     h('h2', {}, 'Replies (Instagram)'),
@@ -2800,6 +2885,7 @@ document.addEventListener('keydown', (e) => {
   // The cap used to default to 100, which is fewer leads than the formula matches.
   if (S.settings.airtable.max === 100) S.settings.airtable.max = DEFAULT_SETTINGS.airtable.max;
   S.prospects = (await store.get('kv', 'prospects')) || [];
+  S.removed = { ids: [], handles: [], ...((await store.get('kv', 'removed')) || {}) };
   for (const p of S.prospects.filter((x) => x.status === 'sending')) {
     p.status = 'todo';
     p.sendIssue = 'the app closed before it sent';

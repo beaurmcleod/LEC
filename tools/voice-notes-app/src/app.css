@@ -269,3 +269,11 @@ textarea.read-along { font-size: 15px; line-height: 1.55; min-height: 190px; col
 .reply textarea { width: 100%; min-height: 120px; font: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); resize: vertical; }
 .reply .why { font-style: italic; }
 .log-row.reply-done { align-items: baseline; }
+
+/* Custom intro status on a lead row and page: filled when it's in, outlined when it isn't. */
+.intro-tag { white-space: nowrap; }
+.intro-tag[data-intro='none'],
+.intro-tag[data-intro='old'] { border: 1px dashed currentColor; }
+.lead-title .intro-tag { margin-left: 8px; }
+#intro-count { margin: 4px 2px 8px; }
+button.link.bad { color: var(--bad); }

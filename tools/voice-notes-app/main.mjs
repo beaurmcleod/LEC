@@ -595,9 +595,8 @@ ipcMain.handle('diag:sendProof', (_e, target, since = 0) => {
 });
 ipcMain.handle('diag:watchStop', (_e, target) => watchStop(target));
 
-// The chat on screen: how many messages each author has in it, and any failure notice. Used to confirm a send
-// only when Instagram's answers can't be watched.
-ipcMain.handle('dm:counts', (_e, target = 'send') => runDm(tab(target), 'messageCounts').catch(() => ({ byAuthor: {}, failure: '' })));
+// The open chat: how many voice messages it shows, whether one is still sending, and any failure notice.
+ipcMain.handle('dm:chatVoice', (_e, target = 'send') => runDm(tab(target), 'chatVoice').catch((e) => ({ voices: 0, sending: false, failure: '', error: e.message })));
 const describeTab = (target) =>
   runDm(tab(target), 'describe').then(aboutText, (e) => `(couldn't read the page: ${e.message})`);
 ipcMain.handle('diag:describe', (_e, target) => describeTab(target));
@@ -623,6 +622,7 @@ ipcMain.handle('reply:test', (_e, key) => testClaude(key));
 ipcMain.handle('torrey:invite', (_e, cfg, args) => createInvite(cfg, args));
 ipcMain.handle('torrey:test', (_e, cfg) => testTorrey(cfg));
 ipcMain.handle('airtable:patch', (_e, at, id, fields) => leads.patchAirtable(at, id, fields));
+ipcMain.handle('airtable:remove', (_e, at, id, opts) => leads.removeAirtable(at, id, opts));
 ipcMain.handle('follow:config', (_e, at) => follower.configure(at));
 ipcMain.handle('follow:set', (_e, on) => follower.setEnabled(!!on));
 ipcMain.handle('follow:state', () => follower.snapshot());

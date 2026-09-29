@@ -95,16 +95,23 @@ export async function dmPage(action, arg) {
     };
   }
 
-  // The open chat: how many messages each author has on screen (Instagram labels every message's actions
-  // "React to message from <name>"), and any notice that a message failed.
-  if (action === 'messageCounts') {
-    const byAuthor = {};
-    for (const el of document.querySelectorAll('[aria-label^="React to message from "]')) {
-      const who = el.getAttribute('aria-label').slice('React to message from '.length).trim();
-      byAuthor[who] = (byAuthor[who] || 0) + 1;
+  // The open chat (a chat window over a profile, or a thread page): how many voice messages it shows, whether
+  // one still says "Sending", and any notice that a message failed. A voice message has a Play (or Pause)
+  // button in its bubble.
+  if (action === 'chatVoice') {
+    const box = [...document.querySelectorAll('[role=textbox]')].filter(shown).pop();
+    // The chat is the first container around the message box tall enough to hold the messages too.
+    let chat = document.body;
+    for (let el = box?.parentElement; el && el !== document.body; el = el.parentElement) {
+      if (el.getBoundingClientRect().height >= 250) {
+        chat = el;
+        break;
+      }
     }
-    const bad = /[^\n]*(failed to send|couldn'?t send|could not send|not delivered|tap to retry|click to retry|message failed|wasn'?t sent|unable to send|can'?t receive your message|try again later)[^\n]*/i.exec(document.body.innerText || '');
-    return { byAuthor, failure: bad ? bad[0].trim().slice(0, 200) : '' };
+    const voices = [...chat.querySelectorAll('[aria-label="Play"], [aria-label="Pause"]')].length;
+    const words = chat.innerText || '';
+    const bad = /[^\n]*(failed to send|couldn'?t send|could not send|not delivered|tap to retry|click to retry|message failed|wasn'?t sent|unable to send|can'?t receive your message|try again later)[^\n]*/i.exec(words);
+    return { voices, sending: /(^|\n)\s*Sending\.*\s*(\n|$)/.test(words), failure: bad ? bad[0].trim().slice(0, 200) : '', chat: chat === document.body ? 'whole page' : 'chat window' };
   }
 
   // Where to click to put the caret in the message box.

@@ -453,3 +453,10 @@ export function markFollowedAirtable(at, recordId, liked, when = new Date()) {
 
 export const markLikedAirtable = (at, recordId) => patch(at, recordId, { 'IG liked': true });
 export const patchAirtable = (at, recordId, fields) => patch(at, recordId, fields);
+
+// Taking a lead out of Airtable. 'delete' deletes the record. 'skip' keeps it but marks it Skip (Status and Track)
+// with the reason, so no scenario messages it and TL1's Place ID check won't add the same place back as New.
+export async function removeAirtable(at, recordId, { mode = 'delete', reason = '' } = {}) {
+  if (mode === 'skip') return patch(at, recordId, { Status: 'Skip', Track: 'Skip', 'Skip reason': `Removed in the voice notes app${reason ? `: ${reason}` : ''}`.slice(0, 250) });
+  await call(`${tableUrl(at)}/${encodeURIComponent(recordId)}`, { method: 'DELETE' }, at);
+}
