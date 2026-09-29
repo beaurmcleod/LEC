@@ -66,6 +66,36 @@ export async function dmPage(action, arg) {
     return { state: 'ok', who, messages: messages.slice(-30) };
   }
 
+  // The voice notes on screen in this thread, ours and theirs, and any send error Instagram shows. A send is
+  // only real when the count on our side goes up by one afterwards.
+  if (action === 'voiceCount') {
+    const mid = window.innerWidth / 2;
+    const marks = [...document.querySelectorAll('audio, [aria-label*="audio" i], [aria-label*="voice" i]')].filter(shown);
+    const rows = new Map();
+    for (const m of marks) {
+      const row = m.closest('[role=row], [role=listitem]') || m;
+      if (!rows.has(row)) rows.set(row, m);
+    }
+    let mine = 0;
+    let theirs = 0;
+    for (const m of rows.values()) {
+      const r = m.getBoundingClientRect();
+      if (r.left + r.width / 2 > mid) mine++;
+      else theirs++;
+    }
+    const err = /[^.\n]*(can'?t receive your message|couldn'?t send|failed to send|not delivered|wasn'?t sent|try again later)[^.\n]*/i.exec(document.body.innerText || '');
+    return { mine, theirs, error: err ? err[0].trim().slice(0, 200) : '' };
+  }
+
+  // What the tab shows right now: the address, the visible text and every labeled control. Saved when a send
+  // doesn't go through, so what Instagram did can be looked at afterwards.
+  if (action === 'describe') {
+    const labels = [...document.querySelectorAll('[aria-label]')]
+      .filter(shown)
+      .map((el) => `${el.tagName.toLowerCase()} "${el.getAttribute('aria-label')}"${text(el) ? ` text="${text(el).slice(0, 40)}"` : ''}`);
+    return { url: location.href, text: (document.body.innerText || '').slice(0, 4000), labels: labels.slice(0, 200) };
+  }
+
   // Where to click to put the caret in the message box.
   if (action === 'box') {
     const box = await waitFor(() => document.querySelector('[role=textbox][contenteditable]'), 8000);

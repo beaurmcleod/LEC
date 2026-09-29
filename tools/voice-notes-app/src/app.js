@@ -693,6 +693,11 @@ function setSend(pid, state, text) {
 // Returns '' once it's sent, or which step needs a person ('nodm', 'nomic', 'early', 'nosend', 'yours'); throws on errors.
 async function deliver(p, samples, { target, monitor, say, onPlaying = () => {} }) {
   const seconds = samples.length / audio.SR;
+  // A send that didn't go through: keep what the tab showed, so it can be looked at afterwards.
+  const fail = async (code) => {
+    p.sendShot = await window.api.snap(target, `${p.handle}-${code.split(':')[0]}`).catch(() => '');
+    return code;
+  };
   say('Opening their DM...');
   const dmOpen = await window.api.igDo('openDm', p.handle, target).then(
     (href) => {
@@ -708,7 +713,9 @@ async function deliver(p, samples, { target, monitor, say, onPlaying = () => {} 
   const a = await armed;
   if (a.state !== 'armed') throw new Error(a.message || "Instagram didn't take the clip");
   if (target === 'dm') S.armed = p.id;
-  if (!dmOpen) return 'nodm';
+  if (!dmOpen) return fail('nodm');
+  // How many voice notes of ours the thread shows before this one: the send is real only when that goes up.
+  const before = (await window.api.dmVoiceCount(target).catch(() => null))?.mine ?? 0;
 
   say(`Recording into their DM (${fmt(seconds)})...`);
   const playing = waitForStatus(['playing'], 8000, target);
@@ -718,11 +725,11 @@ async function deliver(p, samples, { target, monitor, say, onPlaying = () => {} 
   );
   const pl = micClicked ? await playing : { state: 'timeout' };
   if (pl.state === 'error') throw new Error(pl.message);
-  if (pl.state !== 'playing') return 'nomic';
+  if (pl.state !== 'playing') return fail('nomic');
   onPlaying(seconds);
 
   const done = await waitForStatus(['done', 'armed'], (seconds + 15) * 1000, target);
-  if (done.state === 'armed') return 'early';
+  if (done.state === 'armed') return fail('early');
   if (done.state !== 'done') throw new Error(done.message || 'the clip never finished playing');
 
   if (!S.settings.autoSend) return 'yours';
@@ -733,8 +740,21 @@ async function deliver(p, samples, { target, monitor, say, onPlaying = () => {} 
     () => false,
   );
   const st = sendClicked ? await stopped : { state: 'timeout' };
-  return st.state === 'stopped' ? '' : 'nosend';
+  if (st.state !== 'stopped') return fail('nosend');
+
+  // Instagram letting go of the mic isn't proof: it does that on a discard too. The thread has to show the note.
+  say('Checking it landed...');
+  for (const end = Date.now() + 15000; Date.now() < end; ) {
+    const now = await window.api.dmVoiceCount(target).catch(() => null);
+    if (now && now.mine > before) return '';
+    if (now?.error) return fail(`rejected:${now.error}`);
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return fail('unposted');
 }
+
+// Why a send didn't go through, in plain words.
+const failText = (left) => (left.startsWith('rejected:') ? `Instagram said "${left.slice(9)}"` : BG_FAIL[left] || left);
 
 // What to do by hand when sending while watching.
 const HAND_OFF = {
@@ -743,6 +763,7 @@ const HAND_OFF = {
   early: 'Instagram stopped recording early. The clip is reloaded: click the mic to try again.',
   nosend: 'Clip is in their DM. Hit send in Instagram, then Mark sent.',
   yours: 'Clip is in their DM. Hit send in Instagram, then Mark sent.',
+  unposted: "Send was clicked, but no voice note showed up in the thread. Check Instagram: if it's there, Mark sent; if not, try again.",
 };
 // Why a background send didn't go through.
 const BG_FAIL = {
@@ -750,6 +771,7 @@ const BG_FAIL = {
   nomic: "couldn't start a voice message in their DM",
   early: 'Instagram stopped recording early',
   nosend: "couldn't hit Instagram's send button",
+  unposted: "Instagram didn't post the voice note (nothing new showed up in the thread)",
 };
 
 async function clipFor(p) {
@@ -815,7 +837,7 @@ async function runQueue() {
         say: (text) => ((cur.text = text), paintQueue()),
         onPlaying: (sec) => ((cur.until = Date.now() + sec * 1000), paintQueue()),
       });
-      if (left) issue = BG_FAIL[left] || left;
+      if (left) issue = failText(left);
     } catch (e) {
       issue = errText(e);
     }
@@ -1078,7 +1100,7 @@ async function sendNow(p) {
   try {
     const left = await deliver(p, samples, { target: 'dm', monitor: S.settings.monitorWatching, say });
     if (left) {
-      say(HAND_OFF[left], 'armed');
+      say(HAND_OFF[left] || `${failText(left)}. Check the thread in Instagram, then Mark sent or try again.`, 'armed');
       window.api.showInstagram();
       return;
     }
@@ -1160,6 +1182,7 @@ async function merge(incoming, { markNew = false } = {}) {
 // Sent here, so the list survives anything that happens to this Mac's copy. Only leads still to do move.
 async function restoreSent(list) {
   let n = 0;
+  const seen = new Set();
   for (const inc of list) {
     if (!leads.sentOnInstagram(inc)) continue;
     const ex = S.prospects.find(
@@ -1169,25 +1192,44 @@ async function restoreSent(list) {
     );
     const when = leads.sentAtMs(inc.atSentAt);
     if (ex) {
+      seen.add(ex.id);
       Object.assign(ex, { atStatus: inc.atStatus, channel: inc.channel, atSentAt: inc.atSentAt });
       ex.airtableId ||= inc.airtableId;
       if (ex.status !== 'todo') continue;
-      ex.status = 'sent';
-      ex.sentAt = when || ex.sentAt || Date.now();
+      Object.assign(ex, { status: 'sent', sentAt: when || ex.sentAt || Date.now(), sentBy: 'airtable' });
       delete ex.sendIssue;
       delete ex.isNew;
     } else {
-      inc.status = 'sent';
-      inc.sentAt = when || Date.now();
+      Object.assign(inc, { status: 'sent', sentAt: when || Date.now(), sentBy: 'airtable' });
       S.prospects.push(inc);
+      seen.add(inc.id);
     }
     n++;
   }
-  if (n) {
+  // A lead that only Airtable had as sent goes back to to-do when Airtable no longer has it that way.
+  let back = 0;
+  for (const p of S.prospects) {
+    if (p.sentBy !== 'airtable' || p.status !== 'sent' || seen.has(p.id)) continue;
+    Object.assign(p, { status: 'todo', sentAt: null });
+    delete p.sentBy;
+    back++;
+  }
+  if (n || back) {
     await saveProspects();
     paintSentToday();
   }
   return n;
+}
+
+// Leads sent here that Airtable still has as Ready: Airtable has no record of the note going out.
+const readyButSent = () => S.prospects.filter((p) => p.status === 'sent' && p.airtableId && p.atStatus === 'Ready');
+async function unsendReady() {
+  for (const p of readyButSent()) {
+    Object.assign(p, { status: 'todo', sentAt: null });
+    delete p.sentBy;
+  }
+  await saveProspects();
+  render();
 }
 
 // Errors that already name Airtable don't need the prefix.
@@ -1321,7 +1363,14 @@ async function markSent(p) {
   queueEngage(p);
   const at = S.settings.airtable;
   if (at.writeBack && at.token && p.airtableId) {
-    window.api.markSent(at, p.airtableId).catch((e) => toast(`Marked sent here, but Airtable said: ${errText(e)}`, 8000));
+    window.api.markSent(at, p.airtableId).then(
+      () => {
+        // Airtable now has it as Sent; the next sync would say so too.
+        p.atStatus = 'Sent';
+        saveProspects();
+      },
+      (e) => toast(`Marked sent here, but Airtable said: ${errText(e)}`, 8000),
+    );
   }
 }
 
@@ -1452,6 +1501,7 @@ function leadsView() {
   // Leads that only the follow wait is holding back.
   const gated = gate ? waiting.filter((p) => researched(p) && !followedLongEnough(p)).length : 0;
   const stale = ttsReady() ? staleVoiced() : [];
+  const unsure = readyButSent();
 
   return h(
     'main',
@@ -1467,6 +1517,14 @@ function leadsView() {
         connected ? h('button', { onclick: () => sync(), disabled: S.sync.running }, 'Sync now') : h('button', { onclick: goSetup }, 'Connect Airtable'),
       ),
     ),
+    unsure.length
+      ? h(
+          'div',
+          { class: 'card row-flex', id: 'unsure-sent' },
+          h('span', { class: 'grow small' }, `${unsure.length} lead${unsure.length === 1 ? '' : 's'} under Sent ${unsure.length === 1 ? 'is' : 'are'} still Ready in Airtable, so Airtable has no record of the note going out.`),
+          h('button', { onclick: unsendReady }, unsure.length === 1 ? 'Move it back to to-do' : 'Move them back to to-do'),
+        )
+      : null,
     stale.length
       ? h(
           'div',
@@ -1840,6 +1898,7 @@ function detailView(p) {
           `The last send didn't go through: ${p.sendIssue}. Press Send to try again, or `,
           h('button', { class: 'link', onclick: () => sendNow(p), disabled: blocked }, 'send while watching'),
           ' to do it in the Instagram pane.',
+          p.sendShot ? [' ', h('button', { class: 'link', onclick: () => window.api.revealShot(p.sendShot) }, 'See what Instagram showed')] : null,
         )
       : null,
     h('p', { id: 'send-status', class: `status ${sendStatus.state}`, hidden: !sendStatus.text }, sendStatus.text),

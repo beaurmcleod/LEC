@@ -406,6 +406,23 @@ ipcMain.handle('dm:send', (_e, { href, handle, text }) =>
     return r;
   }),
 );
+ipcMain.handle('dm:voiceCount', (_e, target = 'send') => runDm(tab(target), 'voiceCount'));
+// When a send doesn't go through: a picture of the Instagram tab and a text description of it, in
+// userData/diagnostics, so what Instagram showed can be looked at afterwards.
+ipcMain.handle('diag:snap', async (_e, target, name) => {
+  const wc = tab(target);
+  const dir = path.join(app.getPath('userData'), 'diagnostics');
+  await fs.mkdir(dir, { recursive: true });
+  const stem = path.join(dir, `${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}-${safeName(name)}`);
+  const about = await runDm(wc, 'describe').catch((e) => ({ url: wc.getURL(), text: `(couldn't read the page: ${e.message})`, labels: [] }));
+  await fs.writeFile(`${stem}.txt`, `${about.url}\n\nControls on screen:\n${about.labels.join('\n')}\n\nText on screen:\n${about.text}\n`);
+  try {
+    const img = await wc.capturePage();
+    if (!img.isEmpty()) await fs.writeFile(`${stem}.png`, img.toPNG());
+  } catch {}
+  return `${stem}.txt`;
+});
+ipcMain.handle('diag:reveal', (_e, file) => shell.showItemInFolder(file));
 ipcMain.handle('reply:draft', (_e, key, prompt) => draftReply(key, prompt));
 ipcMain.handle('reply:test', (_e, key) => testClaude(key));
 ipcMain.handle('torrey:invite', (_e, cfg, args) => createInvite(cfg, args));
