@@ -2,6 +2,7 @@ import * as store from './store.js';
 import * as audio from './audio.js';
 import * as leads from './leads.js';
 import * as replies from './replies.js';
+import * as discover from './find.js';
 
 // Read this off the screen when recording the pitch. About 32 seconds at a normal pace.
 const PITCH_SCRIPT = `Figured a real voice beats another copy-paste DM. I'm Garrett with Torrey Labs — we're a peptide company here in San Diego, every batch third-party tested.
@@ -94,6 +95,8 @@ const DEFAULT_SETTINGS = {
   claude: { key: '' },
   torrey: { url: 'https://hvqerbhurepxjdyokzxx.supabase.co', key: '', site: 'https://torreylabs.store', percent: 20 },
   replies: { watch: true, everyMin: 10, from: 'Garrett', auto: true, delayMin: 15 },
+  // Finding accounts by hashtag: profiles read a day, and the hashtags (one per line).
+  find: { perDay: discover.LIMITS.defaultPerDay, tags: discover.DEFAULT_TAGS.join('\n') },
   airtable: {
     token: '',
     baseId: 'appdAJbStcwrV2bq5',
@@ -148,6 +151,8 @@ const S = {
   watchSend: false,
   sync: { at: 0, error: '', running: false, pulled: null },
   follow: null,
+  find: null,
+  findVerdicts: {},
 };
 
 const $app = document.getElementById('app');
@@ -201,6 +206,7 @@ const saveTemplate = () => store.put('kv', 'template', S.template);
 const pushFollowConfig = () => {
   const { token, baseId, table } = S.settings.airtable;
   window.api.followConfig({ token, baseId, table, perDay: S.settings.followPerDay });
+  window.api.findConfig({ token, baseId, table, perDay: S.settings.find.perDay, tags: S.settings.find.tags });
 };
 const saveSettings = () => {
   pushFollowConfig();
@@ -1729,6 +1735,12 @@ function header() {
       ),
       h(
         'button',
+        { class: `tab ${S.view === 'find' ? 'on' : ''}`, onclick: () => ((S.view = 'find'), render(), refreshVerdicts(true)) },
+        'Find',
+        h('span', { id: 'find-dot', class: `dot ${findDot()}` }),
+      ),
+      h(
+        'button',
         { class: `tab ${S.view === 'replies' ? 'on' : ''}`, onclick: () => ((S.view = 'replies'), render()) },
         'Replies',
         h('span', { id: 'reply-badge', class: 'badge', hidden: !pendingReplies().length }, pendingReplies().length),
@@ -2675,6 +2687,7 @@ function setupView() {
       h('li', {}, 'Record your pitch below once, in one take, reading the script on screen. Use the same mic and spot you will use for the intro line.'),
       h('li', {}, 'Connect Airtable. New leads from Make show up by themselves (checked on launch and every 15 minutes).'),
       h('li', {}, 'Turn on Follow. It follows each lead and likes their latest post, up to your daily limit. A lead shows up for a DM a day after it was followed.'),
+      h('li', {}, 'To find new accounts, open Find, press "Try one hashtag" to see what it reads from Instagram, then Start searching. Each account it reads goes to your IG Prospects table for the daily sort.'),
       h('li', {}, 'Hit Start next lead. You get a short script, and their profile opens in Instagram on the right.'),
       h('li', {}, 'Record your lines (Space), Preview to listen (Enter), then Send (⌘ Enter). The app opens their DM, plays the clip into the mic, and hits send. It arrives as a normal voice note.'),
     ),
@@ -2973,11 +2986,207 @@ setInterval(() => {
   if (el && S.follow?.phase.until) el.textContent = countdown(S.follow.phase.until - Date.now());
 }, 1000);
 
+
+// ---------- find accounts by hashtag ----------
+
+function findDot() {
+  const f = S.find;
+  if (!f?.enabled) return f?.stopNote ? 'bad' : '';
+  return f.phase.kind === 'paused' || f.phase.kind === 'error' ? 'warn' : 'ok';
+}
+
+function findStatus(f) {
+  if (!f) return 'Loading...';
+  if (!f.enabled) {
+    if (f.stopNote === 'loggedout') return 'Stopped: Instagram is logged out in the app. Log in on the right, then press Start.';
+    if (f.stopNote) return `Stopped to be safe: ${f.stopNote}. Check Instagram on the right, then press Start.`;
+    return 'Off. Press Start and it searches your hashtags in the background and saves each new account for the daily sort.';
+  }
+  const { kind, until } = f.phase;
+  if (kind === 'gap') return ['Waiting a bit between pages. Next one in ', h('b', { id: 'find-countdown' }, countdown(until - Date.now())), '.'];
+  return (
+    {
+      setup: 'Add your Airtable token in Setup to start.',
+      notags: 'Add at least one hashtag below.',
+      tag: `Searching #${f.current?.tag || ''}...`,
+      profile: `Reading @${f.current?.handle || ''}...`,
+      cap: `Done for today (${f.read} of ${f.cap} profiles). Starts again ${clock(until)}.`,
+      paused: `Paused until ${clock(until)} because Instagram pushed back. See Recent below.`,
+      idle: `Every hashtag was searched recently. The next search is ${clock(until)}.`,
+      error: 'Hit a snag (see Recent below). Trying again in 10 minutes.',
+    }[kind] || 'Running.'
+  );
+}
+
+const followerText = (n) => (n == null ? '' : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M followers` : n >= 1e4 ? `${Math.round(n / 1e3)}K followers` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K followers` : `${n} followers`);
+
+function findLogText(e) {
+  if (e.result === 'saved') return `Saved${e.note ? `: ${e.note}` : ''}${e.tag ? ` (from #${e.tag})` : ''}`;
+  if (e.result === 'searched') return `Searched: ${e.found} new account${e.found === 1 ? '' : 's'} of ${e.of} seen${e.via === 'posts' ? ' (read from post pages)' : ''}`;
+  if (e.result === 'notfound') return 'Account not found, skipped';
+  if (e.result === 'blocked') return `Instagram pushed back ("${e.note}"). Following and searching pause for 48 hours.`;
+  if (e.result === 'loggedout') return 'Instagram is logged out. Stopped.';
+  return e.note || e.result;
+}
+const findLogClass = (e) => ({ saved: 'ok', searched: '', empty: 'muted', notfound: 'muted', blocked: 'bad', failed: 'bad', loggedout: 'bad', error: 'warn' })[e.result] || '';
+
+// What the daily sort decided about the accounts found here (Airtable's IG Prospects), refreshed now and then.
+let verdictAt = 0;
+async function refreshVerdicts(force = false) {
+  const list = S.find?.found || [];
+  if (!list.length || (!force && Date.now() - verdictAt < 60 * 1000)) return;
+  verdictAt = Date.now();
+  try {
+    Object.assign(S.findVerdicts, await window.api.findVerdicts(list.slice(0, 60).map((e) => e.handle)));
+    if (S.view === 'find' && !document.activeElement?.matches?.('input, textarea')) render();
+  } catch {}
+}
+
+async function testFind() {
+  const out = document.getElementById('find-test');
+  const btn = document.getElementById('find-test-btn');
+  btn.disabled = true;
+  out.textContent = 'Searching the first hashtag and reading one profile. This takes about a minute...';
+  try {
+    out.textContent = await window.api.findTest('');
+  } catch (e) {
+    out.textContent = errText(e);
+  }
+  btn.disabled = false;
+}
+
+function findView() {
+  const f = S.find;
+  const on = !!f?.enabled;
+  const st = S.settings.find;
+  const verdict = (e) => {
+    const v = S.findVerdicts[e.handle];
+    if (!v || !v.status || v.status === 'New') return ['waiting for the sort', 'warn'];
+    return v.status === 'Qualified' ? ['qualified', 'ok'] : [v.status.toLowerCase(), ''];
+  };
+  return h(
+    'main',
+    {},
+    h(
+      'div',
+      { class: 'card' },
+      h('p', { id: 'find-status', class: `follow-status ${findDot()}` }, findStatus(f)),
+      h('button', { id: 'find-toggle', class: on ? 'big' : 'enter', onclick: () => window.api.findSet(!on), disabled: !f }, on ? 'Stop searching' : 'Start searching'),
+      h(
+        'label',
+        { class: 'field inline-field' },
+        'Profiles to read a day',
+        h('input', {
+          id: 'find-perday',
+          type: 'number',
+          min: 1,
+          max: discover.LIMITS.maxPerDay,
+          value: st.perDay,
+          oninput: (e) => {
+            if (!e.target.value) return;
+            st.perDay = discover.clampPerDay(e.target.value);
+            saveSettings().then(flashSaved);
+          },
+        }),
+      ),
+      f
+        ? h(
+            'p',
+            { id: 'find-counts', class: 'muted small' },
+            [`Today: ${f.read} of ${f.cap} profiles read`, `${f.saved} saved`, `${f.total.saved} saved in all`, f.pending ? `${f.pending} waiting to be read` : ''].filter(Boolean).join(' · '),
+          )
+        : null,
+    ),
+    h('h2', {}, 'Hashtags'),
+    h(
+      'div',
+      { class: 'card' },
+      h('label', { class: 'field' }, 'One per line. Each is searched about twice a day.', h('textarea', { id: 'find-tags', rows: 8, oninput: (e) => ((st.tags = e.target.value), saveSettings().then(flashSaved)) }, st.tags)),
+      h(
+        'div',
+        { class: 'row-flex' },
+        h('button', { id: 'find-test-btn', onclick: testFind }, 'Try one hashtag (saves nothing)'),
+        h('button', { class: 'link', onclick: () => ((st.tags = discover.DEFAULT_TAGS.join('\n')), saveSettings().then(flashSaved), render()) }, 'Use the suggested list'),
+      ),
+      h('pre', { id: 'find-test', class: 'report' }),
+    ),
+    h('h2', {}, f?.found?.length ? `Found (${f.found.length})` : 'Found'),
+    f?.found?.length
+      ? h(
+          'div',
+          { class: 'list', id: 'find-found' },
+          f.found.slice(0, 40).map((e) => {
+            const v = S.findVerdicts[e.handle];
+            const [text, cls] = verdict(e);
+            return h(
+              'div',
+              { class: 'lead static', 'data-handle': e.handle },
+              h(
+                'div',
+                { class: 'who' },
+                h('span', {}, h('b', {}, `@${e.handle}`), e.name ? h('span', { class: 'muted small' }, ` ${e.name}`) : null),
+                h('span', { class: 'muted small' }, [v?.business, v?.role || e.category, followerText(e.followers), e.private ? 'private' : '', `#${e.tag}`].filter(Boolean).join(' · ')),
+                e.bio ? h('span', { class: 'muted small' }, e.bio) : null,
+                v?.why ? h('span', { class: 'small' }, v.why) : null,
+              ),
+              h('span', { class: `tag ${cls}` }, text),
+            );
+          }),
+        )
+      : h('p', { class: 'muted small' }, 'Nothing yet. Each account it reads is saved to Airtable (IG Prospects) as New.'),
+    h(
+      'p',
+      { class: 'muted small' },
+      'Your daily sort routine decides who fits. It marks each new account Qualified or Skipped with a reason and a name, business and role, and copies the qualified ones into Leads, where they show up under Leads > Waiting.',
+    ),
+    h('h2', {}, 'Recent'),
+    f?.log?.length
+      ? h(
+          'div',
+          { class: 'card log' },
+          f.log.map((e) =>
+            h(
+              'div',
+              { class: 'log-row' },
+              h('span', { class: 'muted small' }, clock(e.at)),
+              e.handle ? h('b', { class: 'small' }, `@${e.handle}`) : e.tag ? h('b', { class: 'small' }, `#${e.tag}`) : null,
+              h('span', { class: `small ${findLogClass(e)}` }, findLogText(e)),
+              e.diag ? h('button', { class: 'link', onclick: () => window.api.revealShot(e.diag) }, 'See what Instagram showed') : null,
+            ),
+          ),
+        )
+      : h('p', { class: 'muted small' }, 'Nothing yet.'),
+    h(
+      'p',
+      { class: 'muted small' },
+      'It only reads: it never follows, likes or messages anyone. Pacing: your daily limit above (the day resets at midnight Pacific), 25 to 70 seconds between profiles, and about a minute after each hashtag page. If Instagram shows "action blocked", "try again later" or a security check, it stops and waits 48 hours, along with following. While this screen is open, the right side shows the tab it works in.',
+    ),
+  );
+}
+
+window.api.onFind((f) => {
+  S.find = f;
+  const dot = document.getElementById('find-dot');
+  if (dot) dot.className = `dot ${findDot()}`;
+  if (S.view !== 'find') return;
+  // While you're typing in this screen, only the status line updates, so nothing you're editing is lost.
+  if (document.activeElement?.matches?.('input, textarea')) {
+    const el = document.getElementById('find-status');
+    if (el) el.replaceChildren(...[].concat(findStatus(f)).map((x) => (typeof x === 'string' ? document.createTextNode(x) : x)));
+  } else render();
+});
+
+setInterval(() => {
+  const el = document.getElementById('find-countdown');
+  if (el && S.find?.phase.until) el.textContent = countdown(S.find.phase.until - Date.now());
+  if (S.view === 'find') refreshVerdicts();
+}, 1000);
+
 let pane = 'dm';
 function render() {
   const p = current();
   if (S.currentId && !p) S.currentId = null;
-  const body = S.view === 'setup' ? setupView() : S.view === 'follow' ? followView() : S.view === 'replies' ? repliesView() : p ? detailView(p) : leadsView();
+  const body = S.view === 'setup' ? setupView() : S.view === 'follow' ? followView() : S.view === 'find' ? findView() : S.view === 'replies' ? repliesView() : p ? detailView(p) : leadsView();
   $app.replaceChildren(header(), queueStrip(), body);
   paintQueue();
   if (S.view === 'setup') paintBreath();
@@ -2988,9 +3197,9 @@ function render() {
   showRightPane();
 }
 
-// The Follow screen puts the follow tab on the right, Watch shows the background send, otherwise the DM tab.
+// The Follow and Find screens put the follow tab on the right, Watch shows the background send, otherwise the DM tab.
 function showRightPane() {
-  const want = S.view === 'follow' ? 'follow' : S.watchSend && S.bg.current ? 'send' : 'dm';
+  const want = S.view === 'follow' || S.view === 'find' ? 'follow' : S.watchSend && S.bg.current ? 'send' : 'dm';
   if (want !== pane) {
     pane = want;
     window.api.showPane(want);
@@ -3039,6 +3248,7 @@ document.addEventListener('keydown', (e) => {
     claude: { ...DEFAULT_SETTINGS.claude, ...saved.claude },
     torrey: { ...DEFAULT_SETTINGS.torrey, ...saved.torrey },
     replies: { ...DEFAULT_SETTINGS.replies, ...saved.replies },
+    find: { ...DEFAULT_SETTINGS.find, ...saved.find },
   };
   // The cap used to default to 100, which is fewer leads than the formula matches.
   if (S.settings.airtable.max === 100) S.settings.airtable.max = DEFAULT_SETTINGS.airtable.max;
@@ -3054,6 +3264,7 @@ document.addEventListener('keydown', (e) => {
   if (fixedSegs.length && fixedSegs.every((s) => !S.lens[fixedKey(s)])) S.view = 'setup';
   pushFollowConfig();
   S.follow = await window.api.followState();
+  S.find = await window.api.findState();
   render();
   if (S.settings.autoSync) sync({ quiet: true });
   setInterval(() => S.settings.autoSync && sync({ quiet: true }), SYNC_MS);

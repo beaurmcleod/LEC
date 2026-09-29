@@ -338,7 +338,7 @@ export function fromCSV(text) {
 }
 
 // Airtable's error codes, in words that say what to fix.
-function airtableError(body, status) {
+function airtableError(body, status, table = 'Leads') {
   const e = body?.error;
   const type = typeof e === 'string' ? e : e?.type || '';
   const msg = typeof e === 'object' && e?.message ? e.message : '';
@@ -347,12 +347,12 @@ function airtableError(body, status) {
   if (/FILTER_BY_FORMULA/.test(type)) return `The "Which leads to pull" formula in Setup has a mistake: ${msg || type}`;
   if (/UNKNOWN_FIELD_NAME/.test(type)) return `Airtable doesn't have a field the app asked for: ${msg || type}`;
   if (status === 403 || status === 404 || /PERMISSIONS|NOT_FOUND/.test(type))
-    return "The token can't open the Leads table. When you make the token, add both scopes (data.records:read and data.records:write) and add the Torrey Labs base under Access. Also check Base ID and Table in Setup.";
+    return `The token can't open the ${table} table. When you make the token, add both scopes (data.records:read and data.records:write) and add the Torrey Labs base under Access.${table === 'Leads' ? ' Also check Base ID and Table in Setup.' : ''}`;
   return msg || type || `HTTP ${status}`;
 }
 
 // One Airtable request, with network failures and error replies turned into plain messages.
-async function call(url, init = {}, at) {
+async function call(url, init = {}, at, table = 'Leads') {
   let res;
   try {
     res = await fetch(url, { ...init, headers: { Authorization: `Bearer ${String(at.token || '').trim()}`, ...init.headers } });
@@ -360,7 +360,7 @@ async function call(url, init = {}, at) {
     throw new Error(`Couldn't reach Airtable (${e.cause?.code || e.message}). Check the internet connection.`);
   }
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(airtableError(body, res.status));
+  if (!res.ok) throw new Error(airtableError(body, res.status, table));
   return body;
 }
 
@@ -459,4 +459,84 @@ export const patchAirtable = (at, recordId, fields) => patch(at, recordId, field
 export async function removeAirtable(at, recordId, { mode = 'delete', reason = '' } = {}) {
   if (mode === 'skip') return patch(at, recordId, { Status: 'Skip', Track: 'Skip', 'Skip reason': `Removed in the voice notes app${reason ? `: ${reason}` : ''}`.slice(0, 250) });
   await call(`${tableUrl(at)}/${encodeURIComponent(recordId)}`, { method: 'DELETE' }, at);
+}
+
+// ---------- IG Prospects (the accounts the finder saves, and the daily sort's verdicts on them) ----------
+
+export const PROSPECTS_TABLE = 'tbl45mApJaYl9J1D4';
+// Field ids in IG Prospects, so a renamed column doesn't break the saves.
+export const PROSPECT = {
+  handle: 'fldB917Vz7kK1ZEiy',
+  name: 'fld24jfRoZuSk91vm',
+  first: 'fldSUhvf3EMF5YJze',
+  role: 'fldCVQ2sM1xX5Z6Ml',
+  status: 'fldBxc2AF94OH5Rk5',
+  account: 'fldzrgLkOpmwyeNy1',
+  business: 'fldsyVNIcDgRRxeHu',
+  url: 'fldtn9ztqpNk3tXIu',
+  followers: 'fldhNWSiPN0CO3xKM',
+  bio: 'fldhE8gkbHrjGxG0H',
+  source: 'fldC4zvE5hgZ8py2G',
+  why: 'fldh9RFrdrHt8TpSv',
+  context: 'fldFfysCrAst0xbuU',
+};
+
+const prospectsUrl = (at) => tableUrl({ baseId: at.baseId, table: at.prospectsTable || PROSPECTS_TABLE });
+
+// Every value of one field, paged through: `read` picks the handle out of each record's fields.
+async function pullHandles(url, at, fieldParam, read, table = 'Leads') {
+  const out = new Set();
+  let offset = '';
+  do {
+    const u = new URL(url);
+    u.searchParams.set('pageSize', '100');
+    u.searchParams.append('fields[]', fieldParam);
+    u.searchParams.set('returnFieldsByFieldId', 'true');
+    if (offset) u.searchParams.set('offset', offset);
+    const body = await call(u, {}, at, table);
+    for (const r of body.records || []) {
+      const h = cleanHandle(read(r.fields || {})).toLowerCase();
+      if (h) out.add(h);
+    }
+    offset = body.offset;
+  } while (offset);
+  return out;
+}
+
+// The handles IG Prospects already has, so no account is read twice.
+export const pullProspectHandles = (at) => pullHandles(prospectsUrl(at), at, PROSPECT.handle, (f) => f[PROSPECT.handle], 'IG Prospects');
+// And the ones already in Leads.
+export const pullLeadHandles = (at) => pullHandles(tableUrl(at), at, 'fldKs64Z4dw3OqlBM', (f) => f.fldKs64Z4dw3OqlBM);
+
+// A new account, as New for the sort routine. Returns the record id.
+export async function createProspect(at, fields) {
+  const body = await call(
+    prospectsUrl(at),
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields, typecast: true }) },
+    at,
+    'IG Prospects',
+  );
+  return body.id || '';
+}
+
+// What the sort routine decided about these handles: { handle: { status, role, name, business, account, why } }.
+export async function pullProspectVerdicts(at, handles) {
+  const out = {};
+  const list = [...new Set(handles.map((h) => String(h).toLowerCase().replace(/[^a-z0-9._]/g, '')).filter(Boolean))];
+  for (let i = 0; i < list.length; i += 40) {
+    const u = new URL(prospectsUrl(at));
+    u.searchParams.set('pageSize', '100');
+    u.searchParams.set('returnFieldsByFieldId', 'true');
+    u.searchParams.set('filterByFormula', `OR(${list.slice(i, i + 40).map((h) => `{Handle}='${h}'`).join(',')})`);
+    for (const k of ['handle', 'status', 'role', 'name', 'business', 'account', 'why']) u.searchParams.append('fields[]', PROSPECT[k]);
+    const body = await call(u, {}, at, 'IG Prospects');
+    for (const r of body.records || []) {
+      const f = r.fields || {};
+      const handle = cleanHandle(f[PROSPECT.handle]).toLowerCase();
+      if (!handle) continue;
+      const s = (v) => (v && typeof v === 'object' ? v.name || '' : v || '');
+      out[handle] = { status: s(f[PROSPECT.status]), role: s(f[PROSPECT.role]), name: s(f[PROSPECT.name]), business: s(f[PROSPECT.business]), account: s(f[PROSPECT.account]), why: s(f[PROSPECT.why]) };
+    }
+  }
+  return out;
 }

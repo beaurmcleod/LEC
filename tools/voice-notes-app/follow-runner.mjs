@@ -200,6 +200,25 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
       if (!busy) tick();
       else emit(snapshot());
     },
+    // The finder works in this same tab between follows: waits for a visit to finish, runs `fn`, then carries on.
+    async exclusive(fn) {
+      while (busy) await new Promise((r) => setTimeout(r, 400));
+      busy = true;
+      try {
+        return await fn();
+      } finally {
+        busy = false;
+        if (state.enabled) tick();
+      }
+    },
+    // Instagram's push-back pause is shared, so a block while searching also holds the follows for 48 hours.
+    pausedUntil: () => state.pausedUntil,
+    pushedBack(note) {
+      state.pausedUntil = Date.now() + F.LIMITS.blockPauseMs;
+      addLog({ result: 'blocked', note: `${note} (while searching hashtags)` });
+      save();
+      emit(snapshot());
+    },
     snapshot,
   };
 }

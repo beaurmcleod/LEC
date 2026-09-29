@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { createFollowRunner } from './follow-runner.mjs';
+import { createFindRunner } from './find-runner.mjs';
 import * as leads from './src/leads.js';
 import { speak } from './src/voice.js';
 import { dmPage } from './src/dm-page.js';
@@ -28,6 +29,7 @@ let recorder;
 let igView;
 // A second Instagram tab, same login, where follows and likes run without touching the DM tab.
 let followView;
+let finder;
 // A third, hidden one where voice notes send in the background while you work on the next lead.
 let sendView;
 let follower;
@@ -47,7 +49,7 @@ const isInstagram = (url) => {
 
 const toRecorder = (m, channel = 'ig:status') => win && recorder.webContents.send(channel, m);
 const ig = () => igView.webContents;
-const tab = (target) => (target === 'send' ? sendView : igView).webContents;
+const tab = (target) => (target === 'send' ? sendView : target === 'follow' ? followView : igView).webContents;
 const targetOf = (wc) => (sendView && wc === sendView.webContents ? 'send' : 'dm');
 
 function layout() {
@@ -673,7 +675,7 @@ const describeTab = (target) =>
 ipcMain.handle('diag:describe', (_e, target) => describeTab(target));
 // When a send doesn't go through: the trace of what the tab showed at each step, the tab's state now, and a
 // picture of it, in userData/diagnostics.
-ipcMain.handle('diag:snap', async (_e, target, name, report = '') => {
+const snapTab = async (target, name, report = '') => {
   const dir = path.join(app.getPath('userData'), 'diagnostics');
   await fs.mkdir(dir, { recursive: true });
   const stem = path.join(dir, `${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}-${safeName(name)}`);
@@ -686,7 +688,8 @@ ipcMain.handle('diag:snap', async (_e, target, name, report = '') => {
   const all = (await fs.readdir(dir)).sort();
   for (const f of all.slice(0, Math.max(0, all.length - 60))) await fs.rm(path.join(dir, f), { force: true });
   return `${stem}.txt`;
-});
+};
+ipcMain.handle('diag:snap', (_e, target, name, report = '') => snapTab(target, name, report));
 ipcMain.handle('diag:reveal', (_e, file) => shell.showItemInFolder(file));
 ipcMain.handle('reply:draft', (_e, key, prompt) => draftReply(key, prompt));
 ipcMain.handle('reply:test', (_e, key) => testClaude(key));
@@ -697,6 +700,11 @@ ipcMain.handle('airtable:remove', (_e, at, id, opts) => leads.removeAirtable(at,
 ipcMain.handle('follow:config', (_e, at) => follower.configure(at));
 ipcMain.handle('follow:set', (_e, on) => follower.setEnabled(!!on));
 ipcMain.handle('follow:state', () => follower.snapshot());
+ipcMain.handle('find:config', (_e, cfg) => finder.configure(cfg));
+ipcMain.handle('find:set', (_e, on) => finder.setEnabled(!!on));
+ipcMain.handle('find:state', () => finder.snapshot());
+ipcMain.handle('find:verdicts', (_e, handles) => finder.verdicts(handles).catch(() => ({})));
+ipcMain.handle('find:test', (_e, tag) => finder.test(tag).catch((e) => `The test hit a snag: ${e.message}`));
 
 ipcMain.handle('airtable:pull', (_e, at) => leads.pullAirtable(at));
 ipcMain.handle('airtable:pullSent', (_e, at) => leads.pullSentAirtable(at));
@@ -719,8 +727,19 @@ app.whenReady().then(async () => {
     // Test runs only: short gaps between accounts. The daily limit still applies.
     fast: process.env.TVN_TEST_FOLLOW === '1',
   });
+  finder = createFindRunner({
+    view: () => followView,
+    statePath: path.join(app.getPath('userData'), 'find-state.json'),
+    igBase: IG_BASE,
+    follower,
+    snap: (name, report) => snapTab('follow', name, report),
+    emit: (s) => toRecorder(s, 'find:status'),
+    // Test runs only: short waits between pages.
+    fast: process.env.TVN_TEST_FOLLOW === '1',
+  });
   createWindow();
   await follower.init();
+  await finder.init();
 });
 
 app.on('activate', () => {

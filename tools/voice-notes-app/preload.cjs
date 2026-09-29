@@ -39,4 +39,10 @@ contextBridge.exposeInMainWorld('api', {
   followState: () => ipcRenderer.invoke('follow:state'),
   onFollow: (cb) => ipcRenderer.on('follow:status', (_e, s) => cb(s)),
   onFollowed: (cb) => ipcRenderer.on('follow:followed', (_e, m) => cb(m)),
+  findConfig: (cfg) => ipcRenderer.invoke('find:config', cfg),
+  findSet: (on) => ipcRenderer.invoke('find:set', on),
+  findState: () => ipcRenderer.invoke('find:state'),
+  findVerdicts: (handles) => ipcRenderer.invoke('find:verdicts', handles),
+  findTest: (tag) => ipcRenderer.invoke('find:test', tag),
+  onFind: (cb) => ipcRenderer.on('find:status', (_e, s) => cb(s)),
 });
