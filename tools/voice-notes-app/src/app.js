@@ -716,15 +716,16 @@ async function deliver(p, samples, opts) {
     await mark('Stopped by an error').catch(() => {});
   }
   const network = await window.api.watchStop(target).catch((e) => `(couldn't read the network record: ${e.message})`);
-  const outcome = error ? `ERROR: ${errText(error)}` : left === '' ? 'SENT' : left === 'yours' ? 'left for you to press Send' : `NOT SENT: ${left}`;
+  const outcome = error ? `ERROR: ${errText(error)}` : left === '' ? 'SENT' : left === 'already' ? 'ALREADY SENT BEFORE' : left === 'yours' ? 'left for you to press Send' : `NOT SENT: ${left}`;
   const build = S.build ? `build ${S.build.commit}` : 'development build';
   const head = [`Send to @${p.handle} (${p.name || ''}): ${outcome}`, `${new Date().toLocaleString()} · ${build} · ${target === 'dm' ? 'while watching' : 'in the background'} · ${Math.round((Date.now() - started) / 1000)}s`, proof.line].filter(Boolean);
   const full = [...head, trace.join('\n\n'), `## ${network}`].join('\n\n');
   const code = error ? 'error' : left === '' ? 'sent' : left.split(':')[0];
   const file = await window.api.snap(target, `${p.handle}-${code}`, full).catch(() => '');
-  if (left || error) p.sendShot = file;
-  else delete p.sendShot;
-  logSend(p, left === '' && !error ? head.join('\n') : full);
+  const fine = !error && (left === '' || left === 'already');
+  if (fine) delete p.sendShot;
+  else p.sendShot = file;
+  logSend(p, fine ? head.join('\n') : full);
   if (error) throw error;
   return left;
 }
@@ -753,9 +754,20 @@ async function deliverSteps(p, samples, { target, monitor, say, onPlaying = () =
     () => false,
   );
   if (dmOpen) await mark('Their DM, opened');
-  // How many voice messages their chat shows before this one: after the send there has to be one more.
-  const chatBefore = dmOpen ? await window.api.chatVoice(target).catch(() => ({ voices: 0 })) : { voices: 0 };
+  // Their chat before this send: after it there has to be one more voice message. And if one of ours is already
+  // there, an earlier send went out: don't send them a second one.
+  const readChat = () => window.api.chatVoice(target, p.handle).catch(() => ({ voices: 0, ours: 0 }));
+  let chatBefore = dmOpen ? await readChat() : { voices: 0, ours: 0 };
+  // An empty chat may just not have loaded its older messages yet: look once more before trusting it.
+  if (dmOpen && !chatBefore.voices) {
+    await pause(1200);
+    chatBefore = await readChat();
+  }
   trace.push(`Chat before the send: ${JSON.stringify(chatBefore)}`);
+  if (dmOpen && chatBefore.ours > 0) {
+    proof.line = `Their chat already has ${chatBefore.ours} voice message${chatBefore.ours === 1 ? '' : 's'} from us, so nothing was sent again.`;
+    return 'already';
+  }
 
   say('Loading the clip...');
   const armed = waitForStatus(['armed'], 10000, target);
@@ -821,19 +833,27 @@ async function deliverSteps(p, samples, { target, monitor, say, onPlaying = () =
   // The second proof: the voice message itself, in their chat. One more voice message than before the send,
   // no longer "Sending", and no failure notice.
   say('Checking their chat...');
+  // In: one more voice message of ours than before, or one more voice message that's done sending.
+  const shows = (c) => c.ours > chatBefore.ours || (c.voices > chatBefore.voices && !c.sending);
   let chat = null;
-  for (const end = Date.now() + 25000; ; await pause(700)) {
-    chat = await window.api.chatVoice(target).catch((e) => ({ voices: 0, error: e.message }));
-    if (chat.failure || (chat.voices > chatBefore.voices && !chat.sending) || Date.now() > end) break;
+  for (const end = Date.now() + 30000; ; await pause(700)) {
+    chat = await window.api.chatVoice(target, p.handle).catch((e) => ({ voices: 0, ours: 0, error: e.message }));
+    if (chat.failure || shows(chat) || Date.now() > end) break;
   }
-  const chatLine = `Chat after the send: ${JSON.stringify(chat)} (before: ${chatBefore.voices} voice message${chatBefore.voices === 1 ? '' : 's'})`;
-  trace.push(chatLine);
-  proof.line = [proof.line, chat.voices > chatBefore.voices && !chat.sending && !chat.failure ? `Their chat shows the new voice message (${chat.voices} now, ${chatBefore.voices} before)` : chatLine].join('\n');
+  trace.push(`Chat after the send: ${JSON.stringify(chat)} (before: ${chatBefore.voices} voice messages, ${chatBefore.ours} ours)`);
   if (chat.failure) return `rejected:${chat.failure}`;
-  if (chat.voices > chatBefore.voices && !chat.sending) return '';
+  if (shows(chat)) {
+    proof.line = [proof.line, `Their chat shows the new voice message (${chat.voices} now, ${chatBefore.voices} before)`].join('\n');
+    return '';
+  }
   await mark('Their chat, when the voice message should be there');
-  if (chat.voices > chatBefore.voices) return 'stillsending';
-  return got.send?.ok ? `notinchat:${got.send.id}` : 'unverified';
+  // Instagram's servers gave the message an id: it went out, even when the chat is slow to show it. Marking it
+  // failed would only lead to sending it twice.
+  if (got.send?.ok) {
+    proof.line = [proof.line, `Their chat hadn't shown it after 30 s (${chat.voices} voice messages, ${chat.sending ? 'one still "Sending"' : 'none sending'}), but Instagram's servers confirmed it went out.`].join('\n');
+    return '';
+  }
+  return chat.voices > chatBefore.voices ? 'stillsending' : 'unverified';
 }
 
 // Every send's record goes into the lead's "Send log" in Airtable, so it can be read without anyone copying it
@@ -857,7 +877,6 @@ const HAND_OFF = {
   unposted: "Send was clicked, but nothing reached Instagram's servers. Check the chat: if the note is there, Mark sent; if not, try again.",
   unverified: "Send was clicked, but the app couldn't confirm it with Instagram. Check the chat: if the note is there, Mark sent.",
   stillsending: 'The voice message is still "Sending" in their chat. Give it a moment: if it goes through, Mark sent; if it fails, try again.',
-  notinchat: "Instagram accepted the send, but the voice message isn't showing in their chat. Check the chat: if it's there, Mark sent.",
 };
 // Why a background send didn't go through.
 const BG_FAIL = {
@@ -867,8 +886,7 @@ const BG_FAIL = {
   nosend: "couldn't hit Instagram's send button",
   unposted: "Instagram never received the send (no send reached its servers after Send was clicked)",
   unverified: "couldn't confirm with Instagram that the note went out",
-  stillsending: 'the voice message was still "Sending" in their chat after 25 seconds',
-  notinchat: "Instagram accepted the send, but the voice message didn't show up in their chat",
+  stillsending: 'the voice message was still "Sending" in their chat after 30 seconds',
 };
 
 async function clipFor(p) {
@@ -913,7 +931,9 @@ async function queueSend(p) {
 async function runQueue() {
   if (S.bg.current) return;
   while (S.bg.jobs.length) {
-    const job = S.bg.jobs.shift();
+    // Checks of failed sends wait behind everything else, so they never hold up a send.
+    const first = S.bg.jobs.findIndex((j) => !j.audit);
+    const job = S.bg.jobs.splice(first >= 0 ? first : 0, 1)[0];
     const p = S.prospects.find((x) => x.id === job.pid);
     if (job.engage) {
       if (p) await engage(p);
@@ -923,10 +943,15 @@ async function runQueue() {
       if (p) await sendReplyNow(p, job.reply);
       continue;
     }
+    if (job.audit) {
+      if (p && p.status === 'todo' && p.sendIssue) await auditOne(p);
+      continue;
+    }
     if (!p || p.status !== 'sending') continue;
     const cur = (S.bg.current = { pid: p.id, handle: p.handle, text: 'Starting...', until: 0 });
     paintQueue();
     let issue = '';
+    let already = false;
     try {
       const left = await deliver(p, job.samples, {
         target: 'send',
@@ -934,14 +959,19 @@ async function runQueue() {
         say: (text) => ((cur.text = text), paintQueue()),
         onPlaying: (sec) => ((cur.until = Date.now() + sec * 1000), paintQueue()),
       });
-      if (left) issue = failText(left);
+      if (left === 'already') already = true;
+      else if (left) issue = failText(left);
     } catch (e) {
       issue = errText(e);
     }
-    if (issue) {
+    if (already) {
+      toast(`@${p.handle} already had our voice note, so it wasn't sent again. Marked sent ✓`, 6000);
+      await markSent(p);
+    } else if (issue) {
       window.api.disarm('send');
       p.status = 'todo';
       p.sendIssue = issue;
+      delete p.auditedAt;
       await saveProspects();
       toast(`Didn't send to @${p.handle}: ${issue}. It's back in To do.`, 8000);
     } else {
@@ -956,6 +986,39 @@ async function runQueue() {
     S.watchSend = false;
     showRightPane();
   }
+}
+
+// Leads that say "send failed" whose voice note went out anyway (the app couldn't confirm it at the time): opens
+// each one's chat in the hidden tab, without sending anything, and marks it sent when our voice message is
+// there. Runs once for new failures a little after launch, and for all of them from the Leads screen.
+function checkFailedSends({ manual = false } = {}) {
+  const queued = new Set(S.bg.jobs.filter((j) => j.audit).map((j) => j.pid));
+  const list = S.prospects.filter((p) => p.status === 'todo' && p.sendIssue && p.handle && !queued.has(p.id) && (manual || !p.auditedAt));
+  if (!list.length) return manual ? toast('No failed sends to check.') : undefined;
+  for (const p of list) S.bg.jobs.push({ pid: p.id, audit: true });
+  toast(`Checking ${list.length} failed send${list.length === 1 ? '' : 's'} in their Instagram chats...`);
+  runQueue();
+}
+
+async function auditOne(p) {
+  S.bg.current = { pid: p.id, handle: p.handle, text: '', until: 0, audit: true };
+  paintQueue();
+  const r = await window.api.checkLead('send', p.handle).catch((e) => ({ state: 'error', error: errText(e) }));
+  p.auditedAt = Date.now();
+  const base = p.sendIssue.replace(/ \(checked Instagram:.*\)$/, '');
+  if (r.state === 'ok' && r.ours > 0) {
+    delete p.sendIssue;
+    delete p.sendShot;
+    toast(`@${p.handle}: our voice note is in their chat. Marked sent ✓`);
+    await markSent(p);
+    logSend(p, `Send to @${p.handle} (${p.name || ''}): SENT (found later)\nChecked their chat on ${new Date().toLocaleString()}: ${r.ours} voice message${r.ours === 1 ? '' : 's'} from us already there, so the send marked "${base}" had gone out.`);
+  } else {
+    p.sendIssue = r.state === 'ok' ? `${base} (checked Instagram: no voice note from us in their chat)` : r.state === 'nodm' ? `${base} (checked Instagram: their DM wouldn't open)` : base;
+    await saveProspects();
+  }
+  S.bg.current = null;
+  paintQueue();
+  refreshQuietly();
 }
 
 // Once a note is sent: follow them and like their 1st and 4th posts. It runs in the hidden send tab, straight
@@ -1167,6 +1230,8 @@ function paintQueue() {
   const more = queued ? ` · ${queued} more queued` : '';
   const what = cur.check
     ? [h('b', {}, 'Checking Instagram for replies...')]
+    : cur.audit
+      ? [h('b', {}, `Checking @${cur.handle}'s chat`), ' for our voice note...']
     : cur.reply
       ? [h('b', {}, `Replying to @${cur.handle}`), '...']
       : cur.engage
@@ -1197,6 +1262,13 @@ async function sendNow(p) {
   render();
   try {
     const left = await deliver(p, samples, { target: 'dm', monitor: S.settings.monitorWatching, say });
+    if (left === 'already') {
+      say("Their chat already has our voice note, so it wasn't sent again. Marked sent.", 'done');
+      toast(`@${p.handle} already had our voice note. Marked sent ✓`);
+      S.sending = null;
+      await setStatus(p, 'sent', { advance: S.currentId === p.id });
+      return;
+    }
     if (left) {
       say(HAND_OFF[left.split(':')[0]] || `${failText(left)}. Check the thread in Instagram, then Mark sent or try again.`, 'armed');
       window.api.showInstagram();
@@ -1637,6 +1709,7 @@ function leadsView() {
   const gated = gate ? waiting.filter((p) => researched(p) && !followedLongEnough(p)).length : 0;
   const stale = ttsReady() ? staleVoiced() : [];
   const unsure = readyButSent();
+  const failedSends = S.prospects.filter((p) => p.status === 'todo' && p.sendIssue && p.handle);
 
   return h(
     'main',
@@ -1652,6 +1725,14 @@ function leadsView() {
         connected ? h('button', { onclick: () => sync(), disabled: S.sync.running }, 'Sync now') : h('button', { onclick: goSetup }, 'Connect Airtable'),
       ),
     ),
+    failedSends.length
+      ? h(
+          'div',
+          { class: 'card row-flex', id: 'failed-sends' },
+          h('span', { class: 'grow small' }, `${failedSends.length} lead${failedSends.length === 1 ? ' says' : 's say'} "send failed". Some of those notes may have gone out anyway: the app can look in each one's chat and mark it sent if our voice note is there.`),
+          h('button', { onclick: () => checkFailedSends({ manual: true }), disabled: S.bg.jobs.some((j) => j.audit) || !!S.bg.current?.audit }, 'Check them on Instagram'),
+        )
+      : null,
     unsure.length
       ? h(
           'div',
@@ -2898,6 +2979,8 @@ document.addEventListener('keydown', (e) => {
   if (S.settings.autoSync) sync({ quiet: true });
   setInterval(() => S.settings.autoSync && sync({ quiet: true }), SYNC_MS);
   setInterval(() => (paintSync(), paintSentToday()), 60 * 1000);
+  // Failed sends that went out anyway: a first look a little after launch.
+  setTimeout(() => checkFailedSends(), 30 * 1000);
   // Replies: a first look shortly after launch, then on the schedule in Setup.
   setTimeout(() => checkReplies(), 45 * 1000);
   setInterval(() => checkReplies(), 60 * 1000);

@@ -465,11 +465,13 @@ const errorOf = (o) => {
   if (o?.error) return String(o.errorSummary || o.errorDescription || `error ${o.error}`).slice(0, 200);
   return '';
 };
+// An upload only counts as failed when Instagram says so (an error in its answer, or an error status). An answer
+// the app can't read isn't a failure: the send's answer decides.
 function readUpload(text, status) {
   const o = parseAnswer(text);
   const id = findKey(o, 'audio_id') ?? findKey(o, 'video_id') ?? findKey(o, 'media_id') ?? findKey(o, 'upload_id');
-  const error = errorOf(o) || (status >= 400 ? `Instagram answered ${status}` : id ? '' : `no audio id in Instagram's answer: ${String(text).slice(0, 150)}`);
-  return { at: Date.now(), ok: !error && !!id, id: id ? String(id) : '', error };
+  const error = errorOf(o) || (status >= 400 ? `Instagram answered ${status}` : '');
+  return { at: Date.now(), ok: !error, id: id ? String(id) : '(no id in the answer)', error };
 }
 function readSend(text, status) {
   const o = parseAnswer(text);
@@ -525,7 +527,7 @@ async function watchStart(target) {
         if (r && (r.method !== 'GET' || r.status >= 400) && INTERESTING.test(r.where)) {
           const full = wc.debugger
             .sendCommand('Network.getResponseBody', { requestId: params.requestId })
-            .then((b) => (b.base64Encoded ? '(binary)' : String(b.body)), () => '');
+            .then((b) => (b.base64Encoded ? Buffer.from(b.body, 'base64').toString('utf8') : String(b.body)), () => '');
           r.body = full.then((t) => t.replace(/\s+/g, ' ').slice(0, 400));
           if (isUpload(r)) full.then((t) => (w.upload = readUpload(t, r.status)));
           if (isSend(r)) full.then((t) => (w.send = { ...readSend(t, r.status), op: r.op }));
@@ -596,7 +598,28 @@ ipcMain.handle('diag:sendProof', (_e, target, since = 0) => {
 ipcMain.handle('diag:watchStop', (_e, target) => watchStop(target));
 
 // The open chat: how many voice messages it shows, whether one is still sending, and any failure notice.
-ipcMain.handle('dm:chatVoice', (_e, target = 'send') => runDm(tab(target), 'chatVoice').catch((e) => ({ voices: 0, sending: false, failure: '', error: e.message })));
+ipcMain.handle('dm:chatVoice', (_e, target = 'send', handle = '') =>
+  runDm(tab(target), 'chatVoice', handle).catch((e) => ({ voices: 0, ours: 0, sending: false, failure: '', error: e.message })),
+);
+// Opens a lead's chat and reads it, without sending anything: used to find sends that went out although the app
+// marked them failed. The chat's older messages can take a moment to load, so it looks a few times.
+ipcMain.handle('dm:checkLead', (_e, target = 'send', handle) =>
+  quietly(async () => {
+    const wc = tab(target);
+    try {
+      await openDm(wc, handle);
+    } catch (e) {
+      return { state: 'nodm', error: e.message };
+    }
+    let best = null;
+    for (let i = 0; i < 4; i++) {
+      await pause(1500);
+      const r = await runDm(wc, 'chatVoice', handle).catch(() => null);
+      if (r && (!best || r.voices > best.voices || r.ours > best.ours)) best = r;
+    }
+    return best ? { state: 'ok', ...best } : { state: 'unreadable' };
+  }),
+);
 const describeTab = (target) =>
   runDm(tab(target), 'describe').then(aboutText, (e) => `(couldn't read the page: ${e.message})`);
 ipcMain.handle('diag:describe', (_e, target) => describeTab(target));

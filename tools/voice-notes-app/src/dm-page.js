@@ -95,10 +95,12 @@ export async function dmPage(action, arg) {
     };
   }
 
-  // The open chat (a chat window over a profile, or a thread page): how many voice messages it shows, whether
-  // one still says "Sending", and any notice that a message failed. A voice message has a Play (or Pause)
-  // button in its bubble.
+  // The open chat (a chat window over a profile, or a thread page): the voice messages it shows, whose each one
+  // is (`arg` is the lead's handle: theirs; anyone else: ours), whether one still says "Sending", and any notice
+  // that a message failed. A voice message has a Play (or Pause) button in its bubble; Instagram labels each
+  // message's actions "React to message from <username>", which says who sent it.
   if (action === 'chatVoice') {
+    const lead = String(arg || '').toLowerCase().replace(/^@/, '');
     const box = [...document.querySelectorAll('[role=textbox]')].filter(shown).pop();
     // The chat is the first container around the message box tall enough to hold the messages too.
     let chat = document.body;
@@ -108,10 +110,37 @@ export async function dmPage(action, arg) {
         break;
       }
     }
-    const voices = [...chat.querySelectorAll('[aria-label="Play"], [aria-label="Pause"]')].length;
+    const REACT = 'React to message from ';
+    // The sender of the message a Play button sits in: the nearest container around it with message labels, as
+    // long as they all name one sender.
+    const senderOf = (el) => {
+      for (let a = el.parentElement; a && a !== chat.parentElement; a = a.parentElement) {
+        const names = new Set([...a.querySelectorAll(`[aria-label^="${REACT}"]`)].map((x) => x.getAttribute('aria-label').slice(REACT.length).trim().toLowerCase()));
+        if (names.size === 1) return [...names][0];
+        if (names.size > 1) return '';
+      }
+      return '';
+    };
+    let ours = 0;
+    let theirs = 0;
+    let unknown = 0;
+    for (const b of chat.querySelectorAll('[aria-label="Play"], [aria-label="Pause"]')) {
+      const who = senderOf(b);
+      if (!who) unknown++;
+      else if (lead && who === lead) theirs++;
+      else ours++;
+    }
     const words = chat.innerText || '';
     const bad = /[^\n]*(failed to send|couldn'?t send|could not send|not delivered|tap to retry|click to retry|message failed|wasn'?t sent|unable to send|can'?t receive your message|try again later)[^\n]*/i.exec(words);
-    return { voices, sending: /(^|\n)\s*Sending\.*\s*(\n|$)/.test(words), failure: bad ? bad[0].trim().slice(0, 200) : '', chat: chat === document.body ? 'whole page' : 'chat window' };
+    return {
+      voices: ours + theirs + unknown,
+      ours,
+      theirs,
+      unknown,
+      sending: /(^|\n)\s*Sending\.*\s*(\n|$)/.test(words),
+      failure: bad ? bad[0].trim().slice(0, 200) : '',
+      chat: chat === document.body ? 'whole page' : 'chat window',
+    };
   }
 
   // Where to click to put the caret in the message box.
