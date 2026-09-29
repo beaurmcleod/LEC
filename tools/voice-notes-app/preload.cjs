@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('api', {
   saveClip: (wav, name) => ipcRenderer.invoke('clip:save', wav, name),
   reveal: (file) => ipcRenderer.invoke('clip:reveal', file),
   pullAirtable: (at) => ipcRenderer.invoke('airtable:pull', at),
+  pullSentAirtable: (at) => ipcRenderer.invoke('airtable:pullSent', at),
   markSent: (at, id) => ipcRenderer.invoke('airtable:sent', at, id),
   speak: (text, settings) => ipcRenderer.invoke('tts', text, settings),
   showPane: (which) => ipcRenderer.invoke('pane:show', which),

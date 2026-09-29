@@ -121,7 +121,7 @@ const MODELS = [
 
 const PLACEHOLDERS = ['name', 'first', 'kind', 'detail', 'crowd', 'role', 'business', 'handle', 'note', 'hook', 'category'];
 // Refreshed from Airtable on every sync, unless you've edited that field here.
-const REFRESH_FIELDS = ['first', 'role', 'business', 'category', 'hook', 'bridge', 'bio', 'research', 'notes', 'atStatus', 'followedAt'];
+const REFRESH_FIELDS = ['first', 'role', 'business', 'category', 'hook', 'bridge', 'bio', 'research', 'notes', 'atStatus', 'followedAt', 'channel', 'atSentAt'];
 const MAX_SECONDS = 59;
 const SYNC_MS = 15 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -1156,6 +1156,40 @@ async function merge(incoming, { markNew = false } = {}) {
   return { added, refreshed };
 }
 
+// Airtable is the record of what went out. Leads it has down as sent by Instagram voice note come back under
+// Sent here, so the list survives anything that happens to this Mac's copy. Only leads still to do move.
+async function restoreSent(list) {
+  let n = 0;
+  for (const inc of list) {
+    if (!leads.sentOnInstagram(inc)) continue;
+    const ex = S.prospects.find(
+      (p) =>
+        (inc.airtableId && p.airtableId === inc.airtableId) ||
+        (inc.handle && p.handle && p.handle.toLowerCase() === inc.handle.toLowerCase()),
+    );
+    const when = leads.sentAtMs(inc.atSentAt);
+    if (ex) {
+      Object.assign(ex, { atStatus: inc.atStatus, channel: inc.channel, atSentAt: inc.atSentAt });
+      ex.airtableId ||= inc.airtableId;
+      if (ex.status !== 'todo') continue;
+      ex.status = 'sent';
+      ex.sentAt = when || ex.sentAt || Date.now();
+      delete ex.sendIssue;
+      delete ex.isNew;
+    } else {
+      inc.status = 'sent';
+      inc.sentAt = when || Date.now();
+      S.prospects.push(inc);
+    }
+    n++;
+  }
+  if (n) {
+    await saveProspects();
+    paintSentToday();
+  }
+  return n;
+}
+
 // Errors that already name Airtable don't need the prefix.
 const atError = (m) => (/^airtable\b/i.test(m) ? m : `Airtable: ${m}`);
 
@@ -1203,12 +1237,20 @@ async function sync({ quiet = false } = {}) {
     const pulled = await window.api.pullAirtable(at);
     S.sync.pulled = pulled.length;
     const { added } = await merge(pulled, { markNew: !firstPull });
+    let restored = 0;
+    let sentIssue = '';
+    try {
+      restored = await restoreSent(await window.api.pullSentAirtable(at));
+    } catch (e) {
+      sentIssue = errText(e);
+    }
     S.sync.at = Date.now();
     S.sync.error = '';
     const todo = S.prospects.filter((p) => p.status === 'todo');
     const ready = todo.filter(shown).length;
     if (!quiet)
-      toast(`Synced ${pulled.length} leads from Airtable (${added} new). ${ready} ready to send, ${todo.length - ready} waiting.`, 6000);
+      toast(`Synced ${pulled.length} leads from Airtable (${added} new${restored ? `, ${restored} back under Sent` : ''}). ${ready} ready to send, ${todo.length - ready} waiting.`, 6000);
+    if (sentIssue && !quiet) toast(`Couldn't read Airtable's sent leads: ${sentIssue}`, 8000);
   } catch (e) {
     S.sync.error = errText(e);
     if (!quiet) toast(atError(S.sync.error), 8000);

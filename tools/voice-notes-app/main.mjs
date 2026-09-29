@@ -416,6 +416,7 @@ ipcMain.handle('follow:set', (_e, on) => follower.setEnabled(!!on));
 ipcMain.handle('follow:state', () => follower.snapshot());
 
 ipcMain.handle('airtable:pull', (_e, at) => leads.pullAirtable(at));
+ipcMain.handle('airtable:pullSent', (_e, at) => leads.pullSentAirtable(at));
 ipcMain.handle('airtable:sent', (_e, at, id) => leads.markSentAirtable(at, id));
 ipcMain.handle('tts', (_e, text, settings) => speak(text, settings));
 

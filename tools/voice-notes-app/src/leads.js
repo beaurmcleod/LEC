@@ -250,6 +250,8 @@ export function makeProspect(f) {
     source: f.source || 'manual',
     atStatus: f.atStatus || '',
     followedAt: f.followedAt || '',
+    channel: f.channel || '',
+    atSentAt: f.atSentAt || '',
     status: 'todo',
     sentAt: null,
     createdAt: Date.now(),
@@ -288,6 +290,8 @@ export function fromFields(obj, extra = {}) {
     name: pick(obj, 'name to say', 'spoken name'),
     atStatus: pick(obj, 'status'),
     followedAt: pick(obj, 'ig followed at'),
+    channel: pick(obj, 'channel'),
+    atSentAt: pick(obj, 'sent at'),
   });
 }
 
@@ -367,13 +371,26 @@ function tableUrl({ baseId, table }) {
   return `${AIRTABLE_API}/${encodeURIComponent(String(baseId).trim())}/${encodeURIComponent(String(table).trim())}`;
 }
 
-export async function pullAirtable(at) {
+// Statuses a lead has once a note went out (and whatever came after it).
+export const SENT_STATUSES = ['Sent', 'Replied', 'Code sent', 'Not interested', 'Follow-up 1 sent', 'Follow-up 2 sent', 'Frame yes', 'Ordered'];
+// Leads that already got an Instagram voice note, by Airtable's record of it.
+export const SENT_FORMULA = `AND({Instagram}!='', {Channel}='Instagram', OR(${SENT_STATUSES.map((s) => `{Status}='${s}'`).join(', ')}))`;
+// True when Airtable says this lead was sent an Instagram voice note.
+export const sentOnInstagram = (p) => p.channel === 'Instagram' && SENT_STATUSES.includes(p.atStatus);
+
+// Airtable's "Sent at" is a plain date. Read it as noon that day here, so it lands on the right day whatever the zone.
+export function sentAtMs(day) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(day || ''));
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12).getTime() : null;
+}
+
+export async function pullAirtable(at, formula = at.formula) {
   const out = [];
   let offset = '';
   do {
     const url = new URL(tableUrl(at));
     url.searchParams.set('pageSize', '100');
-    if (at.formula) url.searchParams.set('filterByFormula', at.formula);
+    if (formula) url.searchParams.set('filterByFormula', formula);
     if (offset) url.searchParams.set('offset', offset);
     const body = await call(url, {}, at);
     for (const r of body.records || []) {
@@ -384,6 +401,9 @@ export async function pullAirtable(at) {
   } while (offset && out.length < at.max);
   return out;
 }
+
+// The leads Airtable already has down as sent by Instagram voice note, so the Sent list can be rebuilt from it.
+export const pullSentAirtable = (at) => pullAirtable(at, SENT_FORMULA);
 
 async function patch(at, recordId, fields) {
   await call(
