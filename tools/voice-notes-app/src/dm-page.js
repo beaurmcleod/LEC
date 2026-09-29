@@ -82,7 +82,24 @@ export async function dmPage(action, arg) {
     // Every button and input on screen, with where it is: the controls a click could land on.
     const buttons = [...document.querySelectorAll('button, [role=button], [role=textbox], [contenteditable=true], input, audio, video')].filter(shown).map(one);
     const labels = [...document.querySelectorAll('[aria-label]')].filter(shown).map(one);
-    return { url: location.href, text: (document.body.innerText || '').slice(0, 4000), buttons: buttons.slice(0, 120), labels: labels.slice(0, 200) };
+    return {
+      url: location.href,
+      text: (document.body.innerText || '').slice(0, 4000),
+      buttons: buttons.slice(0, 120),
+      labels: labels.slice(0, 200),
+      // Only what's new since the last look; each look is kept in the send's record.
+      trace: (window.__ivnTrace || []).splice(0).slice(-60),
+      focused: document.hasFocus(),
+    };
+  }
+
+  // A thread a few seconds after a send: any sign Instagram couldn't deliver it.
+  if (action === 'threadHealth') {
+    await waitFor(() => loggedOut() || document.querySelector('[role=textbox]'), 12000);
+    await sleep(1200);
+    const body = document.body.innerText || '';
+    const bad = /[^\n]*(failed to send|couldn'?t send|could not send|not delivered|tap to retry|click to retry|message failed|wasn'?t sent|unable to send|can'?t receive your message|try again later)[^\n]*/i.exec(body);
+    return { failure: bad ? bad[0].trim().slice(0, 200) : '', loggedOut: loggedOut() };
   }
 
   // Where to click to put the caret in the message box.

@@ -445,7 +445,130 @@ ipcMain.handle('dm:confirmSent', (_e, { target = 'send', href = '', names = [], 
 
 // What a tab shows right now, as text: the address, every labeled control and the visible words.
 const aboutText = (about) =>
-  `${about.url}\nButtons and inputs on screen:\n${about.buttons.slice(0, 80).join('\n')}\nEverything labeled:\n${about.labels.slice(0, 60).join('\n')}\nText on screen:\n${String(about.text).slice(0, 1500)}`;
+  [
+    `${about.url}${about.focused === false ? ' (the page does not have focus)' : ''}`,
+    about.trace?.length ? `What Instagram did with the recording:\n${about.trace.join('\n')}` : '',
+    `Buttons and inputs on screen:\n${about.buttons.slice(0, 80).join('\n')}`,
+    `Everything labeled:\n${about.labels.slice(0, 60).join('\n')}`,
+    `Text on screen:\n${String(about.text).slice(0, 1500)}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+// ---------- While a send runs: the tab's network traffic and console errors, through the DevTools protocol ----------
+// Instagram's own servers answer each step of a send (the upload, the message); their answers are the only
+// first-hand word on whether a note went out. Request bodies and headers are never kept (they hold login tokens),
+// only the method, the address without its query, the operation name and the start of the reply.
+const watches = new Map();
+const INTERESTING = /graphql|api\/v1|rupload|upload|direct|ajax|messag|thread|media/i;
+async function watchStart(target) {
+  await watchStop(target);
+  const wc = tab(target);
+  const w = { t0: Date.now(), reqs: new Map(), order: [], console: [], ws: { sent: 0, recv: 0, bytesOut: 0, bytesIn: 0, words: [] }, attached: false };
+  const stamp = () => `${((Date.now() - w.t0) / 1000).toFixed(1)}s`;
+  w.onConsole = (e, level, message) => {
+    const lv = typeof e?.level === 'string' ? e.level : ['verbose', 'info', 'warning', 'error'][level] || 'info';
+    const msg = String(e?.message ?? message ?? '');
+    if ((lv === 'error' || lv === 'warning') && w.console.length < 40 && !/__ivn/.test(msg)) w.console.push(`${stamp()} ${lv}: ${msg.slice(0, 300)}`);
+  };
+  wc.on('console-message', w.onConsole);
+  try {
+    if (!wc.debugger.isAttached()) {
+      wc.debugger.attach('1.3');
+      w.attached = true;
+    }
+  } catch {}
+  if (wc.debugger.isAttached()) {
+    w.onMessage = (_e, method, params) => {
+      if (method === 'Network.requestWillBeSent') {
+        const { requestId, request, type } = params;
+        let url;
+        try {
+          url = new URL(request.url);
+        } catch {
+          return;
+        }
+        if (!/^https?:$/.test(url.protocol)) return;
+        const op = /fb_api_req_friendly_name=([\w.]+)/.exec(request.postData || '')?.[1] || '';
+        w.reqs.set(requestId, { at: stamp(), method: request.method, where: `${url.host}${url.pathname}`, op, type, size: (request.postData || '').length });
+        w.order.push(requestId);
+      } else if (method === 'Network.responseReceived') {
+        const r = w.reqs.get(params.requestId);
+        if (r) r.status = params.response.status;
+      } else if (method === 'Network.loadingFailed') {
+        const r = w.reqs.get(params.requestId);
+        if (r) r.failed = params.canceled ? 'canceled' : params.errorText;
+      } else if (method === 'Network.loadingFinished') {
+        const r = w.reqs.get(params.requestId);
+        if (r && (r.method !== 'GET' || r.status >= 400) && INTERESTING.test(r.where))
+          r.body = wc.debugger
+            .sendCommand('Network.getResponseBody', { requestId: params.requestId })
+            .then((b) => (b.base64Encoded ? '(binary)' : String(b.body).replace(/\s+/g, ' ').slice(0, 400)), () => '');
+      } else if (method === 'Network.webSocketFrameSent' || method === 'Network.webSocketFrameReceived') {
+        const out = method.endsWith('Sent');
+        const data = params.response?.payloadData || '';
+        w.ws[out ? 'sent' : 'recv']++;
+        w.ws[out ? 'bytesOut' : 'bytesIn'] += data.length;
+        const text = params.response?.opcode === 1 ? data : Buffer.from(data, 'base64').toString('latin1');
+        const word = /[ -~]{0,60}(error|fail|spam|restrict|block|feedback|limit|denied)[ -~]{0,60}/i.exec(text);
+        if (word && w.ws.words.length < 10) w.ws.words.push(`${stamp()} ${out ? 'sent' : 'received'}: ${word[0]}`);
+      }
+    };
+    wc.debugger.on('message', w.onMessage);
+    await wc.debugger.sendCommand('Network.enable').catch(() => {});
+    // The page keeps believing it has focus while the app hands the keyboard back to the recorder, so a
+    // recording can't be paused or dropped because the window lost focus.
+    await wc.debugger.sendCommand('Emulation.setFocusEmulationEnabled', { enabled: true }).catch(() => {});
+  }
+  watches.set(target, w);
+}
+async function watchStop(target) {
+  const w = watches.get(target);
+  if (!w) return '';
+  watches.delete(target);
+  const wc = tab(target);
+  wc.off('console-message', w.onConsole);
+  if (w.onMessage) {
+    wc.debugger.off('message', w.onMessage);
+    await wc.debugger.sendCommand('Emulation.setFocusEmulationEnabled', { enabled: false }).catch(() => {});
+  }
+  const rows = [];
+  for (const id of w.order) {
+    const r = w.reqs.get(id);
+    const shown = r.method !== 'GET' || r.status >= 400 || r.failed;
+    if (!shown) continue;
+    const body = r.body ? await r.body : '';
+    rows.push(
+      `${r.at} ${r.method} ${r.where}${r.op ? ` [${r.op}]` : ''}${r.size ? ` (${r.size} bytes out)` : ''} -> ${r.failed ? `FAILED ${r.failed}` : r.status ?? 'no answer yet'}${body ? ` ${body}` : ''}`,
+    );
+  }
+  if (w.attached) {
+    try {
+      wc.debugger.detach();
+    } catch {}
+  }
+  const ws = w.ws;
+  return [
+    `Network while sending (${rows.length} requests other than plain page loads):`,
+    ...rows.slice(-70),
+    ws.sent || ws.recv ? `Live connection: ${ws.sent} frames out (${ws.bytesOut} chars), ${ws.recv} in (${ws.bytesIn} chars)` : 'Live connection: no frames',
+    ...ws.words,
+    w.console.length ? `Page console:\n${w.console.join('\n')}` : 'Page console: no errors or warnings',
+  ]
+    .join('\n')
+    .slice(0, 16000);
+}
+ipcMain.handle('diag:watchStart', (_e, target) => watchStart(target));
+ipcMain.handle('diag:watchStop', (_e, target) => watchStop(target));
+
+// A few seconds after a send: load the thread again and look for Instagram's own word that it failed.
+ipcMain.handle('dm:recheck', (_e, { target = 'send', href }) =>
+  quietly(async () => {
+    const wc = tab(target);
+    if (href) await wc.loadURL(new URL(href, IG_BASE).href).catch(() => {});
+    return runDm(wc, 'threadHealth').catch((e) => ({ failure: '', error: e.message }));
+  }),
+);
 const describeTab = (target) =>
   runDm(tab(target), 'describe').then(aboutText, (e) => `(couldn't read the page: ${e.message})`);
 ipcMain.handle('diag:describe', (_e, target) => describeTab(target));
