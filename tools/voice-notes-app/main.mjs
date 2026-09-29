@@ -8,6 +8,7 @@ import { createFollowRunner } from './follow-runner.mjs';
 import * as leads from './src/leads.js';
 import { speak } from './src/voice.js';
 import { dmPage } from './src/dm-page.js';
+import { judgeInbox } from './src/dm-check.js';
 import { draftReply, testClaude } from './src/claude.js';
 import { createInvite, testTorrey } from './src/torrey.js';
 
@@ -99,6 +100,9 @@ function createWindow() {
       backgroundThrottling: false,
     },
   });
+  // Instagram can ask to stay on a page that holds an unsent recording. Electron then blocks every later load in
+  // that tab without a word, so one stuck send would make all the ones after it fail. Let the tab leave.
+  for (const v of [igView, followView, sendView]) v.webContents.on('will-prevent-unload', (e) => e.preventDefault());
   // The DM tab goes on top; the follow and send tabs work behind it.
   win.contentView.addChildView(recorder);
   win.contentView.addChildView(followView);
@@ -202,7 +206,8 @@ async function igPage(action) {
     mic: () => byLabel(/voice|audio clip/i, /call|video/i),
     send: () => byText(/^send$/i) || byLabel(/^send$/i),
   };
-  const el = await waitFor(finders[action], action === 'send' ? 5000 : 10000);
+  finders.sendAgain = finders.send;
+  const el = await waitFor(finders[action], action === 'sendAgain' ? 1500 : action === 'send' ? 5000 : 10000);
   if (!el) return null;
   const target = el.closest('button, [role=button], a') || el;
   target.scrollIntoView({ block: 'center', inline: 'center' });
@@ -211,9 +216,12 @@ async function igPage(action) {
   const x = r.left + r.width / 2;
   const y = r.top + r.height / 2;
   const hit = document.elementFromPoint(x, y);
-  if (hit && target.contains(hit)) return { x, y };
+  // What is being clicked and what is under the pointer there, for the record when a send doesn't go through.
+  const say = (n) => `<${n.tagName.toLowerCase()}${n.getAttribute('role') ? ` role="${n.getAttribute('role')}"` : ''}${n.getAttribute('aria-label') ? ` aria-label="${n.getAttribute('aria-label')}"` : ''}> "${(n.innerText || '').trim().slice(0, 30)}"`;
+  const what = `${say(target)} at ${Math.round(x)},${Math.round(y)}, under the pointer there: ${hit ? say(hit) : 'nothing'}`;
+  if (hit && target.contains(hit)) return { x, y, what };
   target.click();
-  return { clicked: true };
+  return { clicked: true, what: `${what} (something covered it, so it was clicked from the page)` };
 }
 
 // A real mouse click where possible, so Instagram sees the same events as a person clicking.
@@ -269,7 +277,11 @@ async function quietly(fn) {
   }
 }
 
-const igClick = async (wc, what) => clickPoint(wc, await wc.executeJavaScript(`(${igPage})(${JSON.stringify(what)})`, true));
+// Returns a description of what was clicked, or '' when there was nothing to click.
+const igClick = async (wc, what) => {
+  const pt = await wc.executeJavaScript(`(${igPage})(${JSON.stringify(what)})`, true);
+  return (await clickPoint(wc, pt)) ? pt.what || 'clicked' : '';
+};
 
 const pathOf = (url) => {
   try {
@@ -324,8 +336,10 @@ ipcMain.handle('ig:do', (_e, action, handle, target = 'dm') =>
       // The thread's own address, so replies can be matched to the lead later.
       return pathOf(wc.getURL());
     }
-    if (action === 'clickMic' && !(await igClick(wc, 'mic'))) throw new Error("Couldn't find the mic button in the DM.");
-    if (action === 'clickSend' && !(await igClick(wc, 'send'))) throw new Error("Couldn't find Instagram's send button.");
+    if (action === 'clickMic') return (await igClick(wc, 'mic')) || Promise.reject(new Error("Couldn't find the mic button in the DM."));
+    if (action === 'clickSend') return (await igClick(wc, 'send')) || Promise.reject(new Error("Couldn't find Instagram's send button."));
+    // After a send: a Send control that is still on screen (a recording UI that needs a second press). null if none.
+    if (action === 'clickSendAgain') return (await igClick(wc, 'sendAgain')) || null;
   }),
 );
 ipcMain.on('ig:status', (e, m) => {
@@ -360,9 +374,9 @@ ipcMain.handle('ig:engage', (_e, handle, airtableId) => quietly(() => follower.e
 // ---------- Replies: read the DM inbox and answer in a thread, in the hidden send tab ----------
 const runDm = (wc, action, arg) => wc.executeJavaScript(`(${dmPage})(${JSON.stringify(action)}, ${JSON.stringify(arg ?? null)})`, true);
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
-ipcMain.handle('dm:inbox', () =>
+ipcMain.handle('dm:inbox', (_e, target = 'send') =>
   quietly(async () => {
-    const wc = tab('send');
+    const wc = tab(target);
     await wc.loadURL(`${IG_BASE}/direct/inbox/`).catch(() => {});
     return runDm(wc, 'inbox');
   }),
@@ -406,20 +420,49 @@ ipcMain.handle('dm:send', (_e, { href, handle, text }) =>
     return r;
   }),
 );
-ipcMain.handle('dm:voiceCount', (_e, target = 'send') => runDm(tab(target), 'voiceCount'));
-// When a send doesn't go through: a picture of the Instagram tab and a text description of it, in
-// userData/diagnostics, so what Instagram showed can be looked at afterwards.
-ipcMain.handle('diag:snap', async (_e, target, name) => {
-  const wc = tab(target);
+// After a send: is our voice note in the inbox? Instagram lets go of the mic on a discard too, so the only
+// proof is the thread showing "You sent a voice message" moments ago. Compared with the inbox as it was before.
+ipcMain.handle('dm:confirmSent', (_e, { target = 'send', href = '', names = [], before = [] } = {}) =>
+  quietly(async () => {
+    const wc = tab(target);
+    let result = { state: 'empty', via: '', preview: '' };
+    let rows = [];
+    for (let i = 0; i < 5; i++) {
+      await wc.loadURL(`${IG_BASE}/direct/inbox/`).catch(() => {});
+      const inbox = await runDm(wc, 'inbox').catch(() => ({ state: 'error', threads: [] }));
+      if (inbox.state === 'loggedout') return { state: 'loggedout', preview: '', rows: [] };
+      rows = inbox.threads || [];
+      result = judgeInbox(rows, { href, names, before });
+      if (result.state === 'sent' || result.state === 'refused') break;
+      // A page that shows no rows at all isn't one the app can read; don't wait for it.
+      if (!rows.length && i >= 1) break;
+      // A note that is still uploading can take a few seconds to show.
+      await pause(3500);
+    }
+    return { ...result, rows: rows.slice(0, 12).map(({ href, name, preview }) => ({ href, name, preview })) };
+  }),
+);
+
+// What a tab shows right now, as text: the address, every labeled control and the visible words.
+const aboutText = (about) =>
+  `${about.url}\nButtons and inputs on screen:\n${about.buttons.slice(0, 80).join('\n')}\nEverything labeled:\n${about.labels.slice(0, 60).join('\n')}\nText on screen:\n${String(about.text).slice(0, 1500)}`;
+const describeTab = (target) =>
+  runDm(tab(target), 'describe').then(aboutText, (e) => `(couldn't read the page: ${e.message})`);
+ipcMain.handle('diag:describe', (_e, target) => describeTab(target));
+// When a send doesn't go through: the trace of what the tab showed at each step, the tab's state now, and a
+// picture of it, in userData/diagnostics.
+ipcMain.handle('diag:snap', async (_e, target, name, report = '') => {
   const dir = path.join(app.getPath('userData'), 'diagnostics');
   await fs.mkdir(dir, { recursive: true });
   const stem = path.join(dir, `${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}-${safeName(name)}`);
-  const about = await runDm(wc, 'describe').catch((e) => ({ url: wc.getURL(), text: `(couldn't read the page: ${e.message})`, labels: [] }));
-  await fs.writeFile(`${stem}.txt`, `${about.url}\n\nControls on screen:\n${about.labels.join('\n')}\n\nText on screen:\n${about.text}\n`);
+  await fs.writeFile(`${stem}.txt`, `${report}\n\n## Now\n${await describeTab(target)}\n`);
   try {
-    const img = await wc.capturePage();
+    const img = await tab(target).capturePage();
     if (!img.isEmpty()) await fs.writeFile(`${stem}.png`, img.toPNG());
   } catch {}
+  // Keep the last 60 files.
+  const all = (await fs.readdir(dir)).sort();
+  for (const f of all.slice(0, Math.max(0, all.length - 60))) await fs.rm(path.join(dir, f), { force: true });
   return `${stem}.txt`;
 });
 ipcMain.handle('diag:reveal', (_e, file) => shell.showItemInFolder(file));

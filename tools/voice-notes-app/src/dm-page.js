@@ -66,34 +66,23 @@ export async function dmPage(action, arg) {
     return { state: 'ok', who, messages: messages.slice(-30) };
   }
 
-  // The voice notes on screen in this thread, ours and theirs, and any send error Instagram shows. A send is
-  // only real when the count on our side goes up by one afterwards.
-  if (action === 'voiceCount') {
-    const mid = window.innerWidth / 2;
-    const marks = [...document.querySelectorAll('audio, [aria-label*="audio" i], [aria-label*="voice" i]')].filter(shown);
-    const rows = new Map();
-    for (const m of marks) {
-      const row = m.closest('[role=row], [role=listitem]') || m;
-      if (!rows.has(row)) rows.set(row, m);
-    }
-    let mine = 0;
-    let theirs = 0;
-    for (const m of rows.values()) {
-      const r = m.getBoundingClientRect();
-      if (r.left + r.width / 2 > mid) mine++;
-      else theirs++;
-    }
-    const err = /[^.\n]*(can'?t receive your message|couldn'?t send|failed to send|not delivered|wasn'?t sent|try again later)[^.\n]*/i.exec(document.body.innerText || '');
-    return { mine, theirs, error: err ? err[0].trim().slice(0, 200) : '' };
-  }
-
   // What the tab shows right now: the address, the visible text and every labeled control. Saved when a send
   // doesn't go through, so what Instagram did can be looked at afterwards.
   if (action === 'describe') {
-    const labels = [...document.querySelectorAll('[aria-label]')]
-      .filter(shown)
-      .map((el) => `${el.tagName.toLowerCase()} "${el.getAttribute('aria-label')}"${text(el) ? ` text="${text(el).slice(0, 40)}"` : ''}`);
-    return { url: location.href, text: (document.body.innerText || '').slice(0, 4000), labels: labels.slice(0, 200) };
+    const at = (el) => {
+      const r = el.getBoundingClientRect();
+      return `@${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}`;
+    };
+    const one = (el) => {
+      const role = el.getAttribute('role');
+      const label = el.getAttribute('aria-label');
+      const words = text(el).slice(0, 40);
+      return `${el.tagName.toLowerCase()}${role ? ` role=${role}` : ''}${label ? ` "${label}"` : ''}${words ? ` text="${words}"` : ''}${el.disabled || el.getAttribute('aria-disabled') === 'true' ? ' DISABLED' : ''} ${at(el)}`;
+    };
+    // Every button and input on screen, with where it is: the controls a click could land on.
+    const buttons = [...document.querySelectorAll('button, [role=button], [role=textbox], [contenteditable=true], input, audio, video')].filter(shown).map(one);
+    const labels = [...document.querySelectorAll('[aria-label]')].filter(shown).map(one);
+    return { url: location.href, text: (document.body.innerText || '').slice(0, 4000), buttons: buttons.slice(0, 120), labels: labels.slice(0, 200) };
   }
 
   // Where to click to put the caret in the message box.
