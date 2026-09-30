@@ -93,7 +93,7 @@ const DEFAULT_SETTINGS = {
   followPerDay: 50,
   engageAfterSend: true,
   claude: { key: '' },
-  torrey: { url: 'https://hvqerbhurepxjdyokzxx.supabase.co', key: '', site: 'https://torreylabs.store', percent: 20 },
+  torrey: { key: '', site: 'https://torreylabs.store', percent: 20 },
   replies: { watch: true, everyMin: 10, from: 'Garrett', auto: true, delayMin: 15 },
   // Finding accounts by hashtag: profiles read a day, and the hashtags (one per line).
   find: { perDay: discover.LIMITS.defaultPerDay, tags: discover.DEFAULT_TAGS.join('\n') },
@@ -1234,7 +1234,7 @@ async function sendReplyNow(p, { text, withCode = false, scheduled = false }) {
   try {
     if (withCode) {
       if (!p.partner?.code) {
-        if (!st.torrey.key) throw new Error('Add the Torrey Labs Cloud key in Setup to issue partner codes.');
+        if (!st.torrey.key) throw new Error('Add the Torrey Labs invite key in Setup to issue partner codes.');
         const { code, token } = await window.api.torreyInvite(st.torrey, {
           candidates: replies.codeCandidates(p),
           label: `${p.name || p.handle} (@${p.handle}), from a voice note`,
@@ -2465,6 +2465,19 @@ async function paintJoin(p) {
   el.replaceChildren(...out.map((t) => h('div', {}, t)));
 }
 
+// A long random key for the store's invite endpoint, made here so it never passes through anyone else's hands.
+function makeInviteKey() {
+  const st = S.settings;
+  if (st.torrey.key && !confirm('Replace the current invite key? The AFFILIATE_INVITE_KEY in Lovable has to be changed to match.')) return;
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(48));
+  st.torrey.key = Array.from(bytes, (b) => chars[b % chars.length]).join('');
+  saveSettings().then(flashSaved);
+  navigator.clipboard?.writeText(st.torrey.key).catch(() => {});
+  toast('New invite key made and copied. Paste it into Lovable when it asks for AFFILIATE_INVITE_KEY.', 8000);
+  render();
+}
+
 // Setup's Test buttons for the reply keys.
 async function testKey(which) {
   const st = S.settings;
@@ -2473,7 +2486,7 @@ async function testKey(which) {
     if (el) (el.textContent = text), (el.className = `small ${cls}`);
   };
   const key = which === 'claude' ? st.claude.key : st.torrey.key;
-  if (!key) return say(which === 'claude' ? 'Paste your Claude API key above first.' : 'Paste the service role key above first.', 'bad');
+  if (!key) return say(which === 'claude' ? 'Paste your Claude API key above first.' : 'Add the invite key above first (Make a new key).', 'bad');
   say('Checking...', 'muted');
   try {
     if (which === 'claude') {
@@ -2630,7 +2643,7 @@ function repliesView() {
       ? h(
           'p',
           { class: 'status' },
-          [!st.claude.key ? 'Add the Claude API key in Setup so replies are written for each person.' : '', !st.torrey.key ? 'Add the Torrey Labs Cloud key in Setup so partner codes can be issued.' : ''].filter(Boolean).join(' '),
+          [!st.claude.key ? 'Add the Claude API key in Setup so replies are written for each person.' : '', !st.torrey.key ? 'Add the Torrey Labs invite key in Setup so partner codes can be issued.' : ''].filter(Boolean).join(' '),
           ' ',
           h('button', { class: 'link', onclick: goSetup }, 'Open Setup'),
         )
@@ -2756,10 +2769,9 @@ function setupView() {
       h('label', { class: 'field' }, 'Claude API key (writes each reply in your voice)', h('input', { type: 'password', value: st.claude.key, oninput: txt(st.claude, 'key'), placeholder: 'sk-ant-...' })),
       h('div', { class: 'row-flex' }, h('button', { onclick: () => testKey('claude'), disabled: !!S.busy }, 'Test Claude'), h('span', { id: 'claude-test', class: 'small muted' })),
       h('p', { class: 'muted small' }, 'Make a key at console.anthropic.com. It stays in this app.'),
-      h('label', { class: 'field' }, 'Torrey Labs Cloud URL', h('input', { value: st.torrey.url, oninput: txt(st.torrey, 'url'), placeholder: 'https://xxxx.supabase.co' })),
-      h('label', { class: 'field' }, 'Torrey Labs Cloud service role key (issues partner codes)', h('input', { type: 'password', value: st.torrey.key, oninput: txt(st.torrey, 'key') })),
-      h('div', { class: 'row-flex' }, h('button', { onclick: () => testKey('torrey'), disabled: !!S.busy }, 'Test Torrey Labs Cloud'), h('span', { id: 'torrey-test', class: 'small muted' })),
-      h('p', { class: 'muted small' }, "In Lovable, open the Torrey Labs project's Cloud tab: the project URL and the service role key are in its settings. The key can write to the store's database, so it only ever lives in this app."),
+      h('label', { class: 'field' }, 'Torrey Labs invite key (issues partner codes)', h('input', { type: 'password', value: st.torrey.key, oninput: txt(st.torrey, 'key') })),
+      h('div', { class: 'row-flex' }, h('button', { id: 'torrey-make', onclick: makeInviteKey }, 'Make a new key'), h('button', { onclick: () => testKey('torrey'), disabled: !!S.busy }, 'Test Torrey Labs'), h('span', { id: 'torrey-test', class: 'small muted' })),
+      h('p', { class: 'muted small' }, "This key can only create partner invites on torreylabs.store, nothing else. Press Make a new key (it's copied for you), then give Lovable the same value when it asks for the AFFILIATE_INVITE_KEY secret. It only ever lives here and in Lovable."),
       h('div', { class: 'grid2' }, h('label', { class: 'field' }, 'Store address in messages', h('input', { value: st.torrey.site, oninput: txt(st.torrey, 'site') })), h('label', { class: 'field' }, 'Partner share (%)', h('input', { type: 'number', min: 0, max: 50, value: st.torrey.percent, oninput: (e) => ((st.torrey.percent = Math.min(50, Math.max(0, parseInt(e.target.value, 10) || 0))), saveSettings().then(flashSaved)) }))),
     ),
 
