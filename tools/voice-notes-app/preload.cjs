@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('api', {
   chatVoice: (target, handle) => ipcRenderer.invoke('dm:chatVoice', target, handle),
   checkLead: (target, handle) => ipcRenderer.invoke('dm:checkLead', target, handle),
   readChat: (target, handle) => ipcRenderer.invoke('dm:readChat', target, handle),
+  chatReport: (target, handle) => ipcRenderer.invoke('dm:chatReport', target, handle),
   sendProof: (target, since) => ipcRenderer.invoke('diag:sendProof', target, since),
   watchStart: (target) => ipcRenderer.invoke('diag:watchStart', target),
   watchStop: (target) => ipcRenderer.invoke('diag:watchStop', target),

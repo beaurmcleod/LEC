@@ -205,36 +205,38 @@ export async function dmPage(action, arg) {
       const theirsByName = !!lead && who.toLowerCase() === lead;
       messages.push({ who, mine: theirsByName ? false : side === 'right', text: lines.join('\n').slice(0, 2000), voice, top: row.getBoundingClientRect().top });
     }
-    let via = 'labels';
-    if (!messages.length) {
-      via = 'layout';
-      const items = [];
-      for (const el of chat.querySelectorAll('*')) {
-        if (!shown(el)) continue;
-        const play = isPlay(el);
-        const t = ownText(el);
-        if (!play && (!t || noise.test(t))) continue;
-        if (el.closest('header, [role=banner], [role=textbox]')) continue;
-        if (!play && el.closest('button, [role=button]')) continue;
-        const b = el.getBoundingClientRect();
-        // Below the conversation header and above the message box.
-        const floor = box ? box.getBoundingClientRect().top - 8 : cr.bottom - 40;
-        if (b.top < cr.top + 90 || b.top >= floor) continue;
-        const leftGap = b.left - cr.left;
-        const rightGap = cr.right - b.right;
-        // The conversation's intro (name, "View profile") and the time stamps sit in the middle.
-        if (Math.abs(leftGap - rightGap) < cr.width * 0.12) continue;
-        items.push({ top: b.top, bottom: b.bottom, mine: rightGap < leftGap, text: play ? '' : t, voice: play });
-      }
-      items.sort((a, b) => a.top - b.top);
-      for (const it of items) {
-        const prev = messages[messages.length - 1];
-        if (prev && prev.mine === it.mine && !prev.voice && !it.voice && it.top - prev.bottom < 24) {
-          prev.text = `${prev.text}\n${it.text}`.slice(0, 2000);
-          prev.bottom = it.bottom;
-        } else messages.push({ who: '', mine: it.mine, text: it.text, voice: it.voice, top: it.top, bottom: it.bottom });
-      }
+    // Text and Play buttons the labels didn't cover (Instagram may label only some messages, or none), read by
+    // where they sit: below the conversation header, above the message box, and off to one side.
+    const rowEls = [...seen];
+    const items = [];
+    for (const el of chat.querySelectorAll('*')) {
+      if (!shown(el)) continue;
+      const play = isPlay(el);
+      const t = ownText(el);
+      if (!play && (!t || noise.test(t))) continue;
+      if (el.closest('header, [role=banner], [role=textbox]')) continue;
+      if (!play && el.closest('button, [role=button]')) continue;
+      if (rowEls.some((r) => r.contains(el))) continue;
+      const b = el.getBoundingClientRect();
+      const floor = box ? box.getBoundingClientRect().top - 8 : cr.bottom - 40;
+      if (b.top < cr.top + 90 || b.top >= floor) continue;
+      const leftGap = b.left - cr.left;
+      const rightGap = cr.right - b.right;
+      // The conversation's intro (name, "View profile") and the time stamps sit in the middle.
+      if (Math.abs(leftGap - rightGap) < cr.width * 0.12) continue;
+      items.push({ top: b.top, bottom: b.bottom, mine: rightGap < leftGap, text: play ? '' : t, voice: play });
     }
+    items.sort((a, b) => a.top - b.top);
+    const extras = [];
+    for (const it of items) {
+      const prev = extras[extras.length - 1];
+      if (prev && prev.mine === it.mine && !prev.voice && !it.voice && it.top - prev.bottom < 24) {
+        prev.text = `${prev.text}\n${it.text}`.slice(0, 2000);
+        prev.bottom = it.bottom;
+      } else extras.push({ who: '', mine: it.mine, text: it.text, voice: it.voice, top: it.top, bottom: it.bottom });
+    }
+    const via = extras.length ? (messages.length ? 'labels+layout' : 'layout') : 'labels';
+    messages = messages.concat(extras);
     messages.sort((a, b) => a.top - b.top);
     return {
       messages: messages.slice(-30).map(({ who, mine, text: t, voice }) => ({ who, mine, text: t, voice })),
@@ -243,6 +245,49 @@ export async function dmPage(action, arg) {
       names: [...names].slice(0, 6),
       loggedOut: loggedOut(),
     };
+  }
+
+  // A plain-text report of the open chat for troubleshooting: where the chat and the message box are, the
+  // labeled controls, and every piece of text and Play button with where it sits.
+  if (action === 'chatReport') {
+    const box = [...document.querySelectorAll('[role=textbox]')].filter(shown).pop();
+    let chat = document.body;
+    for (let el = box?.parentElement; el && el !== document.body; el = el.parentElement) {
+      if (el.getBoundingClientRect().height >= 250) {
+        chat = el;
+        break;
+      }
+    }
+    const rect = (el) => {
+      const r = el.getBoundingClientRect();
+      return `@${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}`;
+    };
+    const cr = chat.getBoundingClientRect();
+    const out = [
+      `address ${location.pathname}`,
+      `window ${innerWidth}x${innerHeight}`,
+      `message box ${box ? rect(box) : 'NOT FOUND'}`,
+      `chat container ${chat === document.body ? 'NOT FOUND (using the whole page)' : `<${chat.tagName.toLowerCase()}> ${rect(chat)}`}`,
+      '',
+      'labeled controls:',
+    ];
+    const labeled = [...chat.querySelectorAll('[aria-label]')].filter(shown);
+    for (const el of labeled.slice(0, 45)) out.push(`  <${el.tagName.toLowerCase()}${el.getAttribute('role') ? ` role=${el.getAttribute('role')}` : ''}> "${el.getAttribute('aria-label')}" ${rect(el)}`);
+    if (labeled.length > 45) out.push(`  ...and ${labeled.length - 45} more`);
+    out.push('', 'text and Play buttons, top to bottom:');
+    const rows = [];
+    for (const el of chat.querySelectorAll('*')) {
+      if (!shown(el)) continue;
+      const play = el.matches('[aria-label="Play"], [aria-label="Pause"]');
+      const t = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).filter(Boolean).join(' ');
+      if (!play && !t) continue;
+      const r = el.getBoundingClientRect();
+      const side = cr.right - r.right < r.left - cr.left ? 'RIGHT' : 'left';
+      rows.push({ top: r.top, line: `  ${side.padEnd(5)} ${play ? '[Play button]' : JSON.stringify(t.slice(0, 70))} <${el.tagName.toLowerCase()}${el.closest('button, [role=button]') ? ' in-button' : ''}${el.closest('header, [role=banner]') ? ' in-header' : ''}> ${rect(el)}` });
+    }
+    rows.sort((a, b) => a.top - b.top);
+    for (const r of rows.slice(-70)) out.push(r.line);
+    return out.join('\n');
   }
 
   // Where to click to put the caret in the message box.

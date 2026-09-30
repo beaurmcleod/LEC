@@ -1117,6 +1117,25 @@ function theirLatest(messages) {
   return { ours: i > 0, theirs, text, history: messages.slice(0, i), voiceOnly: theirs.length > 0 && theirs.every((m) => m.voice && !m.text) };
 }
 
+// Copies a plain-text report of what one lead's chat looks like to the app, to paste along with a question.
+async function copyChatReport(handle) {
+  if (S.bg.current || S.replies.checking) return toast('Busy with something else. Try again in a minute.');
+  S.bg.current = { handle, text: '', until: 0, check: true };
+  paintQueue();
+  toast(`Reading @${handle}'s chat...`);
+  try {
+    const report = await window.api.chatReport('send', handle);
+    const copied = await window.api.copyText(report).catch(() => false);
+    toast(copied ? 'Report copied. Paste it into the chat.' : "Couldn't copy the report.", 6000);
+  } catch (e) {
+    toast(`Couldn't make the report: ${errText(e)}`, 6000);
+  } finally {
+    S.bg.current = null;
+    paintQueue();
+    refreshQuietly();
+  }
+}
+
 // What each look at a chat read, so "No new replies" can be checked against what's really in the chat.
 function noteSeen(p, r) {
   const msgs = r.messages || [];
@@ -2700,6 +2719,7 @@ function repliesView() {
                       ? 'the chat looked empty to the app'
                       : `${e.total} message${e.total === 1 ? '' : 's'} (${e.ours} ours, ${e.theirs} theirs)${e.last ? `, last from them: "${e.last.slice(0, 70)}"` : ''}${e.lastIsTheirs ? '' : ' · the last message is ours'}`,
                 ),
+                h('button', { class: 'link', onclick: () => copyChatReport(e.handle) }, 'Copy a report of this chat'),
               ),
             ),
           )

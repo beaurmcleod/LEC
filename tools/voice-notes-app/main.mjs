@@ -395,6 +395,23 @@ ipcMain.handle('dm:thread', (_e, href) =>
 // Types the text into the thread's message box with real (trusted) input and sends it.
 // Opens a lead's chat (their profile's Message button) and reads the conversation. Nothing is sent. The older
 // messages can take a moment to load, so it reads a few times and keeps the fullest read.
+// A plain-text report of what a lead's chat looks like to the app (what it read, and where each piece of text
+// sits), for troubleshooting a reply the app doesn't see. Nothing is sent.
+ipcMain.handle('dm:chatReport', (_e, target = 'send', handle) =>
+  quietly(async () => {
+    const wc = tab(target);
+    try {
+      await openDm(wc, handle);
+    } catch (e) {
+      return `Couldn't open their chat: ${e.message}`;
+    }
+    await pause(3500);
+    const rep = await runDm(wc, 'chatReport', handle).catch((e) => `The report failed: ${e.message}`);
+    const read = await runDm(wc, 'chatMessages', handle).catch(() => null);
+    const said = (read?.messages || []).map((m) => `  ${m.mine ? 'ours  ' : 'theirs'} ${m.voice ? '[voice] ' : ''}${JSON.stringify((m.text || '').slice(0, 80))}`);
+    return [`@${handle}: what the app read (${read?.via || '?'}; label names: ${(read?.names || []).join(' | ') || 'none'})`, ...(said.length ? said : ['  (no messages)']), '', rep].join('\n');
+  }),
+);
 ipcMain.handle('dm:readChat', (_e, target = 'send', handle) =>
   quietly(async () => {
     const wc = tab(target);
