@@ -102,11 +102,44 @@ export async function followPage(action) {
   };
   const loggedOut = () => /^\/accounts\/login/.test(location.pathname);
   const notFound = () => /sorry, this page isn'?t available|profile isn'?t available|user not found/i.test(mainText());
+  // The profile's own Follow button is in its header. Right after a follow Instagram shows "Suggested for you"
+  // with a Follow button on every card, so a Follow anywhere on the page doesn't mean this account isn't followed.
+  const headerEl = () => document.querySelector('main header') || document.querySelector('header');
+  const followWord = /^(follow|follow back|following|requested)$/i;
+  const suggestionBoxes = () => {
+    const hdr = headerEl();
+    const boxes = [];
+    for (const el of document.querySelectorAll('span, div, h2, h3, h4')) {
+      if (el.children.length || !/^(suggested for you|suggested|similar accounts|more accounts like this)$/i.test((el.textContent || '').trim())) continue;
+      for (let a = el.parentElement, i = 0; a && i < 12; a = a.parentElement, i++) {
+        if (hdr && a.contains(hdr)) break;
+        if ([...a.querySelectorAll('button, [role=button]')].filter((x) => /^follow$/i.test(label(x))).length >= 2) {
+          boxes.push(a);
+          break;
+        }
+      }
+    }
+    return boxes;
+  };
+  const profileButtons = () => {
+    const boxes = suggestionBoxes();
+    const ok = (b) => shown(b) && !b.closest('[role=dialog]') && !boxes.some((x) => x.contains(b));
+    const hdr = headerEl();
+    const inHeader = hdr ? [...hdr.querySelectorAll('button, [role=button]')].filter(ok) : [];
+    return inHeader.some((b) => followWord.test(label(b))) ? inHeader : buttons().filter(ok);
+  };
+  // The first follow button in page order is the profile's (the header comes before any suggestions).
+  const followButton = () => profileButtons().find((b) => followWord.test(label(b)));
   const followState = () => {
-    if (byText(/^(follow|follow back)$/i)) return 'follow';
-    if (byText(/^following$/i)) return 'following';
-    if (byText(/^requested$/i)) return 'requested';
-    return '';
+    const t = label(followButton() || { innerText: '' }).toLowerCase();
+    return t === 'following' ? 'following' : t === 'requested' ? 'requested' : t ? 'follow' : '';
+  };
+  // What the page shows around the follow button, for the log when a follow can't be confirmed.
+  const followSeen = () => {
+    const hdr = headerEl();
+    const inHeader = hdr ? [...hdr.querySelectorAll('button, [role=button]')].filter(shown).map((b) => label(b) || b.getAttribute('aria-label') || '?').slice(0, 6) : [];
+    const others = buttons().filter((b) => /^follow$/i.test(label(b)) && !(hdr && hdr.contains(b))).length;
+    return `${hdr ? `header buttons: ${inHeader.join(', ') || 'none'}` : 'no profile header'}; other Follow buttons on the page: ${others}`;
   };
   // The heart is an svg labelled Like (Unlike once liked), usually inside a button; comment hearts are smaller.
   const likeButtons = (label) =>
@@ -156,13 +189,14 @@ export async function followPage(action) {
   // Short fixed waits let the page finish settling before a click.
   if (action === 'clickFollow') {
     await sleep(800);
-    const el = byText(/^(follow|follow back)$/i);
-    return el ? point(el) : null;
+    const el = followButton();
+    return el && /^(follow|follow back)$/i.test(label(el)) ? point(el) : null;
   }
   if (action === 'afterFollow') {
     const s = await waitFor(() => blocked() || (/^(following|requested)$/.test(followState()) && followState()), 8000);
     if (blocked()) return { state: 'blocked', note: blocked() };
-    return { state: s || followState() };
+    const state = s || followState();
+    return { state, seen: /^(following|requested)$/.test(state) ? '' : followSeen() };
   }
   if (action === 'post') {
     await waitFor(() => blocked() || loggedOut() || likeState(), 15000);

@@ -452,6 +452,8 @@ export function markFollowedAirtable(at, recordId, liked, when = new Date()) {
 }
 
 export const markLikedAirtable = (at, recordId) => patch(at, recordId, { 'IG liked': true });
+// The latest follow-and-like result for a lead, in its own field so a missing field never blocks the others.
+export const logFollowAirtable = (at, recordId, text) => patch(at, recordId, { 'IG log': String(text).slice(0, 3000) });
 export const patchAirtable = (at, recordId, fields) => patch(at, recordId, fields);
 
 // Taking a lead out of Airtable. 'delete' deletes the record. 'skip' keeps it but marks it Skip (Status and Track)

@@ -3292,7 +3292,7 @@ function logText(e) {
   if (e.result === 'notfound') return 'Account not found, skipped';
   if (e.result === 'blocked') return `Instagram pushed back ("${e.note}"). Paused for 48 hours.${e.followed ? ' The follow went through.' : ''}`;
   if (e.result === 'loggedout') return 'Instagram is logged out. Stopped.';
-  if (e.result === 'failed') return `Stopped: ${e.note}`;
+  if (e.result === 'failed') return `${e.afterSend ? 'After the voice note' : 'Stopped'}: ${e.note}${e.likes ? `; ${likes}` : ''}`;
   return e.note;
 }
 

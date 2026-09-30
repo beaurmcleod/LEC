@@ -89,13 +89,16 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, e
 
     let followed = false;
     let requested = p.state === 'requested';
+    // A follow that went in but doesn't show on the page doesn't stop the likes: the page is still theirs.
+    let unconfirmed = '';
     if (p.state === 'follow' && follow) {
       if (!(await click(wc, await run(wc, 'clickFollow')))) return { result: 'failed', note: "couldn't click Follow" };
       const a = await run(wc, 'afterFollow');
       if (a.state === 'blocked') return { result: 'blocked', note: a.note };
-      if (a.state !== 'following' && a.state !== 'requested') return { result: 'failed', clicked: true, note: "couldn't confirm the follow" };
-      followed = true;
-      requested = a.state === 'requested';
+      if (a.state === 'following' || a.state === 'requested') {
+        followed = true;
+        requested = a.state === 'requested';
+      } else unconfirmed = a.seen || 'nothing on the page changed';
     }
 
     // Private accounts (or a pending request) have nothing to like.
@@ -136,8 +139,19 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, e
         done++;
       } else why.push(post.state ? "pressed Like but it didn't take" : `no Like button on the post (icons seen: ${(post.icons || []).join(', ') || 'none'})`);
     }
-    return { result: followed ? 'followed' : p.state === 'follow' ? 'notfollowed' : 'already', followed, liked: likes > 0, likes, likesDone: done, likeWhy: why.join('; '), private: isPrivate };
+    const out = { followed, liked: likes > 0, likes, likesDone: done, likeWhy: why.join('; '), private: isPrivate, tried: hrefs.length };
+    if (unconfirmed) return { ...out, result: 'failed', clicked: true, note: `couldn't confirm the follow (${unconfirmed})` };
+    return { ...out, result: followed ? 'followed' : p.state === 'follow' ? 'notfollowed' : 'already' };
   }
+
+  // One line for the lead's IG log in Airtable: when, what happened, and why a like didn't.
+  const summary = (r, afterSend) => {
+    const when = new Date().toLocaleString('en-US', { timeZone: F.LIMITS.timeZone, dateStyle: 'medium', timeStyle: 'short' });
+    const fol = { followed: 'followed', already: 'already following', notfollowed: 'not followed (follow limit)', failed: r.note || 'failed', blocked: `Instagram pushed back ("${r.note}")`, notfound: 'account not found', loggedout: 'Instagram logged out', limit: r.note }[r.result] || r.result;
+    const likes = r.private ? 'private, nothing to like' : r.tried != null ? `liked ${r.likes || 0} of ${r.tried} post${r.tried === 1 ? '' : 's'}${r.likeWhy ? ` (${r.likeWhy})` : ''}` : '';
+    return `${when}${afterSend ? ', after the voice note' : ''}: ${[fol, likes].filter(Boolean).join('; ')}`;
+  };
+  const logAirtable = (id, r, afterSend) => (at?.token && id ? leads.logFollowAirtable(at, id, summary(r, afterSend)).catch(() => {}) : null);
 
   async function settle(lead, r) {
     const now = Date.now();
@@ -153,6 +167,7 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, e
     state.nextAt = now + (fast ? 1500 : F.randomGap());
     addLog({ handle: lead.handle, result: r.result, followed: !!r.followed, liked: !!r.liked, likes: r.likes || 0, likeWhy: r.likeWhy || '', private: !!r.private, note: r.note || '' });
     await save();
+    logAirtable(lead.id, r, false);
     if (r.followed || r.result === 'already') {
       try {
         await leads.markFollowedAirtable(at, lead.id, r.liked, new Date(now));
@@ -160,7 +175,7 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, e
       } catch (e) {
         addLog({ handle: lead.handle, result: 'error', note: `Followed, but Airtable said: ${e.message}` });
       }
-    }
+    } else if (r.liked) await leads.markLikedAirtable(at, lead.id).catch(() => {});
   }
 
   async function tick() {
@@ -245,6 +260,7 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, e
       if (!canFollow && !likeRoom) {
         const why = L.reasonText(!b.follow.ok ? b.follow : !b.like.ok ? b.like : b.total, !b.follow.ok ? 'follow' : !b.like.ok ? 'like' : 'follow');
         addLog({ handle, result: 'limit', note: `Skipped the follow and likes: ${why}`, afterSend: true });
+        logAirtable(airtableId, { result: 'limit', note: `skipped the follow and likes: ${why}` }, true);
         await save();
         emit(snapshot());
         return { result: 'limit', note: why };
@@ -254,6 +270,7 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, e
       if (r.likesDone) note('like', now, r.likesDone);
       if (r.result === 'blocked') state.pausedUntil = now + F.LIMITS.blockPauseMs;
       addLog({ handle, result: r.result, followed: !!r.followed, liked: !!r.liked, likes: r.likes || 0, likeWhy: r.likeWhy || '', private: !!r.private, note: r.note || '', afterSend: true });
+      logAirtable(airtableId, r, true);
       await save();
       emit(snapshot());
       if (airtableId && at?.token) {
