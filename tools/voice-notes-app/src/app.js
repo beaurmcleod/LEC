@@ -2466,16 +2466,38 @@ async function paintJoin(p) {
 }
 
 // A long random key for the store's invite endpoint, made here so it never passes through anyone else's hands.
-function makeInviteKey() {
+async function makeInviteKey() {
   const st = S.settings;
   if (st.torrey.key && !confirm('Replace the current invite key? The AFFILIATE_INVITE_KEY in Lovable has to be changed to match.')) return;
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   const bytes = crypto.getRandomValues(new Uint8Array(48));
   st.torrey.key = Array.from(bytes, (b) => chars[b % chars.length]).join('');
   saveSettings().then(flashSaved);
-  navigator.clipboard?.writeText(st.torrey.key).catch(() => {});
-  toast('New invite key made and copied. Paste it into Lovable when it asks for AFFILIATE_INVITE_KEY.', 8000);
+  const copied = await window.api.copyText(st.torrey.key).catch(() => false);
+  toast(
+    copied
+      ? 'New invite key made and copied. Paste it into Lovable as AFFILIATE_INVITE_KEY.'
+      : "New invite key made, but it couldn't be copied. Press Show key, select it and copy it (⌘C), then paste it into Lovable as AFFILIATE_INVITE_KEY.",
+    8000,
+  );
   render();
+}
+
+// Copies the invite key again, or says why it couldn't.
+async function copyInviteKey() {
+  const key = S.settings.torrey.key;
+  if (!key) return toast('There is no key yet. Press Make a new key first.');
+  const copied = await window.api.copyText(key).catch(() => false);
+  toast(copied ? 'Invite key copied.' : "Couldn't copy it. Press Show key, select it and copy it (⌘C).");
+}
+
+// Shows or hides the invite key in its box, so it can be read or selected.
+function toggleInviteKey(e) {
+  const box = document.getElementById('torrey-key');
+  if (!box) return;
+  const hide = box.type === 'text';
+  box.type = hide ? 'password' : 'text';
+  e.target.textContent = hide ? 'Show key' : 'Hide key';
 }
 
 // Setup's Test buttons for the reply keys.
@@ -2769,9 +2791,9 @@ function setupView() {
       h('label', { class: 'field' }, 'Claude API key (writes each reply in your voice)', h('input', { type: 'password', value: st.claude.key, oninput: txt(st.claude, 'key'), placeholder: 'sk-ant-...' })),
       h('div', { class: 'row-flex' }, h('button', { onclick: () => testKey('claude'), disabled: !!S.busy }, 'Test Claude'), h('span', { id: 'claude-test', class: 'small muted' })),
       h('p', { class: 'muted small' }, 'Make a key at console.anthropic.com. It stays in this app.'),
-      h('label', { class: 'field' }, 'Torrey Labs invite key (issues partner codes)', h('input', { type: 'password', value: st.torrey.key, oninput: txt(st.torrey, 'key') })),
-      h('div', { class: 'row-flex' }, h('button', { id: 'torrey-make', onclick: makeInviteKey }, 'Make a new key'), h('button', { onclick: () => testKey('torrey'), disabled: !!S.busy }, 'Test Torrey Labs'), h('span', { id: 'torrey-test', class: 'small muted' })),
-      h('p', { class: 'muted small' }, "This key can only create partner invites on torreylabs.store, nothing else. Press Make a new key (it's copied for you), then give Lovable the same value when it asks for the AFFILIATE_INVITE_KEY secret. It only ever lives here and in Lovable."),
+      h('label', { class: 'field' }, 'Torrey Labs invite key (issues partner codes)', h('input', { id: 'torrey-key', type: 'password', value: st.torrey.key, oninput: txt(st.torrey, 'key') })),
+      h('div', { class: 'row-flex' }, h('button', { id: 'torrey-make', onclick: makeInviteKey }, 'Make a new key'), h('button', { id: 'torrey-copy', onclick: copyInviteKey }, 'Copy key'), h('button', { id: 'torrey-show', onclick: toggleInviteKey }, 'Show key'), h('button', { onclick: () => testKey('torrey'), disabled: !!S.busy }, 'Test Torrey Labs'), h('span', { id: 'torrey-test', class: 'small muted' })),
+      h('p', { class: 'muted small' }, "This key can only create partner invites on torreylabs.store, nothing else. Press Make a new key (it's copied for you; Copy key copies it again, and Show key lets you read it), then give Lovable the same value as the AFFILIATE_INVITE_KEY secret. It only ever lives here and in Lovable."),
       h('div', { class: 'grid2' }, h('label', { class: 'field' }, 'Store address in messages', h('input', { value: st.torrey.site, oninput: txt(st.torrey, 'site') })), h('label', { class: 'field' }, 'Partner share (%)', h('input', { type: 'number', min: 0, max: 50, value: st.torrey.percent, oninput: (e) => ((st.torrey.percent = Math.min(50, Math.max(0, parseInt(e.target.value, 10) || 0))), saveSettings().then(flashSaved)) }))),
     ),
 

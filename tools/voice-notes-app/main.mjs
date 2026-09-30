@@ -695,6 +695,15 @@ ipcMain.handle('reply:draft', (_e, key, prompt) => draftReply(key, prompt));
 ipcMain.handle('reply:test', (_e, key) => testClaude(key));
 ipcMain.handle('torrey:invite', (_e, cfg, args) => createInvite(cfg, args));
 ipcMain.handle('torrey:test', (_e, cfg) => testTorrey(cfg));
+// Copies text with the system clipboard (the page can't: its clipboard permission is off). False only if the write threw.
+ipcMain.handle('clipboard:text', (_e, text) => {
+  try {
+    clipboard.writeText(String(text ?? ''));
+    return true;
+  } catch {
+    return false;
+  }
+});
 ipcMain.handle('airtable:patch', (_e, at, id, fields) => leads.patchAirtable(at, id, fields));
 ipcMain.handle('airtable:remove', (_e, at, id, opts) => leads.removeAirtable(at, id, opts));
 ipcMain.handle('follow:config', (_e, at) => follower.configure(at));

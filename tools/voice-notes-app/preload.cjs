@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('api', {
   replyTest: (key) => ipcRenderer.invoke('reply:test', key),
   torreyInvite: (cfg, args) => ipcRenderer.invoke('torrey:invite', cfg, args),
   torreyTest: (cfg) => ipcRenderer.invoke('torrey:test', cfg),
+  copyText: (text) => ipcRenderer.invoke('clipboard:text', text),
   patchAirtable: (at, id, fields) => ipcRenderer.invoke('airtable:patch', at, id, fields),
   removeAirtable: (at, id, opts) => ipcRenderer.invoke('airtable:remove', at, id, opts),
   onStatus: (cb) => ipcRenderer.on('ig:status', (_e, m) => cb(m)),
