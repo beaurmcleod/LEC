@@ -1117,6 +1117,26 @@ function theirLatest(messages) {
   return { ours: i > 0, theirs, text, history: messages.slice(0, i), voiceOnly: theirs.length > 0 && theirs.every((m) => m.voice && !m.text) };
 }
 
+// What each look at a chat read, so "No new replies" can be checked against what's really in the chat.
+function noteSeen(p, r) {
+  const msgs = r.messages || [];
+  const theirs = msgs.filter((m) => !m.mine);
+  const lastTheirs = [...theirs].reverse().find((m) => m.text || m.voice);
+  const entry = {
+    handle: p.handle,
+    at: Date.now(),
+    state: r.state,
+    error: r.error || '',
+    total: msgs.length,
+    ours: msgs.length - theirs.length,
+    theirs: theirs.length,
+    last: lastTheirs ? lastTheirs.text || '[voice message]' : '',
+    lastIsTheirs: !!msgs.length && !msgs[msgs.length - 1].mine,
+    via: r.via || '',
+  };
+  S.replies.seen = [entry, ...(S.replies.seen || []).filter((x) => x.handle !== p.handle)].slice(0, 40);
+}
+
 // One lead's chat: anything new from them since our last message?
 async function replyCheckOne(p) {
   S.bg.current = { pid: p.id, handle: p.handle, text: '', until: 0, check: true };
@@ -1124,6 +1144,7 @@ async function replyCheckOne(p) {
   const r = await window.api.readChat('send', p.handle).catch((e) => ({ state: 'error', error: errText(e), messages: [] }));
   p.replyCheckedAt = Date.now();
   let found = false;
+  noteSeen(p, r);
   if (r.state === 'loggedout') S.replies.issue = 'Instagram is logged out. Sign in on the right.';
   else if (r.state === 'ok') {
     S.replies.issue = '';
@@ -2660,6 +2681,29 @@ function repliesView() {
         ),
         h('button', { onclick: () => checkReplies({ manual: true }), disabled: !!S.replies.checking }, 'Check now'),
       ),
+      S.replies.seen?.length
+        ? h(
+            'details',
+            { class: 'small muted', id: 'reply-seen' },
+            h('summary', {}, `What the last check read (${S.replies.seen.length} chat${S.replies.seen.length === 1 ? '' : 's'})`),
+            S.replies.seen.map((e) =>
+              h(
+                'div',
+                { class: 'log-row' },
+                h('b', { class: 'small' }, `@${e.handle}`),
+                h(
+                  'span',
+                  { class: 'small' },
+                  e.state !== 'ok'
+                    ? `couldn't read the chat (${e.error || e.state})`
+                    : !e.total
+                      ? 'the chat looked empty to the app'
+                      : `${e.total} message${e.total === 1 ? '' : 's'} (${e.ours} ours, ${e.theirs} theirs)${e.last ? `, last from them: "${e.last.slice(0, 70)}"` : ''}${e.lastIsTheirs ? '' : ' · the last message is ours'}`,
+                ),
+              ),
+            ),
+          )
+        : null,
     ),
     !st.claude.key || !st.torrey.key
       ? h(

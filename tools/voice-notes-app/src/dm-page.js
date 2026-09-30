@@ -124,10 +124,14 @@ export async function dmPage(action, arg) {
     let ours = 0;
     let theirs = 0;
     let unknown = 0;
+    const cr = chat.getBoundingClientRect();
     for (const b of chat.querySelectorAll('[aria-label="Play"], [aria-label="Pause"]')) {
       const who = senderOf(b);
-      if (!who) unknown++;
-      else if (lead && who === lead) theirs++;
+      const r = b.getBoundingClientRect();
+      // Theirs when the label is their handle; otherwise by the side of the chat it sits on (ours are on the right).
+      if (lead && who === lead) theirs++;
+      else if (r.width > 0 && cr.width > 0) (cr.right - r.right < r.left - cr.left ? ours++ : theirs++);
+      else if (!who) unknown++;
       else ours++;
     }
     const words = chat.innerText || '';
@@ -144,8 +148,10 @@ export async function dmPage(action, arg) {
   }
 
   // The open chat as a conversation, oldest first: who sent each message (`arg` is the lead's handle; anyone else
-  // is us), its text, and whether it's a voice message. Each message carries Instagram's "React to message from
-  // <username>" label; a message is the smallest container around that label that holds something besides it.
+  // is us), its text, and whether it's a voice message. Who sent it comes from which side of the chat it sits on
+  // (ours on the right, theirs on the left with their picture), since the name in Instagram's hidden "React to
+  // message from <name>" label isn't always their handle; a label that is their handle settles it as theirs. With
+  // no such labels on the page at all, the chat is read from its text and Play buttons by where they sit.
   if (action === 'chatMessages') {
     const lead = String(arg || '').toLowerCase().replace(/^@/, '');
     const box = [...document.querySelectorAll('[role=textbox]')].filter(shown).pop();
@@ -156,17 +162,35 @@ export async function dmPage(action, arg) {
         break;
       }
     }
+    const cr = chat.getBoundingClientRect();
     const REACT = 'React to message from ';
-    const labels = [...chat.querySelectorAll(`[aria-label^="${REACT}"]`)];
     const count = (el) => el.querySelectorAll(`[aria-label^="${REACT}"]`).length;
-    const noise = /^(seen|sent|delivered|sending\.*|view transcription|reply|react|more|edited|\d{1,2}:\d{2}( ?[ap]m)?|\d+:\d{2}|(mon|tue|wed|thu|fri|sat|sun)[a-z]* \d{1,2}:\d{2} ?[ap]m|[a-z]{3} \d{1,2}, \d{4},? \d{1,2}:\d{2} ?[ap]m|today|yesterday)$/i;
+    const noise = /^(seen|sent|delivered|sending\.*|view transcription|reply|react|more|edited|\d{1,2}:\d{2}( ?[ap]m)?|\d+:\d{2}|(mon|tue|wed|thu|fri|sat|sun)[a-z]*,? (at )?\d{1,2}:\d{2} ?[ap]m|[a-z]{3} \d{1,2}, \d{4},? \d{1,2}:\d{2} ?[ap]m|(mon|tue|wed|thu|fri|sat|sun)[a-z]* \d{1,2}:\d{2} ?[ap]m|today|yesterday)$/i;
+    const hover = '[aria-label^="React to message"], [aria-label="More"], [aria-label="Reply"], [aria-label="Copy"], [aria-label="Forward"], [role=textbox]';
+    const ownText = (el) => [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).filter(Boolean).join(' ');
+    const isPlay = (el) => el.matches('[aria-label="Play"], [aria-label="Pause"]');
+    const sideOf = (b) => (cr.right - b.right < b.left - cr.left ? 'right' : 'left');
+    // Where a message's own content (its text and Play button) sits: the row also holds hover controls off to one side.
+    const contentBox = (row) => {
+      let l = Infinity;
+      let r = -Infinity;
+      for (const el of row.querySelectorAll('*')) {
+        if (el.closest(hover) || !shown(el)) continue;
+        const t = ownText(el);
+        if (!isPlay(el) && (!t || noise.test(t))) continue;
+        const b = el.getBoundingClientRect();
+        l = Math.min(l, b.left);
+        r = Math.max(r, b.right);
+      }
+      return l < r ? { left: l, right: r } : row.getBoundingClientRect();
+    };
     const seen = new Set();
-    const messages = [];
-    for (const label of labels) {
+    const names = new Set();
+    let messages = [];
+    for (const label of [...chat.querySelectorAll(`[aria-label^="${REACT}"]`)]) {
       let row = null;
       for (let a = label.parentElement; a && a !== chat.parentElement && count(a) === 1; a = a.parentElement) {
-        const hasContent = text(a).length > 0 || a.querySelector('[aria-label="Play"], [aria-label="Pause"], img, video');
-        if (hasContent) {
+        if (text(a).length > 0 || a.querySelector('[aria-label="Play"], [aria-label="Pause"], img, video')) {
           row = a;
           break;
         }
@@ -174,11 +198,51 @@ export async function dmPage(action, arg) {
       if (!row || seen.has(row)) continue;
       seen.add(row);
       const who = label.getAttribute('aria-label').slice(REACT.length).trim();
+      names.add(who);
       const lines = (row.innerText || '').split('\n').map((l) => l.trim()).filter((l) => l && !noise.test(l) && l.toLowerCase() !== who.toLowerCase());
       const voice = !!row.querySelector('[aria-label="Play"], [aria-label="Pause"]');
-      messages.push({ who, mine: !!lead && who.toLowerCase() !== lead, text: lines.join('\n').slice(0, 2000), voice });
+      const side = sideOf(contentBox(row));
+      const theirsByName = !!lead && who.toLowerCase() === lead;
+      messages.push({ who, mine: theirsByName ? false : side === 'right', text: lines.join('\n').slice(0, 2000), voice, top: row.getBoundingClientRect().top });
     }
-    return { messages, chat: chat === document.body ? 'whole page' : 'chat window', loggedOut: loggedOut() };
+    let via = 'labels';
+    if (!messages.length) {
+      via = 'layout';
+      const items = [];
+      for (const el of chat.querySelectorAll('*')) {
+        if (!shown(el)) continue;
+        const play = isPlay(el);
+        const t = ownText(el);
+        if (!play && (!t || noise.test(t))) continue;
+        if (el.closest('header, [role=banner], [role=textbox]')) continue;
+        if (!play && el.closest('button, [role=button]')) continue;
+        const b = el.getBoundingClientRect();
+        // Below the conversation header and above the message box.
+        const floor = box ? box.getBoundingClientRect().top - 8 : cr.bottom - 40;
+        if (b.top < cr.top + 90 || b.top >= floor) continue;
+        const leftGap = b.left - cr.left;
+        const rightGap = cr.right - b.right;
+        // The conversation's intro (name, "View profile") and the time stamps sit in the middle.
+        if (Math.abs(leftGap - rightGap) < cr.width * 0.12) continue;
+        items.push({ top: b.top, bottom: b.bottom, mine: rightGap < leftGap, text: play ? '' : t, voice: play });
+      }
+      items.sort((a, b) => a.top - b.top);
+      for (const it of items) {
+        const prev = messages[messages.length - 1];
+        if (prev && prev.mine === it.mine && !prev.voice && !it.voice && it.top - prev.bottom < 24) {
+          prev.text = `${prev.text}\n${it.text}`.slice(0, 2000);
+          prev.bottom = it.bottom;
+        } else messages.push({ who: '', mine: it.mine, text: it.text, voice: it.voice, top: it.top, bottom: it.bottom });
+      }
+    }
+    messages.sort((a, b) => a.top - b.top);
+    return {
+      messages: messages.slice(-30).map(({ who, mine, text: t, voice }) => ({ who, mine, text: t, voice })),
+      chat: chat === document.body ? 'whole page' : 'chat window',
+      via,
+      names: [...names].slice(0, 6),
+      loggedOut: loggedOut(),
+    };
   }
 
   // Where to click to put the caret in the message box.
