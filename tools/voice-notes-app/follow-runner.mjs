@@ -9,7 +9,7 @@ const ERROR_RETRY_MS = 10 * 60 * 1000;
 
 // Follows and likes one lead at a time in its own Instagram tab, within the pacing in src/follow.js.
 // Its counters, pause and log live in a small JSON file so they survive restarts.
-export function createFollowRunner({ view, statePath, igBase, click, dblclick, emit, onFollowed, fast = false, build = 'dev' }) {
+export function createFollowRunner({ view, statePath, igBase, click, dblclick, key, snap, emit, onFollowed, fast = false, build = 'dev' }) {
   let state = { enabled: false, stopNote: '', days: {}, pausedUntil: 0, nextAt: 0, skipped: {}, log: [], times: { follow: [], like: [] } };
   // The safety limits from Setup, when the account started doing this, and when voice notes went out (the app
   // tells this process, since they count toward the combined daily limit).
@@ -75,12 +75,29 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, e
 
   const run = (wc, step) => wc.executeJavaScript(`(${F.followPage})(${JSON.stringify(step)})`, true);
   const open = (wc, url) => wc.loadURL(url).catch(() => {});
+  // A chat window or a dialog left over the page (Instagram keeps a chat open across pages) swallows the clicks
+  // under it. Close it first: its Close button with a real click, or Escape. Says what was there, for the log.
+  async function clearCover(wc) {
+    const seen = [];
+    for (let i = 0; i < 3; i++) {
+      const c = await run(wc, 'cover').catch(() => null);
+      if (!c) break;
+      seen.push(c.what);
+      if (c.point) await click(wc, c.point);
+      else if (key) await key(wc, 'Escape');
+      await new Promise((r) => setTimeout(r, 600));
+    }
+    return seen.length ? `closed ${seen[0]}${seen.length > 1 ? ` (${seen.length} tries)` : ''}` : '';
+  }
+  // A picture and a description of the page when a follow or a like didn't take, for "See what Instagram showed".
+  const picture = async (handle, why) => (snap ? snap(`follow-${handle}`, `@${handle}: ${why}`).catch(() => '') : '');
   const pause = () => new Promise((r) => setTimeout(r, fast ? 100 : 1500 + Math.random() * 2500));
 
   // Follows the account in `wc` if needed (unless `follow` is false), then likes the posts at `likeAt` (0 = newest;
   // pinned posts don't count). Posts already liked are left alone. When a like doesn't happen, `likeWhy` says why.
   async function visit(wc, handle, likeAt = [0], { follow = true } = {}) {
     await open(wc, `${igBase}/${encodeURIComponent(handle)}/`);
+    const cleared = [await clearCover(wc)];
     const p = await run(wc, 'profile');
     if (p.state === 'blocked') return { result: 'blocked', note: p.note };
     if (p.state === 'loggedout') return { result: 'loggedout' };
@@ -92,13 +109,14 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, e
     // A follow that went in but doesn't show on the page doesn't stop the likes: the page is still theirs.
     let unconfirmed = '';
     if (p.state === 'follow' && follow) {
-      if (!(await click(wc, await run(wc, 'clickFollow')))) return { result: 'failed', note: "couldn't click Follow" };
+      const pt = await run(wc, 'clickFollow');
+      if (!(await click(wc, pt))) return { result: 'failed', note: "couldn't click Follow" };
       const a = await run(wc, 'afterFollow');
       if (a.state === 'blocked') return { result: 'blocked', note: a.note };
       if (a.state === 'following' || a.state === 'requested') {
         followed = true;
         requested = a.state === 'requested';
-      } else unconfirmed = a.seen || 'nothing on the page changed';
+      } else unconfirmed = `${pt?.covered ? `the click was covered by ${pt.covered}; ` : ''}${a.seen || 'nothing on the page changed'}`;
     }
 
     // Private accounts (or a pending request) have nothing to like.
@@ -111,6 +129,7 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, e
     for (const href of hrefs) {
       await pause();
       await open(wc, new URL(href, igBase).href);
+      cleared.push(await clearCover(wc));
       const post = await run(wc, 'post');
       const fail = (l) => ({ result: 'blocked', followed, liked: likes > 0, likes, likesDone: done, note: l.note });
       if (post.state === 'blocked') return fail(post);
@@ -119,9 +138,12 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, e
         continue;
       }
       let ok = false;
+      let covered = '';
       // The heart first (twice, in case the first press only focused the page), then a double-click on the picture.
       for (let attempt = 0; attempt < 2 && !ok && post.state === 'like'; attempt++) {
-        if (!(await click(wc, await run(wc, 'clickLike')))) break;
+        const pt = await run(wc, 'clickLike');
+        if (!(await click(wc, pt))) break;
+        if (pt?.covered) covered = pt.covered;
         const l = await run(wc, 'afterLike');
         if (l.state === 'blocked') return fail(l);
         ok = l.state === 'liked';
@@ -137,9 +159,12 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, e
       if (ok) {
         likes++;
         done++;
-      } else why.push(post.state ? "pressed Like but it didn't take" : `no Like button on the post (icons seen: ${(post.icons || []).join(', ') || 'none'})`);
+      } else why.push(post.state ? `pressed Like but it didn't take${covered ? ` (the click was covered by ${covered})` : ''}` : `no Like button on the post (icons seen: ${(post.icons || []).join(', ') || 'none'})`);
     }
-    const out = { followed, liked: likes > 0, likes, likesDone: done, likeWhy: why.join('; '), private: isPrivate, tried: hrefs.length };
+    const closed = cleared.filter(Boolean);
+    const out = { followed, liked: likes > 0, likes, likesDone: done, likeWhy: [...why, ...(closed.length ? [closed[0]] : [])].join('; '), private: isPrivate, tried: hrefs.length };
+    // Something didn't take: keep a picture of the page, for "See what Instagram showed".
+    if (unconfirmed || (hrefs.length && !done && !likes)) out.shot = await picture(handle, unconfirmed ? `couldn't confirm the follow (${unconfirmed})` : `no post liked (${why.join('; ')})`);
     if (unconfirmed) return { ...out, result: 'failed', clicked: true, note: `couldn't confirm the follow (${unconfirmed})` };
     return { ...out, result: followed ? 'followed' : p.state === 'follow' ? 'notfollowed' : 'already' };
   }
@@ -165,7 +190,7 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, e
       state.stopNote = r.result === 'loggedout' ? 'loggedout' : `${r.note} on @${lead.handle}`;
     }
     state.nextAt = now + (fast ? 1500 : F.randomGap());
-    addLog({ handle: lead.handle, result: r.result, followed: !!r.followed, liked: !!r.liked, likes: r.likes || 0, likeWhy: r.likeWhy || '', private: !!r.private, note: r.note || '' });
+    addLog({ handle: lead.handle, result: r.result, followed: !!r.followed, liked: !!r.liked, likes: r.likes || 0, likeWhy: r.likeWhy || '', private: !!r.private, note: r.note || '', shot: r.shot || '' });
     await save();
     logAirtable(lead.id, r, false);
     if (r.followed || r.result === 'already') {
@@ -276,7 +301,7 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, e
       if (r.followed || r.clicked) (F.recordFollow(state, now), note('follow', now));
       if (r.likesDone) note('like', now, r.likesDone);
       if (r.result === 'blocked') state.pausedUntil = now + F.LIMITS.blockPauseMs;
-      addLog({ handle, result: r.result, followed: !!r.followed, liked: !!r.liked, likes: r.likes || 0, likeWhy: r.likeWhy || '', private: !!r.private, note: r.note || '', afterSend });
+      addLog({ handle, result: r.result, followed: !!r.followed, liked: !!r.liked, likes: r.likes || 0, likeWhy: r.likeWhy || '', private: !!r.private, note: r.note || '', afterSend, shot: r.shot || '' });
       logAirtable(airtableId, r, afterSend);
       r.line = summary(r, afterSend);
       await save();
@@ -307,12 +332,14 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, e
     },
     // The Follow screen's "Follow + like now": the same step a voice note triggers, on one account, in the follow
     // tab, right away (within the safety limits). Returns what happened, in the words the IG log gets.
-    async engageNow(handle, airtableId) {
+    // After a voice note the same step runs here too (afterSend = true), in the follow tab rather than the tab
+    // that sent: Instagram keeps the chat open over the pages in that tab, and the clicks under it don't take.
+    async engageNow(handle, airtableId, afterSend = false) {
       while (busy) await new Promise((r) => setTimeout(r, 400));
       busy = true;
       try {
-        const r = await this.engage(view().webContents, { handle, airtableId }, false);
-        return { ...r, line: r.line || summary(r, false) };
+        const r = await this.engage(view().webContents, { handle, airtableId }, afterSend);
+        return { ...r, line: r.line || summary(r, afterSend) };
       } finally {
         busy = false;
         if (state.enabled) tick();

@@ -158,7 +158,10 @@ export async function followPage(action) {
   const likeState = () => (likeButtons('Unlike').length ? 'liked' : likeButtons('Like').length ? 'like' : '');
   const dismiss = () => byText(/^not now$/i)?.click();
 
-  // The point to click on a target, or a direct click when something covers it.
+  // What an element is, for a log line: <div role=dialog "Close"> "Turn on notifications?".
+  const describe = (el) => `<${el.tagName.toLowerCase()}${el.getAttribute('role') ? ` role=${el.getAttribute('role')}` : ''}${el.getAttribute('aria-label') ? ` "${el.getAttribute('aria-label')}"` : ''}> "${(el.innerText || '').trim().replace(/\s+/g, ' ').slice(0, 50)}"`;
+  // The point to click on a target. When something covers it, the click is made from the page instead, and
+  // `covered` says what was in the way (Instagram ignores such clicks, so the log needs to say).
   const point = (el) => {
     const target = el.closest('button, [role=button], a') || el;
     target.scrollIntoView({ block: 'center', inline: 'center' });
@@ -168,9 +171,35 @@ export async function followPage(action) {
     const hit = document.elementFromPoint(x, y);
     if (hit && target.contains(hit)) return { x, y };
     target.click();
-    return { clicked: true };
+    return { clicked: true, covered: hit ? describe(hit) : 'nothing at that point (off screen?)' };
+  };
+  // Something sitting over the page: a chat window Instagram keeps open over the profile, or a dialog. Returns
+  // what it is and the point of its Close button (or null for nothing in the way).
+  const cover = () => {
+    const main = document.querySelector('main');
+    const chatBox = [...document.querySelectorAll('[role=textbox][contenteditable=true]')].find((b) => shown(b) && !(main && main.contains(b)));
+    const dialog = [...document.querySelectorAll('[role=dialog], [role=alertdialog]')].find(shown);
+    const closeIn = (root) => [...root.querySelectorAll('[aria-label="Close"], [aria-label="Close chat"], [aria-label="Dismiss"], button, [role=button]')].find((b) => shown(b) && (/^close/i.test(b.getAttribute('aria-label') || '') || /^(close|not now|dismiss|cancel)$/i.test(label(b)) || b.querySelector('svg[aria-label="Close"]')));
+    // The window around a chat box: its dialog, else the nearest ancestor with a Close button, else the whole panel.
+    let over = chatBox ? chatBox.closest('[role=dialog], [role=alertdialog]') : dialog;
+    if (chatBox && !over) {
+      for (let a = chatBox.parentElement; a && a !== document.body; a = a.parentElement) {
+        over = a;
+        if (closeIn(a)) break;
+      }
+    }
+    if (!over) return null;
+    const closeBtn = closeIn(over);
+    const what = chatBox ? `a chat window (${describe(over)})` : describe(over);
+    if (!closeBtn) return { what, point: null };
+    const r = closeBtn.getBoundingClientRect();
+    return { what, point: { x: r.left + r.width / 2, y: r.top + r.height / 2 } };
   };
 
+  if (action === 'cover') {
+    await sleep(400);
+    return cover();
+  }
   if (action === 'profile') {
     const settled = await waitFor(() => blocked() || loggedOut() || notFound() || followState(), 15000);
     if (!settled) return { state: 'unknown' };

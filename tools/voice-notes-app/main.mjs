@@ -408,7 +408,8 @@ ipcMain.handle('clip:reveal', (_e, file) => shell.showItemInFolder(file));
 // The recorder shows the follow tab on the right while its Follow screen is open.
 ipcMain.handle('pane:show', (_e, which) => win.contentView.addChildView({ follow: followView, send: sendView }[which] || igView));
 // After a voice note sends: follow them and like their 1st and 4th posts, in the hidden send tab.
-ipcMain.handle('ig:engage', (_e, handle, airtableId) => quietly(() => follower.engage(tab('send'), { handle, airtableId })));
+// In the follow tab (never the tab that sent: Instagram keeps the chat open over its pages, which swallows clicks).
+ipcMain.handle('ig:engage', (_e, handle, airtableId) => quietly(() => follower.engageNow(handle, airtableId, true)));
 
 // ---------- Replies: read the DM inbox and answer in a thread, in the hidden send tab ----------
 const runDm = (wc, action, arg) => wc.executeJavaScript(`(${dmPage})(${JSON.stringify(action)}, ${JSON.stringify(arg ?? null)})`, true);
@@ -864,6 +865,11 @@ app.whenReady().then(async () => {
     igBase: IG_BASE,
     click: clickPoint,
     dblclick: doubleClickPoint,
+    key: async (wc, keyCode) => {
+      wc.sendInputEvent({ type: 'keyDown', keyCode });
+      wc.sendInputEvent({ type: 'keyUp', keyCode });
+    },
+    snap: (name, report) => snapTab('follow', name, report),
     emit: (s) => toRecorder(s, 'follow:status'),
     onFollowed: (m) => toRecorder(m, 'follow:followed'),
     // Test runs only: short gaps between accounts. The daily limit still applies.

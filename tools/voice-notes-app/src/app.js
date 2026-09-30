@@ -1538,7 +1538,7 @@ function paintQueue() {
     : cur.reply
       ? [h('b', {}, `Replying to @${cur.handle}`), '...']
       : cur.engage
-        ? [h('b', {}, `Following @${cur.handle}`), ' and liking 2 posts...']
+        ? [h('b', {}, `Following @${cur.handle}`), ' and liking 2 posts (in the follow tab)...']
         : [h('b', {}, `Sending to @${cur.handle}`), ` ${cur.text.replace(/\s*\(\d+:\d+\)\.\.\.$/, '...')}`];
   el.replaceChildren(
     h('span', { class: 'grow' }, ...what, `${left}${more}`),
@@ -3399,7 +3399,14 @@ function followView() {
           'div',
           { class: 'card log' },
           f.log.map((e) =>
-            h('div', { class: 'log-row' }, h('span', { class: 'muted small' }, clock(e.at)), e.handle ? h('b', { class: 'small' }, `@${e.handle}`) : null, h('span', { class: `small ${logClass(e)}` }, logText(e))),
+            h(
+              'div',
+              { class: 'log-row' },
+              h('span', { class: 'muted small' }, clock(e.at)),
+              e.handle ? h('b', { class: 'small' }, `@${e.handle}`) : null,
+              h('span', { class: `small ${logClass(e)}` }, logText(e)),
+              e.shot ? h('button', { class: 'link', onclick: () => window.api.revealShot(e.shot) }, 'See what Instagram showed') : null,
+            ),
           ),
         )
       : h('p', { class: 'muted small' }, 'Nothing yet.'),
