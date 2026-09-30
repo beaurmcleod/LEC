@@ -38,6 +38,81 @@ export async function dmPage(action, arg) {
     return { state: 'ok', threads };
   }
 
+  // The inbox list as it is on screen right now, for the unread watcher: each row's name, preview, whether it
+  // looks unread, and whether the last message in it is ours or theirs. Rows are thread links when Instagram
+  // makes them links, and otherwise found by layout: a round profile picture with a name and a preview beside it.
+  // Nothing is clicked or loaded, so it can run every minute. `arg.report` returns plain text for troubleshooting.
+  if (action === 'inboxScan' || action === 'inboxReport') {
+    await waitFor(() => loggedOut() || document.querySelector('a[href^="/direct/t/"], img'), 8000);
+    if (loggedOut()) return action === 'inboxReport' ? 'Instagram is logged out.' : { state: 'loggedout', rows: [] };
+    // "Turn on notifications?" covers the list the first time.
+    [...document.querySelectorAll('button, [role=button]')].find((b) => shown(b) && /^not now$/i.test(text(b)))?.click();
+    await sleep(400);
+    const when = /^(now|just now|\d+\s*(s|m|h|d|w|min|mins|hr|hrs|sec|secs)|\d{1,2}:\d{2}\s*[ap]m|mon|tue|wed|thu|fri|sat|sun|yesterday|active.*)$/i;
+    const linesOf = (el) =>
+      (el.innerText || '')
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean);
+    const found = [];
+    let via = 'links';
+    for (const a of document.querySelectorAll('a[href^="/direct/t/"]')) if (shown(a)) found.push({ el: a, href: a.getAttribute('href') });
+    if (!found.length) {
+      via = 'layout';
+      const seen = new Set();
+      for (const img of document.querySelectorAll('img, [role=img]')) {
+        if (!shown(img)) continue;
+        const b = img.getBoundingClientRect();
+        if (b.width < 28 || b.width > 90 || Math.abs(b.width - b.height) > 6 || b.left > innerWidth * 0.5) continue;
+        for (let a = img.parentElement; a && a !== document.body; a = a.parentElement) {
+          const r = a.getBoundingClientRect();
+          if (r.height > 130) break;
+          if (r.width >= 200 && linesOf(a).length >= 2) {
+            if (!seen.has(a)) {
+              seen.add(a);
+              found.push({ el: a, href: a.closest('a')?.getAttribute('href') || '' });
+            }
+            break;
+          }
+        }
+      }
+    }
+    const weight = (el, words) => {
+      const leaf = [...el.querySelectorAll('*')].find((x) => shown(x) && x.children.length === 0 && (x.textContent || '').trim() && words.startsWith((x.textContent || '').trim().slice(0, 12)));
+      return leaf ? parseInt(getComputedStyle(leaf).fontWeight, 10) || 400 : 0;
+    };
+    const unreadHow = (el, preview) => {
+      if (el.querySelector('[aria-label*="unread" i]')) return 'label';
+      for (const d of el.querySelectorAll('div, span')) {
+        if (!shown(d)) continue;
+        const b = d.getBoundingClientRect();
+        if (b.width < 6 || b.width > 14 || Math.abs(b.width - b.height) > 2) continue;
+        const cs = getComputedStyle(d);
+        const round = cs.borderRadius.includes('%') ? parseFloat(cs.borderRadius) >= 40 : parseFloat(cs.borderRadius) >= b.width / 2 - 1;
+        const m = /rgba?\((\d+), ?(\d+), ?(\d+)/.exec(cs.backgroundColor);
+        if (round && m && +m[3] > +m[1] + 60 && +m[3] > 150) return 'dot';
+      }
+      return preview && weight(el, preview) >= 600 ? 'bold' : '';
+    };
+    const rows = found
+      .map(({ el, href }) => {
+        const lines = linesOf(el);
+        const name = lines[0] || '';
+        const rest = lines.slice(1).filter((l) => !when.test(l));
+        // The preview often carries the time after a dot: "Hey send the details! · 2h".
+        const preview = rest.join(' ').replace(/\s*[·•]\s*(now|\d+\s*(s|m|h|d|w|min|mins|hr|hrs)|\d{1,2}:\d{2}\s*[ap]m|mon|tue|wed|thu|fri|sat|sun|yesterday)\s*$/i, '').trim();
+        return { name, preview, href: href || '', unread: unreadHow(el, preview), last: !preview ? '' : /^you\b/i.test(preview) ? 'ours' : 'theirs', top: Math.round(el.getBoundingClientRect().top), raw: lines.slice(0, 5) };
+      })
+      .filter((r) => r.name);
+    if (action === 'inboxReport') {
+      const out = [`address ${location.pathname}`, `window ${innerWidth}x${innerHeight}`, `rows found by ${via}: ${rows.length}`, ''];
+      for (const r of rows.slice(0, 25)) out.push(`  ${r.unread ? `UNREAD(${r.unread})` : 'read'} ${r.last || '?'} ${JSON.stringify(r.raw)}${r.href ? ` ${r.href}` : ''}`);
+      if (!rows.length) out.push('text on the page:', (document.body.innerText || '').slice(0, 1500));
+      return out.join('\n');
+    }
+    return { state: rows.length ? 'ok' : 'unreadable', via, rows: rows.slice(0, 60).map(({ raw, ...r }) => r) };
+  }
+
   // A thread: the messages on screen, oldest first, each marked as ours (right side) or theirs (left side).
   if (action === 'thread') {
     await waitFor(() => loggedOut() || document.querySelector('[role=textbox]'), 15000);
@@ -147,13 +222,18 @@ export async function dmPage(action, arg) {
     };
   }
 
-  // The open chat as a conversation, oldest first: who sent each message (`arg` is the lead's handle; anyone else
-  // is us), its text, and whether it's a voice message. Who sent it comes from which side of the chat it sits on
-  // (ours on the right, theirs on the left with their picture), since the name in Instagram's hidden "React to
-  // message from <name>" label isn't always their handle; a label that is their handle settles it as theirs. With
-  // no such labels on the page at all, the chat is read from its text and Play buttons by where they sit.
+  // The open chat as a conversation, oldest first: who sent each message, its text, and whether it's a voice
+  // message. The app sends exactly one voice note to a lead, so the first voice message in the chat is ours, and
+  // every other message is placed against it: on the same side as our note is ours, the far side is theirs. That
+  // holds whatever the page's layout or labels are. Anything above our note (the conversation's intro with their
+  // name) isn't part of the conversation and is left out. `anchored` says whether our note was found; without it
+  // nothing can be placed and the app treats the chat as unreadable rather than guess. `arg` is the lead's handle,
+  // or { handle, names } with the names the lead goes by.
   if (action === 'chatMessages') {
-    const lead = String(arg || '').toLowerCase().replace(/^@/, '');
+    const opts = arg && typeof arg === 'object' ? arg : { handle: arg };
+    const lead = String(opts.handle || '').toLowerCase().replace(/^@/, '');
+    const norm = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+    const known = new Set([lead, ...(opts.names || [])].map(norm).filter((n) => n.length >= 4));
     const box = [...document.querySelectorAll('[role=textbox]')].filter(shown).pop();
     let chat = document.body;
     for (let el = box?.parentElement; el && el !== document.body; el = el.parentElement) {
@@ -168,7 +248,8 @@ export async function dmPage(action, arg) {
     const noise = /^(seen|sent|delivered|sending\.*|view transcription|reply|react|more|edited|\d{1,2}:\d{2}( ?[ap]m)?|\d+:\d{2}|(mon|tue|wed|thu|fri|sat|sun)[a-z]*,? (at )?\d{1,2}:\d{2} ?[ap]m|[a-z]{3} \d{1,2}, \d{4},? \d{1,2}:\d{2} ?[ap]m|(mon|tue|wed|thu|fri|sat|sun)[a-z]* \d{1,2}:\d{2} ?[ap]m|today|yesterday)$/i;
     const hover = '[aria-label^="React to message"], [aria-label="More"], [aria-label="Reply"], [aria-label="Copy"], [aria-label="Forward"], [role=textbox]';
     const ownText = (el) => [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).filter(Boolean).join(' ');
-    const isPlay = (el) => el.matches('[aria-label="Play"], [aria-label="Pause"]');
+    // A voice message has a Play (or Pause) button, and a "View transcription" link under it.
+    const isPlay = (el) => el.matches('[aria-label="Play"], [aria-label="Pause"]') || /^view transcription$/i.test(ownText(el));
     const sideOf = (b) => (cr.right - b.right < b.left - cr.left ? 'right' : 'left');
     // Where a message's own content (its text and Play button) sits: the row also holds hover controls off to one side.
     const contentBox = (row) => {
@@ -186,7 +267,7 @@ export async function dmPage(action, arg) {
     };
     const seen = new Set();
     const names = new Set();
-    let messages = [];
+    const messages = [];
     for (const label of [...chat.querySelectorAll(`[aria-label^="${REACT}"]`)]) {
       let row = null;
       for (let a = label.parentElement; a && a !== chat.parentElement && count(a) === 1; a = a.parentElement) {
@@ -200,10 +281,10 @@ export async function dmPage(action, arg) {
       const who = label.getAttribute('aria-label').slice(REACT.length).trim();
       names.add(who);
       const lines = (row.innerText || '').split('\n').map((l) => l.trim()).filter((l) => l && !noise.test(l) && l.toLowerCase() !== who.toLowerCase());
-      const voice = !!row.querySelector('[aria-label="Play"], [aria-label="Pause"]');
-      const side = sideOf(contentBox(row));
+      const voice = !!row.querySelector('[aria-label="Play"], [aria-label="Pause"]') || /(^|\n)view transcription(\n|$)/i.test(row.innerText || '');
+      const cb = contentBox(row);
       const theirsByName = !!lead && who.toLowerCase() === lead;
-      messages.push({ who, mine: theirsByName ? false : side === 'right', text: lines.join('\n').slice(0, 2000), voice, top: row.getBoundingClientRect().top });
+      messages.push({ who, mine: theirsByName ? false : sideOf(cb) === 'right', text: lines.join('\n').slice(0, 2000), voice, top: row.getBoundingClientRect().top, cx: (cb.left + cb.right) / 2 });
     }
     // Text and Play buttons the labels didn't cover (Instagram may label only some messages, or none), read by
     // where they sit: below the conversation header, above the message box, and off to one side.
@@ -220,26 +301,39 @@ export async function dmPage(action, arg) {
       const b = el.getBoundingClientRect();
       const floor = box ? box.getBoundingClientRect().top - 8 : cr.bottom - 40;
       if (b.top < cr.top + 90 || b.top >= floor) continue;
-      const leftGap = b.left - cr.left;
-      const rightGap = cr.right - b.right;
-      // The conversation's intro (name, "View profile") and the time stamps sit in the middle.
-      if (Math.abs(leftGap - rightGap) < cr.width * 0.12) continue;
-      items.push({ top: b.top, bottom: b.bottom, mine: rightGap < leftGap, text: play ? '' : t, voice: play });
+      items.push({ top: b.top, bottom: b.bottom, cx: (b.left + b.right) / 2, mine: sideOf(b) === 'right', text: play ? '' : t, voice: play });
     }
     items.sort((a, b) => a.top - b.top);
     const extras = [];
     for (const it of items) {
       const prev = extras[extras.length - 1];
-      if (prev && prev.mine === it.mine && !prev.voice && !it.voice && it.top - prev.bottom < 24) {
+      const near = prev && Math.abs(prev.cx - it.cx) < cr.width * 0.3;
+      if (near && prev.voice && it.voice && it.top - prev.bottom < 90) {
+        prev.bottom = Math.max(prev.bottom, it.bottom); // the Play button and its "View transcription" are one message
+      } else if (near && !prev.voice && !it.voice && it.top - prev.bottom < 24) {
         prev.text = `${prev.text}\n${it.text}`.slice(0, 2000);
         prev.bottom = it.bottom;
-      } else extras.push({ who: '', mine: it.mine, text: it.text, voice: it.voice, top: it.top, bottom: it.bottom });
+      } else extras.push({ who: '', mine: it.mine, text: it.text, voice: it.voice, top: it.top, bottom: it.bottom, cx: it.cx });
     }
+    const all = messages.concat(extras).sort((a, b) => a.top - b.top);
     const via = extras.length ? (messages.length ? 'labels+layout' : 'layout') : 'labels';
-    messages = messages.concat(extras);
-    messages.sort((a, b) => a.top - b.top);
+    const first = all.findIndex((m) => m.voice);
+    let out = all;
+    let skipped = 0;
+    if (first >= 0) {
+      const ours = all[first];
+      const far = cr.width * 0.3;
+      out = [];
+      all.forEach((m, i) => {
+        if (i < first) return skipped++;
+        if (i > first && !m.voice && known.has(norm(m.text))) return skipped++;
+        out.push({ ...m, mine: i === first ? true : Math.abs(m.cx - ours.cx) <= far });
+      });
+    }
     return {
-      messages: messages.slice(-30).map(({ who, mine, text: t, voice }) => ({ who, mine, text: t, voice })),
+      messages: out.slice(-30).map(({ who, mine, text: t, voice }) => ({ who, mine, text: t, voice })),
+      anchored: first >= 0,
+      skipped,
       chat: chat === document.body ? 'whole page' : 'chat window',
       via,
       names: [...names].slice(0, 6),

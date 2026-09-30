@@ -1,4 +1,4 @@
-import { app, BaseWindow, WebContentsView, clipboard, ipcMain, screen, session, shell, systemPreferences, webContents } from 'electron';
+import { app, BaseWindow, Notification, WebContentsView, clipboard, ipcMain, powerSaveBlocker, screen, session, shell, systemPreferences, webContents } from 'electron';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -32,6 +32,9 @@ let followView;
 let finder;
 // A third, hidden one where voice notes send in the background while you work on the next lead.
 let sendView;
+// A fourth one that just sits on the DM inbox, so new messages can be spotted within a minute without loading
+// anything: Instagram keeps that page current by itself.
+let inboxView;
 let follower;
 let injected;
 // The clip currently loaded into each tab's mic ('dm' is the one you see, 'send' the background one).
@@ -49,7 +52,7 @@ const isInstagram = (url) => {
 
 const toRecorder = (m, channel = 'ig:status') => win && recorder.webContents.send(channel, m);
 const ig = () => igView.webContents;
-const tab = (target) => (target === 'send' ? sendView : target === 'follow' ? followView : igView).webContents;
+const tab = (target) => (target === 'send' ? sendView : target === 'follow' ? followView : target === 'inbox' ? inboxView : igView).webContents;
 const targetOf = (wc) => (sendView && wc === sendView.webContents ? 'send' : 'dm');
 
 function layout() {
@@ -60,6 +63,7 @@ function layout() {
   igView.setBounds(right);
   followView.setBounds(right);
   sendView.setBounds(right);
+  inboxView.setBounds(right);
 }
 
 function createWindow() {
@@ -75,7 +79,8 @@ function createWindow() {
     backgroundColor: '#2c2c34',
   });
   recorder = new WebContentsView({
-    webPreferences: { preload: path.join(dir, 'preload.cjs'), contextIsolation: true, sandbox: true },
+    // Replies are watched while the window is hidden or behind others, so its timers must keep running.
+    webPreferences: { preload: path.join(dir, 'preload.cjs'), contextIsolation: true, sandbox: true, backgroundThrottling: false },
   });
   igView = new WebContentsView({
     webPreferences: {
@@ -101,18 +106,33 @@ function createWindow() {
       backgroundThrottling: false,
     },
   });
+  inboxView = new WebContentsView({
+    webPreferences: { partition: 'persist:instagram', contextIsolation: true, sandbox: true, backgroundThrottling: false },
+  });
+  inboxView.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  inboxView.webContents.loadURL('about:blank');
   // Instagram can ask to stay on a page that holds an unsent recording. Electron then blocks every later load in
   // that tab without a word, so one stuck send would make all the ones after it fail. Let the tab leave.
-  for (const v of [igView, followView, sendView]) v.webContents.on('will-prevent-unload', (e) => e.preventDefault());
+  for (const v of [igView, followView, sendView, inboxView]) v.webContents.on('will-prevent-unload', (e) => e.preventDefault());
   // The DM tab goes on top; the follow and send tabs work behind it.
   win.contentView.addChildView(recorder);
+  win.contentView.addChildView(inboxView);
   win.contentView.addChildView(followView);
   win.contentView.addChildView(sendView);
   win.contentView.addChildView(igView);
   layout();
   // Follows the content area rather than the window, which also catches the menu bar settling and full screen.
   win.contentView.on('bounds-changed', layout);
+  // With replies being watched, closing the window on a Mac hides it and the app keeps working (and notifying)
+  // in the background; the dock icon or a notification brings it back, and Quit really quits.
+  win.on('close', (e) => {
+    if (keepRunning && !quitting && process.platform === 'darwin') {
+      e.preventDefault();
+      win.hide();
+    }
+  });
   win.on('closed', () => {
+    inboxView.webContents.close();
     recorder.webContents.close();
     igView.webContents.close();
     followView.webContents.close();
@@ -259,7 +279,7 @@ function watchFocus() {
   igView.webContents.on('focus', () => {
     if (!driving) front = igView.webContents;
   });
-  for (const v of [sendView, followView]) v.webContents.on('focus', () => setImmediate(giveBack));
+  for (const v of [sendView, followView, inboxView]) v.webContents.on('focus', () => setImmediate(giveBack));
 }
 
 // Runs an app-driven load or click in the DM tab, then puts the keyboard back where you had it.
@@ -397,7 +417,7 @@ ipcMain.handle('dm:thread', (_e, href) =>
 // messages can take a moment to load, so it reads a few times and keeps the fullest read.
 // A plain-text report of what a lead's chat looks like to the app (what it read, and where each piece of text
 // sits), for troubleshooting a reply the app doesn't see. Nothing is sent.
-ipcMain.handle('dm:chatReport', (_e, target = 'send', handle) =>
+ipcMain.handle('dm:chatReport', (_e, target = 'send', handle, names = []) =>
   quietly(async () => {
     const wc = tab(target);
     try {
@@ -407,12 +427,12 @@ ipcMain.handle('dm:chatReport', (_e, target = 'send', handle) =>
     }
     await pause(3500);
     const rep = await runDm(wc, 'chatReport', handle).catch((e) => `The report failed: ${e.message}`);
-    const read = await runDm(wc, 'chatMessages', handle).catch(() => null);
+    const read = await runDm(wc, 'chatMessages', { handle, names }).catch(() => null);
     const said = (read?.messages || []).map((m) => `  ${m.mine ? 'ours  ' : 'theirs'} ${m.voice ? '[voice] ' : ''}${JSON.stringify((m.text || '').slice(0, 80))}`);
-    return [`@${handle}: what the app read (${read?.via || '?'}; label names: ${(read?.names || []).join(' | ') || 'none'})`, ...(said.length ? said : ['  (no messages)']), '', rep].join('\n');
+    return [`@${handle}: what the app read (${read?.via || '?'}${read?.anchored ? '' : '; OUR VOICE NOTE NOT FOUND, so nothing is placed'}; label names: ${(read?.names || []).join(' | ') || 'none'}; left out above our note: ${read?.skipped ?? '?'})`, ...(said.length ? said : ['  (no messages)']), '', rep].join('\n');
   }),
 );
-ipcMain.handle('dm:readChat', (_e, target = 'send', handle) =>
+ipcMain.handle('dm:readChat', (_e, target = 'send', handle, names = []) =>
   quietly(async () => {
     const wc = tab(target);
     try {
@@ -420,16 +440,88 @@ ipcMain.handle('dm:readChat', (_e, target = 'send', handle) =>
     } catch (e) {
       return { state: /log ?in/i.test(wc.getURL()) ? 'loggedout' : 'nodm', error: e.message, messages: [] };
     }
-    let best = { messages: [] };
+    let best = { messages: [], anchored: false };
+    const better = (a, b) => (!!a.anchored !== !!b.anchored ? !!a.anchored : a.messages.length >= b.messages.length);
     for (let i = 0; i < 4; i++) {
       await pause(1200);
-      const r = await runDm(wc, 'chatMessages', handle).catch(() => null);
+      const r = await runDm(wc, 'chatMessages', { handle, names }).catch(() => null);
       if (r?.loggedOut) return { state: 'loggedout', messages: [] };
-      if (r && r.messages.length >= best.messages.length) best = r;
+      // The fullest read wins, and one that found our voice note beats one that didn't.
+      if (r && better(r, best)) best = r;
     }
     return { state: 'ok', ...best };
   }),
 );
+
+// The inbox watcher: reads the inbox list in its own tab, without reloading it (Instagram keeps the list current
+// by itself), and reloads it only now and then or when it has wandered off. Returns the rows, see dmPage 'inboxScan'.
+let inboxLoadedAt = 0;
+const inboxTab = async () => {
+  const wc = inboxView.webContents;
+  if (!pathOf(wc.getURL()).startsWith('/direct/inbox') || Date.now() - inboxLoadedAt > 25 * 60 * 1000) {
+    await wc.loadURL(`${IG_BASE}/direct/inbox/`).catch(() => {});
+    inboxLoadedAt = Date.now();
+  }
+  return wc;
+};
+ipcMain.handle('dm:unreadScan', () =>
+  quietly(async () => {
+    const wc = await inboxTab();
+    const r = await runDm(wc, 'inboxScan').catch((e) => ({ state: 'error', error: e.message, rows: [] }));
+    if (r.state !== 'ok') inboxLoadedAt = 0; // load it fresh next time
+    return r;
+  }),
+);
+ipcMain.handle('dm:inboxReport', () =>
+  quietly(async () => {
+    const wc = await inboxTab();
+    return runDm(wc, 'inboxReport').catch((e) => `The report failed: ${e.message}`);
+  }),
+);
+
+// ---------- Notifications, the dock badge, and running in the background ----------
+let keepRunning = false;
+let quitting = false;
+let blocker = -1;
+const notified = [];
+function showApp() {
+  if (!win) return createWindow();
+  if (process.platform === 'darwin') app.dock?.show();
+  win.show();
+  win.focus();
+}
+app.on('before-quit', () => (quitting = true));
+// A notification that can be clicked: brings the app forward on the tab named (Replies by default).
+ipcMain.handle('notify', (_e, { title, body, tab: to = 'replies' } = {}) => {
+  notified.push({ title, body, at: Date.now() });
+  if (notified.length > 50) notified.shift();
+  if (Notification.isSupported()) {
+    const n = new Notification({ title: String(title || ''), body: String(body || ''), silent: false });
+    n.on('click', () => {
+      showApp();
+      toRecorder({ tab: to }, 'nav:tab');
+    });
+    n.show();
+  }
+  // A bounce in the dock until you look, when the app isn't the one in front.
+  if (process.platform === 'darwin' && win && !win.isFocused()) app.dock?.bounce('informational');
+  return true;
+});
+ipcMain.handle('notify:log', () => notified);
+ipcMain.handle('app:badge', (_e, n) => {
+  app.setBadgeCount(Math.max(0, Number(n) || 0));
+  return true;
+});
+// On while replies are being watched: the window hides instead of closing, and the Mac doesn't sleep the app.
+ipcMain.handle('app:keepRunning', (_e, on) => {
+  keepRunning = !!on;
+  if (keepRunning && blocker < 0) blocker = powerSaveBlocker.start('prevent-app-suspension');
+  if (!keepRunning && blocker >= 0) {
+    powerSaveBlocker.stop(blocker);
+    blocker = -1;
+  }
+  return keepRunning;
+});
 
 ipcMain.handle('dm:send', (_e, { href, handle, text }) =>
   quietly(async () => {
@@ -768,7 +860,5 @@ app.whenReady().then(async () => {
   await finder.init();
 });
 
-app.on('activate', () => {
-  if (!win) createWindow();
-});
+app.on('activate', () => showApp());
 app.on('window-all-closed', () => app.quit());

@@ -1,5 +1,6 @@
 // Replies to voice notes: reading what a lead wrote back, their partner code and invite on torreylabs.store,
 // and the message that goes out. Pure functions, so they can be tested without the app.
+import { kind } from './leads.js';
 
 // torreylabs.store's own rules for a referral code (the bit after ?ref=): 4 to 25 letters, digits or single
 // dashes, starting and ending with a letter or digit, not a reserved word, not a TL- or CR- prefix.
@@ -68,17 +69,28 @@ export function quickIntent(text) {
   return 'unclear';
 }
 
-// The message with their code and how to get set up, when the model isn't configured. Personal enough to send.
+// What they offer, in words that follow "your": their own "what they do" if the lead has one ("personal
+// training"), otherwise the kind of place it is ("studio"). Used where the model isn't writing the message.
+export function offerPhrase(p) {
+  const note = String(p.note || '').trim();
+  if (note) return note;
+  const k = kind(p.category, p.role, p.business);
+  return k === 'business' ? '' : k;
+}
+
+// The message with their code and how to get set up, when the model isn't configured. It has the same shape as
+// the one the model writes: a yes from them, who we are, why them, how it works, their code and three steps, the
+// delivery line, and an open door for questions.
 export function fallbackMessage(p, { code, invite, link, from = 'Garrett', percent = 20 }) {
-  const name = p.first || '';
-  const biz = p.business && p.business !== p.name ? p.business : '';
-  const hey = name ? `${name}, ` : '';
-  const yours = biz ? ` for ${biz}` : '';
+  const name = String(p.first || '').trim();
+  const biz = p.business && p.business !== name && p.business !== p.name ? p.business : '';
+  const offer = offerPhrase(p);
+  const fit = offer ? `, and your ${offer} community feels like a great fit` : ', and this feels like a great fit';
   return [
-    `${hey}love it. I set up your partner code${yours}: ${code}`,
-    `Here's how it works: anyone who uses your link gets ${percent}% off their first order, and you get ${percent}% of everything they order, for life. Link to share: ${link}`,
-    `Your portal (your link, a QR code, and every referral and payout): ${invite} — make your account with your email and your code is already on it.`,
-    `Any questions, just ask. ${from}`,
+    `Definitely${name ? `, ${name}` : ''}! We're Torrey Labs, a San Diego research-peptide company. We're making lab-tested peptides more accessible and more affordable, with third-party testing on every batch. We're partnering with small businesses like ${biz || 'yours'}${fit}.`,
+    `How it works: you share a simple code. Anyone who uses it gets ${percent}% off their first order, and you earn ${percent}% on every order they place, for life. Take it as cash, or as store credit worth 25% more.`,
+    `I made you a code: ${code}\n1) Open ${invite} to set up your portal (the code's already on it)\n2) Share ${link} or tell people to use ${code}`,
+    `We also offer in-person delivery on larger orders, or pickup. Everything is for research use only. Any questions at any point, just ask! – ${from}`,
   ].join('\n\n');
 }
 
@@ -96,29 +108,47 @@ export const hasSlots = (text) => Object.values(SLOTS).some((s) => String(text |
 // What the model is asked to do with a reply. Returns { system, user, schema } for a structured answer.
 export function replyPrompt(p, { text, history = [], from = 'Garrett', percent = 20, site = 'https://torreylabs.store' }) {
   const { code, invite, link } = SLOTS;
+  const first = String(p.first || '').trim();
+  const offer = offerPhrase(p);
   const facts = [
-    `Lead: ${p.first || p.name || 'unknown first name'}${p.business ? `, ${p.business}` : ''}${p.role ? ` (${p.role})` : ''}${p.category ? `, ${p.category}` : ''}, Instagram @${p.handle}.`,
+    `Lead: ${first || 'first name not known'}${p.business ? `, ${p.business}` : ''}${p.role ? ` (${p.role})` : ''}${p.category ? `, ${p.category}` : ''}, Instagram @${p.handle}.`,
+    offer ? `What they offer (use this to be specific about them): ${offer}.` : '',
     p.hook ? `Something true about them from research: ${p.hook}` : '',
-    p.bio ? `Their Instagram bio: ${p.bio.slice(0, 300)}` : '',
+    p.bio ? `Their Instagram bio: ${String(p.bio).slice(0, 300)}` : '',
   ].filter(Boolean);
   const convo = history.length ? `Earlier messages in the thread (newest last):\n${history.map((m) => `${m.mine ? from : 'Them'}: ${m.text}`).join('\n')}` : '';
   return {
-    system: `You are ${from}, who runs Torrey Labs, a small San Diego research-peptide supplier. You sent this person a short Instagram voice note pitching a partner deal, and they just replied. Write back the way ${from} texts: warm, quick, plain words, no hype, no emojis, no bullet points, no subject line, no sign-off block. Two to five short sentences unless the answer needs more. Never invent facts about Torrey Labs beyond these:
-- Every product has an independent lab report, published by lot number, that anyone can read at ${site} without an account.
-- The store is invite-only.
-- Partner deal: they get their own link. Anyone who uses it gets ${percent}% off their first order, and the partner earns ${percent}% of everything that customer orders, for life, on the item subtotal. Payouts are cash after 14 days, or store credit right away at a 25% bonus.
+    system: `You are ${from}, who runs Torrey Labs, a small San Diego research-peptide company. You sent this person a short Instagram voice note about partnering, and they just wrote back. Write the way ${from} texts: warm, quick, plain words, no hype, no emojis, no subject line. Never invent facts about Torrey Labs beyond these:
+- Torrey Labs is a San Diego company making research peptides more accessible and more affordable. Every batch is third-party tested, and every product has an independent lab report, published by lot number, that anyone can read at ${site} without an account.
+- The store is invite-only. We're looking to partner with small businesses.
+- Partner deal: they get a simple code. Anyone who uses it gets ${percent}% off their first order, and the partner earns ${percent}% of everything that customer orders, for life, on the item subtotal. They can take it as cash (paid after 14 days) or as store credit, which is worth 25% more.
 - Their partner portal shows their link, a QR code, every referral, and payouts. They sign up with their email at the invite link and their code is already set.
-- Products are for laboratory research use only, not for human or animal use, and nothing is medical advice. If they ask about dosing, effects, or use on people, say plainly that you can't advise on that and point them to the published lab reports and the learn page instead.
+- We offer in-person delivery in San Diego on orders over a certain amount, or pickup. Don't quote the amount.
+- Products are for laboratory research use only, not for human or animal use, and nothing is medical advice. Never make health, weight-loss, recovery or performance claims about the products. If they ask about dosing, effects, or use on people, say plainly that you can't advise on that and point them to the published lab reports.
 - Pricing is only visible inside the store; don't quote prices.
 If they ask something you can't answer from these facts, say you'll find out and get back to them rather than guessing.
 
-Decide the intent of their reply:
-- "yes": they want in, or are clearly asking for the link or code. Thank them briefly, then give them their code and how to get set up.
-- "question": they're interested but asked something or want more info. Answer it plainly from the facts above, then give them their code and how to get set up anyway, so they can start whenever they're ready.
-- "no": they're declining. Reply with one gracious sentence, no pitch.
-- "unclear": you can't tell what they mean (a laugh, an emoji, a "who is this"). Reply naturally and briefly to move it forward, without the code.
+First decide what their reply means:
+- "yes": they're interested: they want in, or are asking for the details, link or code ("send the details", "sure", "tell me more").
+- "question": they want more information first, or asked something ("what does it cost", "how does it work", "is this legit").
+- "no": they're declining or asking you to stop.
+- "unclear": you can't tell (a laugh, an emoji, "who is this").
 
-For "yes" and "question", the reply must include, written exactly as these placeholders, their partner code ${code}, their share link ${link}, and their portal invite ${invite}. The app fills them in. Work them in as short plain steps: 1) open ${invite} and make an account with your email: the code is already set on it; 2) your portal shows your link, a QR code, every referral and your payouts; 3) share ${link} or tell people to use code ${code}. Say the code is theirs, made for them.`,
+Then write the reply. Make it personal: use their first name if you have it, name their business, and say one specific thing they offer, taken only from the lead facts above (never guess one). If none is given, keep it general rather than inventing it.
+
+For "yes", write it in this shape, in your own natural words, about 110 to 140 words, with blank lines between the parts:
+1. "Definitely, <first name>!" then who we are in one sentence (Torrey Labs, San Diego, research peptides, more accessible and more affordable, third-party tested on every batch), then that we're partnering with small businesses like <their business> and why their <what they offer> community is a good fit.
+2. How it works: they share a simple code; anyone who uses it gets ${percent}% off their first order; they earn ${percent}% on every order, for life; cash or store credit worth 25% more.
+3. "I made you a code: ${code}" followed by two numbered steps: 1) open ${invite} to set up your portal (the code's already on it) 2) share ${link} or tell people to use ${code}.
+4. One line: in-person delivery on larger orders, or pickup; everything is for research use only; any questions at any point, just ask. Sign off "– ${from}".
+
+For "question", answer their question first in one or two plain sentences using only the facts above, then give the same shape more briefly (skip the company intro), so they can start whenever they're ready.
+
+For "no": one gracious sentence, no pitch, no code.
+
+For "unclear": reply naturally and briefly (one to three sentences) to move it forward, without the code.
+
+For "yes" and "question" the reply must contain, written exactly as these placeholders, their partner code ${code}, their share link ${link}, and their portal invite ${invite}. The app fills them in after the code is reserved. Never write a real code or link yourself.`,
     user: [...facts, convo, `Their reply just now: "${text}"`].filter(Boolean).join('\n\n'),
     schema: {
       type: 'object',
@@ -131,6 +161,54 @@ For "yes" and "question", the reply must include, written exactly as these place
       additionalProperties: false,
     },
   };
+}
+
+// ---------- The inbox: which unread rows are from leads ----------
+const flat = (s) => String(s || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '');
+const hrefKey = (h) => String(h || '').split(/[?#]/)[0].replace(/\/+$/, '').toLowerCase();
+
+// The names a lead goes by, for telling their chat's own text apart from what they wrote.
+export const leadNames = (p) => [p.business, p.name, p.first, p.handle].filter(Boolean);
+
+// Is this inbox row (a display name, or the handle when they have no display name) that lead?
+export function rowMatches(row, p) {
+  if (row.href && p.dm?.href && hrefKey(row.href) === hrefKey(p.dm.href)) return true;
+  const n = flat(row.name);
+  if (n.length < 3) return false;
+  if (n === flat(p.handle)) return true;
+  for (const c of [p.business, p.name]) {
+    const f = flat(c);
+    if (f.length < 3) continue;
+    if (n === f) return true;
+    if (Math.min(n.length, f.length) >= 6 && (n.includes(f) || f.includes(n))) return true;
+  }
+  const first = flat(p.first);
+  return first.length >= 4 && n === first;
+}
+
+// From one look at the inbox: the sent leads whose chat should be read now, and what to remember so a message
+// is looked at once. A row is worth reading when its last message is theirs and it's unread, or it's a message
+// not seen before. The first look at a row that is read already just notes its message (old messages aren't
+// acted on). `now` is passed in so this stays testable.
+export function inboxPlan(rows, prospects, now = Date.now()) {
+  const read = [];
+  const note = [];
+  let mine = 0;
+  let unread = 0;
+  for (const row of rows) {
+    if (row.unread) unread++;
+    const leads = prospects.filter((p) => p.status === 'sent' && p.handle && rowMatches(row, p));
+    if (leads.length) mine++;
+    if (row.last === 'ours' || !row.preview) continue;
+    for (const p of leads) {
+      const seen = p.inboxSeen;
+      if (seen && seen.preview === row.preview) continue;
+      if (p.inboxTryAt && now - p.inboxTryAt < 5 * 60 * 1000 && p.inboxTryPreview === row.preview) continue;
+      if (row.unread || seen) read.push({ p, row });
+      else note.push({ p, row });
+    }
+  }
+  return { read, note, rows: rows.length, unread, mine };
 }
 
 // Airtable field names the app writes when a lead replies.

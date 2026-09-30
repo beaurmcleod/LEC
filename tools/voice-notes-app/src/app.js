@@ -94,7 +94,9 @@ const DEFAULT_SETTINGS = {
   engageAfterSend: true,
   claude: { key: '' },
   torrey: { key: '', site: 'https://torreylabs.store', percent: 20 },
-  replies: { watch: true, everyMin: 10, from: 'Garrett', auto: true, delayMin: 15 },
+  // quick: look at the inbox for unread messages every minute; notify: a notification for each reply; background: keep
+  // working when the window is closed (Mac) and keep the Mac awake.
+  replies: { watch: true, everyMin: 10, from: 'Garrett', auto: true, delayMin: 4, quick: true, notify: true, background: true },
   // Finding accounts by hashtag: profiles read a day, and the hashtags (one per line).
   find: { perDay: discover.LIMITS.defaultPerDay, tags: discover.DEFAULT_TAGS.join('\n') },
   airtable: {
@@ -140,7 +142,7 @@ const S = {
   prospects: [],
   lens: {},
   said: {},
-  replies: { checking: false, lastAt: 0, note: '', issue: '' },
+  replies: { checking: false, lastAt: 0, note: '', issue: '', scan: null },
   rec: null,
   busy: '',
   armed: null,
@@ -938,7 +940,7 @@ async function runQueue() {
   if (S.bg.current) return;
   while (S.bg.jobs.length) {
     // Sends first, then replies going out, then looks at chats for replies, then checks of failed sends.
-    const rank = (j) => (j.engage ? 0 : j.samples ? 1 : j.reply ? 2 : j.replycheck ? 3 : j.audit ? 4 : 1);
+    const rank = (j) => (j.engage ? 0 : j.samples ? 1 : j.reply ? 2 : j.replycheck ? (j.urgent || j.hurry ? 2 : 3) : j.audit ? 4 : 1);
     const next = S.bg.jobs.reduce((best, j, k) => (rank(j) < rank(S.bg.jobs[best]) ? k : best), 0);
     const job = S.bg.jobs.splice(next, 1)[0];
     const p = S.prospects.find((x) => x.id === job.pid);
@@ -955,8 +957,8 @@ async function runQueue() {
       continue;
     }
     if (job.replycheck) {
-      if (p && p.status === 'sent') await replyCheckOne(p);
-      else replyBatchStep(false);
+      if (p && p.status === 'sent') await replyCheckOne(p, job);
+      else if (!job.urgent) replyBatchStep(false);
       continue;
     }
     if (!p || p.status !== 'sending') continue;
@@ -1064,13 +1066,21 @@ async function airtableReply(p, fields) {
   }
 }
 
-// Replies are read from each sent lead's own chat (their profile's Message button opens it; nothing is sent), since
-// Instagram's inbox list can't be read reliably. How often: leads messaged in the last two days every `everyMin`
-// minutes (10 at least), the last two weeks hourly, up to 30 days every 6 hours.
-function replyCadence(p) {
+// Replies are read from each sent lead's own chat (their profile's Message button opens it; nothing is sent).
+// The inbox watcher is what catches new messages, within a minute. While it works, the chat-by-chat sweep is
+// only a backstop for leads messaged in the last 3 days (whatever they wrote then is new), every 30 minutes, so
+// older chats are never read back. When the watcher can't read the inbox (or is off), the sweep does the work:
+// leads messaged in the last two days every `everyMin` minutes (10 at least), the last two weeks hourly, up to
+// 30 days every 6 hours. "Check now" always looks at every lead from the last 30 days.
+const watcherWorks = () => {
+  const sc = S.replies.scan;
+  return !!(S.settings.replies.quick && sc && !sc.issue && sc.rows > 0 && Date.now() - sc.at < 10 * 60 * 1000);
+};
+function replyCadence(p, { manual = false } = {}) {
   const last = Math.max(p.sentAt || 0, p.reply?.sentAt || 0, p.reply?.at || 0);
   const age = Date.now() - last;
   if (!last || age > 30 * DAY_MS) return null;
+  if (!manual && watcherWorks()) return age < 3 * DAY_MS ? 30 * 60 * 1000 : null;
   if (age < 2 * DAY_MS) return Math.max(10, Number(S.settings.replies.everyMin) || 10) * 60 * 1000;
   if (age < 14 * DAY_MS) return 60 * 60 * 1000;
   return 6 * 60 * 60 * 1000;
@@ -1084,7 +1094,7 @@ function checkReplies({ manual = false } = {}) {
   if (S.bg.current?.check) busy.add(S.bg.current.pid);
   const due = S.prospects.filter((p) => {
     if (p.status !== 'sent' || !p.handle || busy.has(p.id)) return false;
-    const every = replyCadence(p);
+    const every = replyCadence(p, { manual });
     return every && (manual || !p.replyCheckedAt || Date.now() - p.replyCheckedAt >= every);
   });
   if (!due.length) {
@@ -1124,7 +1134,7 @@ async function copyChatReport(handle) {
   paintQueue();
   toast(`Reading @${handle}'s chat...`);
   try {
-    const report = await window.api.chatReport('send', handle);
+    const report = await window.api.chatReport('send', handle, replies.leadNames(S.prospects.find((x) => x.handle === handle) || {}));
     const copied = await window.api.copyText(report).catch(() => false);
     toast(copied ? 'Report copied. Paste it into the chat.' : "Couldn't copy the report.", 6000);
   } catch (e) {
@@ -1152,33 +1162,150 @@ function noteSeen(p, r) {
     last: lastTheirs ? lastTheirs.text || '[voice message]' : '',
     lastIsTheirs: !!msgs.length && !msgs[msgs.length - 1].mine,
     via: r.via || '',
+    anchored: !!r.anchored,
   };
   S.replies.seen = [entry, ...(S.replies.seen || []).filter((x) => x.handle !== p.handle)].slice(0, 40);
 }
 
-// One lead's chat: anything new from them since our last message?
-async function replyCheckOne(p) {
+// One lead's chat: anything new from them since our last message? `job.urgent` looks come from the inbox watcher
+// (a message just arrived) and aren't part of a sweep; `job.row` is the inbox row that prompted them.
+async function replyCheckOne(p, job = {}) {
   S.bg.current = { pid: p.id, handle: p.handle, text: '', until: 0, check: true };
   paintQueue();
-  const r = await window.api.readChat('send', p.handle).catch((e) => ({ state: 'error', error: errText(e), messages: [] }));
+  const r = await window.api.readChat('send', p.handle, replies.leadNames(p)).catch((e) => ({ state: 'error', error: errText(e), messages: [] }));
   p.replyCheckedAt = Date.now();
   let found = false;
   noteSeen(p, r);
+  if (job.row) {
+    // The inbox's message is looked at once: remembered when the chat was read properly, retried in a few minutes if not.
+    if (r.state === 'ok' && r.anchored) {
+      p.inboxSeen = { preview: job.row.preview, at: Date.now() };
+      delete p.inboxTryAt;
+    } else Object.assign(p, { inboxTryAt: Date.now(), inboxTryPreview: job.row.preview });
+  }
   if (r.state === 'loggedout') S.replies.issue = 'Instagram is logged out. Sign in on the right.';
   else if (r.state === 'ok') {
     S.replies.issue = '';
-    const got = theirLatest(r.messages || []);
-    // A reply is what they wrote after our voice note; it's new when it isn't the one already handled.
-    if (got.ours && got.text && got.text !== p.reply?.key) {
-      found = true;
-      await handleReply(p, got.text, got.history, { key: got.text, voiceOnly: got.voiceOnly });
-    }
+    found = await judgeChat(p, r);
   }
-  replyBatchStep(found);
+  if (!job.urgent) replyBatchStep(found);
   S.bg.current = null;
   paintQueue();
   await saveProspects();
   refreshQuietly();
+}
+
+// What a read of one chat means. Messages are only placed against our voice note, so a chat where the app
+// didn't find it says nothing either way. Returns whether there's a new reply from them.
+async function judgeChat(p, r) {
+  if (!r.anchored) return false;
+  const msgs = r.messages || [];
+  const got = theirLatest(msgs);
+  const anyTheirs = msgs.some((m) => !m.mine);
+  const was = p.reply;
+  // A reply recorded for someone who has written nothing: an earlier read got it wrong. Take it back.
+  if (was && !was.sent && !anyTheirs && !p.partner?.code) {
+    await clearFalseReply(p);
+    return false;
+  }
+  if (got.ours && got.text && got.text !== was?.key) {
+    await handleReply(p, got.text, got.history, { key: got.text, voiceOnly: got.voiceOnly });
+    return true;
+  }
+  // They wrote, and someone has answered since (you, in the chat): nothing is waiting any more.
+  if (was?.pending && anyTheirs && !got.theirs.length) {
+    Object.assign(was, { pending: false, auto: false, dismissed: true, note: 'You answered them in the chat.' });
+    await airtableReply(p, { [RF.handled]: true });
+    toast(`@${p.handle}: you've answered in the chat, so it's cleared from Replies.`, 6000);
+  }
+  return false;
+}
+
+// Puts a lead back to "sent" in the app and in Airtable when a reply recorded for it turns out not to exist.
+async function clearFalseReply(p) {
+  delete p.reply;
+  const back = !p.atStatus || /^(replied|sent)$/i.test(p.atStatus);
+  await airtableReply(p, { ...(back ? { [RF.status]: 'Sent' } : {}), [RF.lastReply]: '', [RF.received]: null, [RF.intent]: null, [RF.suggested]: '', [RF.handled]: false });
+  if (back) p.atStatus = 'Sent';
+  toast(`@${p.handle} hadn't replied after all (an earlier read was wrong). Cleared.`, 7000);
+}
+
+// ---------- The inbox watcher ----------
+// Every 30 seconds the hidden inbox tab is read for unread messages. One from a lead we sent a voice note to gets its
+// chat read right away (ahead of the slower sweep), so a reply is seen within about a minute of arriving.
+async function unreadScan({ manual = false } = {}) {
+  const st = S.settings.replies;
+  if (S.scanning || (!manual && !(st.watch && st.quick))) return;
+  if (!S.prospects.some((p) => p.status === 'sent' && p.handle)) return;
+  S.scanning = true;
+  const scan = { at: Date.now(), rows: 0, unread: 0, leads: 0, via: '', issue: '' };
+  try {
+    const res = await window.api.unreadScan();
+    scan.via = res.via || '';
+    scan.rows = res.rows?.length || 0;
+    if (res.state === 'loggedout') scan.issue = 'Instagram is logged out. Sign in on the right.';
+    else if (res.state === 'unreadable') scan.issue = "the chat list in the inbox couldn't be read";
+    else if (res.state !== 'ok') scan.issue = res.error || 'the inbox would not load';
+    else {
+      const plan = replies.inboxPlan(res.rows, S.prospects);
+      Object.assign(scan, { unread: plan.unread, leads: plan.mine });
+      for (const { p, row } of plan.note) p.inboxSeen = { preview: row.preview, at: Date.now(), baseline: true };
+      if (plan.note.length) await saveProspects();
+      for (const { p, row } of plan.read) {
+        const again = S.bg.jobs.find((j) => j.replycheck && j.pid === p.id);
+        if (again) Object.assign(again, { hurry: true, row }); // a sweep's look moves up, and stays counted in the sweep
+        else if (!(S.bg.current?.check && S.bg.current.pid === p.id)) S.bg.jobs.push({ pid: p.id, replycheck: true, urgent: true, row });
+      }
+      if (plan.read.length) runQueue();
+    }
+  } catch (e) {
+    scan.issue = errText(e);
+  }
+  S.replies.scan = scan;
+  S.scanning = false;
+  if (manual && S.view === 'replies') refreshQuietly();
+  else paintScan();
+}
+
+function scanLine() {
+  const sc = S.replies.scan;
+  if (!S.settings.replies.quick) return 'Inbox watcher off (Setup).';
+  if (!sc) return 'Inbox watcher starting...';
+  if (sc.issue) return `Inbox watcher: ${sc.issue}. The chat-by-chat check still runs.`;
+  return `Inbox watcher: ${sc.rows} chat${sc.rows === 1 ? '' : 's'} in the inbox, ${sc.unread} unread${sc.leads ? `, ${sc.leads} from your leads` : ''} · checked ${ago(sc.at)}`;
+}
+function paintScan() {
+  const el = document.getElementById('scan-line');
+  if (el) el.textContent = scanLine();
+}
+
+// Copies what the app sees in the inbox, to paste along with a question.
+async function copyInboxReport() {
+  toast('Reading the inbox...');
+  try {
+    const report = await window.api.inboxReport();
+    const copied = await window.api.copyText(report).catch(() => false);
+    toast(copied ? 'Inbox report copied. Paste it into the chat.' : "Couldn't copy the report.", 6000);
+  } catch (e) {
+    toast(`Couldn't make the report: ${errText(e)}`, 6000);
+  }
+}
+
+// A notification (click it to land on Replies), and the number waiting on you on the dock icon.
+function notifyReply(title, body) {
+  if (S.settings.replies.notify) window.api.notify({ title, body, tab: 'replies' }).catch(() => {});
+}
+let lastBadge = -1;
+function syncBadge() {
+  const n = pendingReplies().length;
+  if (n === lastBadge) return;
+  lastBadge = n;
+  window.api.badge(n).catch(() => {});
+}
+// While replies are being watched the window can be closed on a Mac and the app keeps going, with the Mac kept awake.
+function applyBackground() {
+  const r = S.settings.replies;
+  window.api.keepRunning(!!(r.watch && r.background)).catch(() => {});
 }
 
 // What a reply gets: a yes or a question gets their code and how to set up, written for them, sent on its own
@@ -1212,6 +1339,7 @@ async function handleReply(p, text, history, { key = text, voiceOnly = false, ke
     p.reply.pending = false;
     await airtableReply(p, { [RF.status]: 'Not interested', [RF.intent]: 'No', [RF.handled]: true });
     toast(`@${p.handle} said no thanks. Marked not interested.`);
+    notifyReply(`${who(p)} isn't interested`, `"${text.slice(0, 90)}" · Marked not interested. Nothing was sent.`);
     return;
   }
   await airtableReply(p, { [RF.intent]: INTENT_LABEL[intent] || 'Unclear', [RF.suggested]: draft, [RF.handled]: false });
@@ -1223,10 +1351,14 @@ async function handleReply(p, text, history, { key = text, voiceOnly = false, ke
     Object.assign(p.reply, { auto: true, sendAt });
     const mins = Math.max(0, Math.round((sendAt - Date.now()) / 60000));
     toast(`@${p.handle} ${intent === 'yes' ? 'said yes' : 'asked for more info'}. Their answer and code go out ${mins ? `in about ${mins} min` : 'shortly'} (Replies tab).`, 7000);
+    notifyReply(`${who(p)} ${intent === 'yes' ? 'is interested' : 'wants more info'}`, `"${text.slice(0, 90)}" · Their answer and code go out ${mins ? `in about ${mins} min` : 'shortly'}. Open Replies to edit it or send it now.`);
     return;
   }
   toast(`@${p.handle} replied. A draft is waiting under Replies.`, 6000);
+  notifyReply(`${who(p)} replied`, `"${text.slice(0, 90)}" · ${draft ? 'A draft is waiting for you.' : 'Waiting for you to answer.'}`);
 }
+
+const who = (p) => p.name || `@${p.handle}`;
 
 // Auto-replies that are due go into the background queue.
 function dueReplies() {
@@ -1255,8 +1387,8 @@ async function sendReplyNow(p, { text, withCode = false, scheduled = false }) {
   if (scheduled) {
     // Right before an auto-reply goes out, look at the chat again: if you answered them yourself, it's dropped;
     // if they wrote more, the answer is written again with everything they said.
-    const chat = await window.api.readChat('send', p.handle).catch(() => null);
-    if (chat?.state === 'ok' && chat.messages?.length) {
+    const chat = await window.api.readChat('send', p.handle, replies.leadNames(p)).catch(() => null);
+    if (chat?.state === 'ok' && chat.anchored && chat.messages?.length) {
       const got = theirLatest(chat.messages);
       if (!got.theirs.length) {
         Object.assign(p.reply, { pending: false, auto: false, dismissed: true, note: 'You answered them in the chat, so the auto-reply was dropped.' });
@@ -1296,11 +1428,13 @@ async function sendReplyNow(p, { text, withCode = false, scheduled = false }) {
       ...(vals ? { [RF.status]: 'Code sent', [RF.code]: vals.code, [RF.link]: vals.link, [RF.invite]: vals.invite, [RF.codeSentAt]: new Date().toISOString() } : {}),
     });
     toast(`Replied to @${p.handle}${vals ? ` with their code ${vals.code}` : ''} ✓`);
+    notifyReply(`Answered ${who(p)}`, vals ? `Sent their code ${vals.code} and how to set up.` : 'Your reply went out.');
   } catch (e) {
     // A failed auto-reply turns into a draft for you, so it can't keep retrying on its own.
     p.reply = { ...p.reply, pending: true, auto: false, draft: text, issue: errText(e) };
     await airtableReply(p, { [RF.suggested]: text, [RF.handled]: false });
     toast(`Couldn't reply to @${p.handle}: ${errText(e)}. It's waiting under Replies.`, 8000);
+    notifyReply(`Couldn't answer ${who(p)}`, `${errText(e)} It's waiting under Replies.`);
   }
   return done();
 }
@@ -2696,9 +2830,15 @@ function repliesView() {
             ? `Couldn't check: ${S.replies.issue}`
             : S.replies.checking && S.replies.batch
               ? `Checking chats for replies (${S.replies.batch.done} of ${S.replies.batch.total})...`
-              : `${st.replies.watch ? `Watching your sent leads' chats (new ones every ${Math.max(10, st.replies.everyMin)} min)` : 'Not watching for replies (Setup)'}${S.replies.lastAt ? ` · last check ${ago(S.replies.lastAt)}: ${S.replies.note}` : sent ? ' · no check yet' : ''}`,
+              : `${st.replies.watch ? (watcherWorks() ? 'Watching for new messages from your leads, checked every 30 seconds' : `Watching your sent leads' chats (new ones every ${Math.max(10, st.replies.everyMin)} min)`) : 'Not watching for replies (Setup)'}${S.replies.lastAt ? ` · last check ${ago(S.replies.lastAt)}: ${S.replies.note}` : sent ? ' · no check yet' : ''}`,
         ),
-        h('button', { onclick: () => checkReplies({ manual: true }), disabled: !!S.replies.checking }, 'Check now'),
+        h('button', { onclick: () => (unreadScan({ manual: true }), checkReplies({ manual: true })), disabled: !!S.replies.checking }, 'Check now'),
+      ),
+      h(
+        'div',
+        { class: 'row-flex' },
+        h('span', { id: 'scan-line', class: `grow small ${S.replies.scan?.issue ? 'bad' : 'muted'}` }, scanLine()),
+        h('button', { class: 'link', onclick: copyInboxReport }, 'Copy inbox report'),
       ),
       S.replies.seen?.length
         ? h(
@@ -2717,7 +2857,9 @@ function repliesView() {
                     ? `couldn't read the chat (${e.error || e.state})`
                     : !e.total
                       ? 'the chat looked empty to the app'
-                      : `${e.total} message${e.total === 1 ? '' : 's'} (${e.ours} ours, ${e.theirs} theirs)${e.last ? `, last from them: "${e.last.slice(0, 70)}"` : ''}${e.lastIsTheirs ? '' : ' · the last message is ours'}`,
+                      : !e.anchored
+                        ? "couldn't find our voice note in the chat, so nothing was read as a reply (use the report)"
+                        : `${e.total} message${e.total === 1 ? '' : 's'} (${e.ours} ours, ${e.theirs} theirs)${e.last ? `, last from them: "${e.last.slice(0, 70)}"` : ''}${e.lastIsTheirs ? '' : ' · the last message is ours'}`,
                 ),
                 h('button', { class: 'link', onclick: () => copyChatReport(e.handle) }, 'Copy a report of this chat'),
               ),
@@ -2847,8 +2989,11 @@ function setupView() {
     h(
       'div',
       { class: 'card' },
-      h('p', { class: 'muted small' }, "When someone writes back to a voice note, the app reads it in their chat in the hidden Instagram tab. A yes or a question for more info gets an answer written for them, with a partner code made from their business name (or first name) and how to set up their portal, sent after the wait below. If you answer them yourself first, the app drops its answer. A no is marked not interested; anything unclear waits under Replies for you."),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.replies.watch, onchange: check(st.replies, 'watch') }), "Watch sent leads' chats for replies"),
+      h('p', { class: 'muted small' }, "A hidden Instagram tab watches your inbox for unread messages, and when a lead you sent a voice note to writes back, the app reads it in their chat and works out whether they're interested, want more info, or aren't interested. Interested or wanting more info gets an answer written for them (their name, their business and something they offer), with a partner code made from their business name and how to set up their portal, sent after the wait below. If you answer them yourself first, the app drops its answer. A no is marked not interested; anything unclear waits under Replies for you. Each reply sends you a notification."),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.replies.watch, onchange: (e) => (check(st.replies, 'watch')(e), applyBackground()) }), "Watch sent leads' chats for replies"),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.replies.quick, onchange: check(st.replies, 'quick') }), 'Watch the inbox for unread messages every 30 seconds, and read a lead\'s chat the moment it writes (quick replies)'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.replies.notify, onchange: check(st.replies, 'notify') }), 'Show a notification when a lead replies'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.replies.background, onchange: (e) => (check(st.replies, 'background')(e), applyBackground()) }), 'Keep working in the background: closing the window hides it (Mac) and the app keeps watching, with the Mac kept awake. Quit from the menu to stop.'),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.replies.auto, onchange: check(st.replies, 'auto') }), 'Answer a yes or a question for more info on its own, with their own partner code and how to set up'),
       h('label', { class: 'field' }, 'Wait before answering (minutes)', h('input', { type: 'number', min: 0, max: 240, step: 'any', value: st.replies.delayMin, oninput: (e) => ((st.replies.delayMin = Math.min(240, Math.max(0, parseFloat(e.target.value) || 0))), saveSettings().then(flashSaved)) })),
       h('div', { class: 'grid2' }, h('label', { class: 'field' }, 'Check new leads every (minutes)', h('input', { type: 'number', min: 10, max: 120, value: st.replies.everyMin, oninput: (e) => ((st.replies.everyMin = Math.min(120, Math.max(10, parseInt(e.target.value, 10) || 10))), saveSettings().then(flashSaved)) })), h('label', { class: 'field' }, 'Sign replies as', h('input', { value: st.replies.from, oninput: txt(st.replies, 'from') }))),
@@ -3286,6 +3431,7 @@ function render() {
   if (S.currentId && !p) S.currentId = null;
   const body = S.view === 'setup' ? setupView() : S.view === 'follow' ? followView() : S.view === 'find' ? findView() : S.view === 'replies' ? repliesView() : p ? detailView(p) : leadsView();
   $app.replaceChildren(header(), queueStrip(), body);
+  syncBadge();
   paintQueue();
   if (S.view === 'setup') paintBreath();
   else if (p && document.getElementById('join-panel')) {
@@ -3352,6 +3498,8 @@ document.addEventListener('keydown', (e) => {
   if (S.settings.airtable.max === 100) S.settings.airtable.max = DEFAULT_SETTINGS.airtable.max;
   // Replies are now read chat by chat, so a lead is looked at every 10 minutes at most.
   if (S.settings.replies.everyMin < 10) S.settings.replies.everyMin = 10;
+  // The old default wait of 15 minutes becomes 4: an answer should come quickly. A wait you chose yourself stays.
+  if (saved.replies && saved.replies.quick === undefined && S.settings.replies.delayMin === 15) S.settings.replies.delayMin = 4;
   S.prospects = (await store.get('kv', 'prospects')) || [];
   S.removed = { ids: [], handles: [], ...((await store.get('kv', 'removed')) || {}) };
   for (const p of S.prospects.filter((x) => x.status === 'sending')) {
@@ -3372,6 +3520,11 @@ document.addEventListener('keydown', (e) => {
   // Replies: a first look shortly after launch, then on the schedule in Setup.
   setTimeout(() => checkReplies(), 45 * 1000);
   setInterval(() => checkReplies(), 60 * 1000);
+  // The inbox watcher: unread messages from leads, once a minute. Clicking a notification lands on Replies.
+  setTimeout(() => unreadScan(), 20 * 1000);
+  setInterval(() => unreadScan(), 30 * 1000);
+  window.api.onNav?.(({ tab }) => ((S.view = tab || 'replies'), render()));
+  applyBackground();
   // Auto-replies whose time has come, and the countdowns on the Replies tab.
   setInterval(dueReplies, 15 * 1000);
   setInterval(() => S.view === 'replies' && pendingReplies().some((p) => p.reply.auto) && refreshQuietly(), 20 * 1000);
