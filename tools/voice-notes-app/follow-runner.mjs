@@ -9,7 +9,7 @@ const ERROR_RETRY_MS = 10 * 60 * 1000;
 
 // Follows and likes one lead at a time in its own Instagram tab, within the pacing in src/follow.js.
 // Its counters, pause and log live in a small JSON file so they survive restarts.
-export function createFollowRunner({ view, statePath, igBase, click, dblclick, emit, onFollowed, fast = false }) {
+export function createFollowRunner({ view, statePath, igBase, click, dblclick, emit, onFollowed, fast = false, build = 'dev' }) {
   let state = { enabled: false, stopNote: '', days: {}, pausedUntil: 0, nextAt: 0, skipped: {}, log: [], times: { follow: [], like: [] } };
   // The safety limits from Setup, when the account started doing this, and when voice notes went out (the app
   // tells this process, since they count toward the combined daily limit).
@@ -147,9 +147,9 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, e
   // One line for the lead's IG log in Airtable: when, what happened, and why a like didn't.
   const summary = (r, afterSend) => {
     const when = new Date().toLocaleString('en-US', { timeZone: F.LIMITS.timeZone, dateStyle: 'medium', timeStyle: 'short' });
-    const fol = { followed: 'followed', already: 'already following', notfollowed: 'not followed (follow limit)', failed: r.note || 'failed', blocked: `Instagram pushed back ("${r.note}")`, notfound: 'account not found', loggedout: 'Instagram logged out', limit: r.note }[r.result] || r.result;
+    const fol = { followed: 'followed', already: 'already following', notfollowed: 'not followed (follow limit)', failed: r.note || 'failed', blocked: `Instagram pushed back ("${r.note}")`, notfound: 'account not found', loggedout: 'Instagram logged out', limit: r.note, paused: r.note }[r.result] || r.result;
     const likes = r.private ? 'private, nothing to like' : r.tried != null ? `liked ${r.likes || 0} of ${r.tried} post${r.tried === 1 ? '' : 's'}${r.likeWhy ? ` (${r.likeWhy})` : ''}` : '';
-    return `${when}${afterSend ? ', after the voice note' : ''}: ${[fol, likes].filter(Boolean).join('; ')}`;
+    return `${when}${afterSend ? ', after the voice note' : ''} (build ${build}): ${[fol, likes].filter(Boolean).join('; ')}`;
   };
   const logAirtable = (id, r, afterSend) => (at?.token && id ? leads.logFollowAirtable(at, id, summary(r, afterSend)).catch(() => {}) : null);
 
@@ -250,27 +250,35 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, e
     },
     // After a voice note sends: follow them and like their 1st and 4th posts, in the tab that sent it. Skipped
     // while Instagram's push-back pause is on; a new push-back starts one. Follows count toward today's total.
-    async engage(wc, { handle, airtableId }) {
+    async engage(wc, { handle, airtableId }, afterSend = true) {
       const now = Date.now();
-      if (state.pausedUntil > now) return { result: 'paused', until: state.pausedUntil };
+      if (state.pausedUntil > now) {
+        // Never silent: the skip goes in the Follow log and the lead's IG log, like every other outcome.
+        const until = new Date(state.pausedUntil).toLocaleString('en-US', { timeZone: F.LIMITS.timeZone, dateStyle: 'medium', timeStyle: 'short' });
+        const r = { result: 'paused', until: state.pausedUntil, note: `skipped the follow and likes: Instagram pushed back earlier, so following is paused until ${until}` };
+        addLog({ handle, result: 'paused', note: r.note, afterSend });
+        logAirtable(airtableId, r, afterSend);
+        return r;
+      }
       // Inside the limits: follow only while follows have room, and like only as many posts as likes have room for.
       const b = budget(now);
       const canFollow = b.follow.ok && b.total.ok;
       const likeRoom = b.total.ok ? Math.min(2, L.left('like', b.t, b.c, now)) : 0;
       if (!canFollow && !likeRoom) {
         const why = L.reasonText(!b.follow.ok ? b.follow : !b.like.ok ? b.like : b.total, !b.follow.ok ? 'follow' : !b.like.ok ? 'like' : 'follow');
-        addLog({ handle, result: 'limit', note: `Skipped the follow and likes: ${why}`, afterSend: true });
-        logAirtable(airtableId, { result: 'limit', note: `skipped the follow and likes: ${why}` }, true);
+        addLog({ handle, result: 'limit', note: `Skipped the follow and likes: ${why}`, afterSend });
+        logAirtable(airtableId, { result: 'limit', note: `skipped the follow and likes: ${why}` }, afterSend);
         await save();
         emit(snapshot());
         return { result: 'limit', note: why };
       }
-      const r = await visit(wc, handle, [0, 3].slice(0, likeRoom), { follow: canFollow }).catch((e) => ({ result: 'failed', note: e.message }));
+      const r = await visit(wc, handle, [0, 3].slice(0, likeRoom), { follow: canFollow }).catch((e) => ({ result: 'failed', note: `the follow step crashed: ${e.message}` }));
       if (r.followed || r.clicked) (F.recordFollow(state, now), note('follow', now));
       if (r.likesDone) note('like', now, r.likesDone);
       if (r.result === 'blocked') state.pausedUntil = now + F.LIMITS.blockPauseMs;
-      addLog({ handle, result: r.result, followed: !!r.followed, liked: !!r.liked, likes: r.likes || 0, likeWhy: r.likeWhy || '', private: !!r.private, note: r.note || '', afterSend: true });
-      logAirtable(airtableId, r, true);
+      addLog({ handle, result: r.result, followed: !!r.followed, liked: !!r.liked, likes: r.likes || 0, likeWhy: r.likeWhy || '', private: !!r.private, note: r.note || '', afterSend });
+      logAirtable(airtableId, r, afterSend);
+      r.line = summary(r, afterSend);
       await save();
       emit(snapshot());
       if (airtableId && at?.token) {
@@ -296,6 +304,19 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, e
       save();
       if (!busy) tick();
       else emit(snapshot());
+    },
+    // The Follow screen's "Follow + like now": the same step a voice note triggers, on one account, in the follow
+    // tab, right away (within the safety limits). Returns what happened, in the words the IG log gets.
+    async engageNow(handle, airtableId) {
+      while (busy) await new Promise((r) => setTimeout(r, 400));
+      busy = true;
+      try {
+        const r = await this.engage(view().webContents, { handle, airtableId }, false);
+        return { ...r, line: r.line || summary(r, false) };
+      } finally {
+        busy = false;
+        if (state.enabled) tick();
+      }
     },
     // Says what the like step sees on one profile and its first post, without following or liking anything: is
     // the grid of posts there, is the Like button, and what else the page shows if not.

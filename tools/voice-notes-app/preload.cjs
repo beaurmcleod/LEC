@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('api', {
   followSet: (on) => ipcRenderer.invoke('follow:set', on),
   followState: () => ipcRenderer.invoke('follow:state'),
   followProbe: (handle) => ipcRenderer.invoke('follow:probe', handle),
+  followEngageNow: (handle, airtableId) => ipcRenderer.invoke('follow:engageNow', handle, airtableId),
   voiceTimes: (times) => ipcRenderer.invoke('follow:voiceTimes', times),
   testFast: () => ipcRenderer.invoke('app:testFast'),
   onFollow: (cb) => ipcRenderer.on('follow:status', (_e, s) => cb(s)),

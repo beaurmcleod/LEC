@@ -1086,7 +1086,12 @@ async function auditOne(p) {
 // Once a note is sent: follow them and like their 1st and 4th posts. It runs in the hidden send tab, straight
 // after that send and before the next one.
 function queueEngage(p) {
-  if (!S.settings.engageAfterSend || !p.handle) return;
+  if (!p.handle) return;
+  if (!S.settings.engageAfterSend) {
+    // Off in Setup: say so on the lead's record, so a missing follow is never a mystery.
+    airtableReply(p, { 'IG log': `${new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}, after the voice note: the follow and likes are off in Setup` });
+    return;
+  }
   S.bg.jobs.unshift({ pid: p.id, engage: true });
   runQueue();
 }
@@ -1096,6 +1101,9 @@ async function engage(p) {
   paintQueue();
   const r = await window.api.engage(p.handle, p.airtableId || '').catch((e) => ({ result: 'failed', note: errText(e) }));
   if (r.result === 'blocked') toast(`Instagram pushed back while following @${p.handle} ("${r.note}"). Follows and likes pause for 48 hours.`, 8000);
+  else if (r.result === 'paused') toast(`@${p.handle}: the follow and likes were skipped (following is paused after an Instagram push-back). See the Follow screen.`, 8000);
+  else if (r.result === 'failed') toast(`@${p.handle}: the follow step didn't finish (${r.note}). See the Follow screen.`, 8000);
+  else if (!r.private && r.tried && !r.likes) toast(`@${p.handle}: followed, but no post was liked (${r.likeWhy || 'unknown'}). See the Follow screen.`, 8000);
   S.bg.current = null;
   paintQueue();
 }
@@ -3282,7 +3290,7 @@ function followHint() {
 
 function logText(e) {
   const likes = e.likes ? `liked ${e.likes} post${e.likes === 1 ? '' : 's'}` : e.private ? 'private, nothing to like' : `no posts liked${e.likeWhy ? ` (${e.likeWhy})` : ''}`;
-  if (e.result === 'limit') return e.note;
+  if (e.result === 'limit' || e.result === 'paused') return e.note;
   if (e.afterSend && (e.result === 'followed' || e.result === 'already' || e.result === 'notfollowed')) {
     const fol = e.result === 'followed' ? 'followed' : e.result === 'already' ? 'already following' : "didn't follow (the follow limit is reached)";
     return `After the voice note: ${fol}, ${likes}`;
@@ -3299,24 +3307,38 @@ function logText(e) {
 const logClass = (e) =>
   // A follow that should have come with a like but didn't stands out, so a like step that stops working is noticed.
   (['followed', 'already', 'notfollowed'].includes(e.result) && !e.likes && !e.liked && !e.private && e.likeWhy && !/no posts yet/.test(e.likeWhy) ? 'warn' : '') ||
-  ({ followed: 'ok', already: 'muted', notfollowed: 'muted', limit: 'muted', notfound: 'muted', blocked: 'bad', failed: 'bad', loggedout: 'bad', error: 'warn' })[e.result] ||
+  ({ followed: 'ok', already: 'muted', notfollowed: 'muted', limit: 'muted', paused: 'warn', notfound: 'muted', blocked: 'bad', failed: 'bad', loggedout: 'bad', error: 'warn' })[e.result] ||
   '';
 
-// Follow screen: "Check the like step" opens one profile and its first post in the follow tab and says what it
-// finds, without following or liking anything.
-async function probeLikes() {
+// Follow screen: "Check" opens one profile and its first post in the follow tab and says what it finds, without
+// following or liking anything. "Follow + like now" does the real thing on that account, right away, the same
+// way a voice note triggers it, and shows the result (it also goes to the lead's IG log in Airtable).
+async function probeLikes(doIt = false) {
   const input = document.getElementById('probe-handle');
   const handle = leads.cleanHandle(input?.value || '');
   if (!handle) return toast('Type an Instagram handle first.');
+  if (S.probing) return;
   const out = document.getElementById('probe-out');
-  out.textContent = `Looking at @${handle}...`;
+  const lead = S.prospects.find((x) => x.handle && x.handle.toLowerCase() === handle.toLowerCase());
+  if (doIt && !confirm(`Follow @${handle} and like their 1st and 4th posts now?${lead?.airtableId ? ' The result goes to their record in Airtable too.' : ''}`)) return;
+  S.probing = true;
+  out.textContent = doIt ? `Following @${handle} and liking their posts...` : `Looking at @${handle}...`;
   try {
-    const lines = await window.api.followProbe(handle);
-    S.probe = lines.join('\n');
+    if (doIt) {
+      const r = await window.api.followEngageNow(handle, lead?.airtableId || '');
+      S.probe = `@${handle}: ${r.line || r.note || r.result}`;
+      if (r.result === 'followed' || r.result === 'already') toast(`@${handle}: ${r.likes ? `liked ${r.likes} post${r.likes === 1 ? '' : 's'}` : 'no post liked'} ✓`);
+      if (lead && r.followed) lead.followedAt = new Date().toISOString();
+    } else {
+      const lines = await window.api.followProbe(handle);
+      S.probe = lines.join('\n');
+    }
   } catch (e) {
-    S.probe = `The check failed: ${errText(e)}`;
+    S.probe = `${doIt ? 'It' : 'The check'} failed: ${errText(e)}`;
   }
+  S.probing = false;
   out.textContent = S.probe;
+  if (S.view === 'follow') render();
 }
 
 function followView() {
@@ -3386,16 +3408,17 @@ function followView() {
       { class: 'muted small' },
       'Pacing: your daily limit above, capped by Setup > Safety limits (with a like for each follow, an hourly cap, and a combined cap with voice notes; the day resets at midnight Pacific), 2 to 6 minutes between accounts, any time of day. If Instagram shows "action blocked", "try again later" or a security check, it stops and waits 48 hours.',
     ),
-    h('h2', {}, 'Check the like step'),
+    h('h2', {}, 'Try it on one account'),
     h(
       'div',
       { class: 'card' },
-      h('p', { class: 'muted small' }, "Opens a profile and its first post in the follow tab and says whether the app can see the posts and the Like button. Nothing is followed or liked. If likes aren't happening, run it on one of the accounts above and press Copy."),
+      h('p', { class: 'muted small' }, "Follow + like now follows this account and likes their 1st and 4th posts right away, the same way a voice note triggers it, and says exactly what happened (the lead's IG log in Airtable gets the same line). Check only looks: it opens the profile and its first post and says whether the app can see the posts and the Like button, without following or liking. Press Copy to send the result over."),
       h(
         'div',
         { class: 'row-flex' },
         h('input', { id: 'probe-handle', placeholder: '@handle', value: S.probeHandle ?? (f?.log?.find((e) => e.handle)?.handle || ''), oninput: (e) => (S.probeHandle = e.target.value) }),
-        h('button', { onclick: probeLikes }, 'Check'),
+        h('button', { class: 'enter', onclick: () => probeLikes(true), disabled: !!S.probing }, 'Follow + like now'),
+        h('button', { onclick: () => probeLikes(false), disabled: !!S.probing }, 'Check'),
         h('button', { class: 'link', onclick: () => S.probe && window.api.copyText(S.probe).then((ok) => toast(ok ? 'Copied.' : "Couldn't copy.")) }, 'Copy'),
       ),
       h('pre', { id: 'probe-out', class: 'small probe-out' }, S.probe || ''),

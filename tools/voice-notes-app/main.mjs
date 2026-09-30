@@ -834,6 +834,7 @@ ipcMain.handle('follow:config', (_e, at) => follower.configure(at));
 ipcMain.handle('follow:set', (_e, on) => follower.setEnabled(!!on));
 ipcMain.handle('follow:state', () => follower.snapshot());
 ipcMain.handle('follow:probe', (_e, handle) => quietly(() => follower.probe(handle)));
+ipcMain.handle('follow:engageNow', (_e, handle, airtableId) => quietly(() => follower.engageNow(handle, airtableId || '')));
 ipcMain.handle('follow:voiceTimes', (_e, times) => follower.setVoiceTimes(times));
 // Test runs only: no waiting between voice notes and no hourly limits.
 ipcMain.handle('app:testFast', () => process.env.TVN_TEST_FOLLOW === '1');
@@ -854,7 +855,10 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler(onlyMedia);
   session.fromPartition('persist:instagram').setPermissionRequestHandler(onlyMedia);
   injected = await fs.readFile(path.join(dir, 'src/ig-main.js'), 'utf8');
+  // The installed build (written by build-mac.mjs), so every IG log line says which build did the work.
+  const build = await import(pathToFileURL(path.join(dir, 'src/build.js')).href).then((m) => m.default?.commit || 'dev').catch(() => 'dev');
   follower = createFollowRunner({
+    build,
     view: () => followView,
     statePath: path.join(app.getPath('userData'), 'follow-state.json'),
     igBase: IG_BASE,
