@@ -406,7 +406,31 @@ ipcMain.handle('clip:save', async (_e, wav, name) => {
 ipcMain.handle('clip:reveal', (_e, file) => shell.showItemInFolder(file));
 
 // The recorder shows the follow tab on the right while its Follow screen is open.
-ipcMain.handle('pane:show', (_e, which) => win.contentView.addChildView({ follow: followView, send: sendView }[which] || igView));
+// What the app wants on the right (the recorder asks as screens change), so a view shown for a moment can be put back.
+let wantedPane = 'dm';
+const paneView = (which) => ({ follow: followView, send: sendView }[which] || igView);
+ipcMain.handle('pane:show', (_e, which) => {
+  wantedPane = which || 'dm';
+  win.contentView.addChildView(paneView(wantedPane));
+});
+// Puts the follow tab on screen for a follow-and-like, then puts back what the app wants on the right. Instagram
+// ignores clicks in a tab hidden behind another (the Follow screen's button, with the tab on screen, is what worked
+// on the real account). Left hidden while you're using the Instagram pane yourself, or the window is hidden or
+// minimized; the log then says so.
+async function revealFollow() {
+  if (!win || !followView) return { shown: false, why: 'no window' };
+  if (wantedPane === 'follow') return { shown: true, restore: async () => {} };
+  if (!win.isVisible() || win.isMinimized()) return { shown: false, why: 'the app window was hidden or minimized' };
+  if (webContents.getFocusedWebContents() === ig() && front === ig()) return { shown: false, why: 'you were using the Instagram pane' };
+  win.contentView.addChildView(followView);
+  await sleep(600);
+  return {
+    shown: true,
+    restore: async () => {
+      if (win && wantedPane !== 'follow') win.contentView.addChildView(paneView(wantedPane));
+    },
+  };
+}
 // After a voice note sends: follow them and like their 1st and 4th posts, in the hidden send tab.
 // In the follow tab (never the tab that sent: Instagram keeps the chat open over its pages, which swallows clicks).
 ipcMain.handle('ig:engage', (_e, handle, airtableId) => quietly(() => follower.engageNow(handle, airtableId, true)));
@@ -870,6 +894,7 @@ app.whenReady().then(async () => {
       wc.sendInputEvent({ type: 'keyUp', keyCode });
     },
     snap: (name, report) => snapTab('follow', name, report),
+    reveal: revealFollow,
     emit: (s) => toRecorder(s, 'follow:status'),
     onFollowed: (m) => toRecorder(m, 'follow:followed'),
     // Test runs only: short gaps between accounts. The daily limit still applies.

@@ -9,7 +9,7 @@ const ERROR_RETRY_MS = 10 * 60 * 1000;
 
 // Follows and likes one lead at a time in its own Instagram tab, within the pacing in src/follow.js.
 // Its counters, pause and log live in a small JSON file so they survive restarts.
-export function createFollowRunner({ view, statePath, igBase, click, dblclick, key, snap, emit, onFollowed, fast = false, build = 'dev' }) {
+export function createFollowRunner({ view, statePath, igBase, click, dblclick, key, snap, reveal, emit, onFollowed, fast = false, build = 'dev' }) {
   let state = { enabled: false, stopNote: '', days: {}, pausedUntil: 0, nextAt: 0, skipped: {}, log: [], times: { follow: [], like: [] } };
   // The safety limits from Setup, when the account started doing this, and when voice notes went out (the app
   // tells this process, since they count toward the combined daily limit).
@@ -93,9 +93,101 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, k
   const picture = async (handle, why) => (snap ? snap(`follow-${handle}`, `@${handle}: ${why}`).catch(() => '') : '');
   const pause = () => new Promise((r) => setTimeout(r, fast ? 100 : 1500 + Math.random() * 2500));
 
+  // Instagram's answers while a follow-and-like runs in the tab, read the way the send flow reads them: the proof a
+  // click reached Instagram (and what it said), whatever the page shows. The tab is also told it has focus, as the
+  // send tab is during a send.
+  async function watching(wc, fn) {
+    const dbg = wc.debugger;
+    let mine = false;
+    try {
+      if (!dbg.isAttached()) {
+        dbg.attach('1.3');
+        mine = true;
+      }
+    } catch {}
+    const reqs = new Map();
+    const kindOf = (req) => {
+      const u = String(req.url || '');
+      if (/\/friendships\/create\//.test(u)) return 'follow';
+      if (/\/likes\/\d+\/like\/|\/media\/[\d_]+\/like\//.test(u)) return 'like';
+      if (/\/api\/graphql|\/graphql\/query/.test(u)) {
+        const name = /fb_api_req_friendly_name=([\w.]+)/.exec(req.postData || '')?.[1] || '';
+        if (/unfollow|unlike/i.test(name)) return '';
+        if (/follow/i.test(name)) return 'follow';
+        if (/like/i.test(name) && !/comment/i.test(name)) return 'like';
+      }
+      return '';
+    };
+    const onMessage = (_e, method, params) => {
+      if (method === 'Network.requestWillBeSent') {
+        const kind = kindOf(params.request);
+        if (kind) reqs.set(params.requestId, { at: Date.now(), kind, status: 0, body: '' });
+      } else if (method === 'Network.responseReceived') {
+        const r = reqs.get(params.requestId);
+        if (r) r.status = params.response.status;
+      } else if (method === 'Network.loadingFailed') {
+        const r = reqs.get(params.requestId);
+        if (r) r.body = `failed: ${params.errorText}`;
+      } else if (method === 'Network.loadingFinished') {
+        const r = reqs.get(params.requestId);
+        if (r)
+          r.pending = dbg
+            .sendCommand('Network.getResponseBody', { requestId: params.requestId })
+            .then((x) => (r.body = (x.base64Encoded ? Buffer.from(x.body, 'base64').toString('utf8') : String(x.body)).replace(/\s+/g, ' ').slice(0, 300)))
+            .catch(() => {});
+      }
+    };
+    if (dbg.isAttached()) {
+      dbg.on('message', onMessage);
+      await dbg.sendCommand('Network.enable').catch(() => {});
+      await dbg.sendCommand('Emulation.setFocusEmulationEnabled', { enabled: true }).catch(() => {});
+    }
+    // What was asked of Instagram (of `kind`) since `t`, with its answers.
+    const since = async (t, kind) => {
+      const list = [...reqs.values()].filter((r) => r.at >= t && r.kind === kind);
+      await Promise.allSettled(list.map((r) => r.pending));
+      return list;
+    };
+    try {
+      return await fn({ since, watched: dbg.isAttached() });
+    } finally {
+      dbg.removeListener('message', onMessage);
+      if (dbg.isAttached()) await dbg.sendCommand('Emulation.setFocusEmulationEnabled', { enabled: false }).catch(() => {});
+      if (mine) {
+        await dbg.sendCommand('Network.disable').catch(() => {});
+        try {
+          dbg.detach();
+        } catch {}
+      }
+    }
+  }
+  const answered = (list) => list.some((r) => r.status === 200 && !F.pushedBack(r.body));
+  const refused = (list) => list.find((r) => r.status >= 400 || F.pushedBack(r.body));
+  // Waits a little for Instagram's answer to a click.
+  async function netProof(net, t, kind) {
+    for (let i = 0; i < 8; i++) {
+      const list = await net.since(t, kind);
+      if (answered(list) || refused(list)) return list;
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    return net.since(t, kind);
+  }
+  const heard = (list, watched) => (!watched ? '' : list.length ? `Instagram answered ${list.map((x) => `${x.status || 'nothing yet'} ${x.body.slice(0, 80)}`).join(', ')}` : 'the click sent nothing to Instagram');
+
   // Follows the account in `wc` if needed (unless `follow` is false), then likes the posts at `likeAt` (0 = newest;
   // pinned posts don't count). Posts already liked are left alone. When a like doesn't happen, `likeWhy` says why.
+  // The tab is put on screen while it clicks (Instagram ignores clicks in a tab hidden behind another; the Follow
+  // screen's button, where the tab is on screen, is what worked on the real account) and watched throughout.
   async function visit(wc, handle, likeAt = [0], { follow = true } = {}) {
+    const shown = reveal ? await reveal().catch(() => null) : null;
+    try {
+      return await watching(wc, (net) => visitWatched(wc, handle, likeAt, follow, net, shown));
+    } finally {
+      await shown?.restore?.().catch?.(() => {});
+    }
+  }
+
+  async function visitWatched(wc, handle, likeAt, follow, net, shown) {
     await open(wc, `${igBase}/${encodeURIComponent(handle)}/`);
     const cleared = [await clearCover(wc)];
     const p = await run(wc, 'profile');
@@ -109,14 +201,17 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, k
     // A follow that went in but doesn't show on the page doesn't stop the likes: the page is still theirs.
     let unconfirmed = '';
     if (p.state === 'follow' && follow) {
+      const t = Date.now();
       const pt = await run(wc, 'clickFollow');
       if (!(await click(wc, pt))) return { result: 'failed', note: "couldn't click Follow" };
       const a = await run(wc, 'afterFollow');
       if (a.state === 'blocked') return { result: 'blocked', note: a.note };
-      if (a.state === 'following' || a.state === 'requested') {
+      const sent = await netProof(net, t, 'follow');
+      if (refused(sent) && F.pushedBack(refused(sent).body)) return { result: 'blocked', note: `Instagram answered the follow: ${refused(sent).body.slice(0, 120)}` };
+      if (a.state === 'following' || a.state === 'requested' || answered(sent)) {
         followed = true;
         requested = a.state === 'requested';
-      } else unconfirmed = `${pt?.covered ? `the click was covered by ${pt.covered}; ` : ''}${a.seen || 'nothing on the page changed'}`;
+      } else unconfirmed = [pt?.covered ? `the click was covered by ${pt.covered}` : '', heard(sent, net.watched), a.seen || 'nothing on the page changed'].filter(Boolean).join('; ');
     }
 
     // Private accounts (or a pending request) have nothing to like.
@@ -139,6 +234,7 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, k
       }
       let ok = false;
       let covered = '';
+      const t = Date.now();
       // The heart first (twice, in case the first press only focused the page), then a double-click on the picture.
       for (let attempt = 0; attempt < 2 && !ok && post.state === 'like'; attempt++) {
         const pt = await run(wc, 'clickLike');
@@ -146,26 +242,30 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, k
         if (pt?.covered) covered = pt.covered;
         const l = await run(wc, 'afterLike');
         if (l.state === 'blocked') return fail(l);
-        ok = l.state === 'liked';
+        ok = l.state === 'liked' || answered(await net.since(t, 'like'));
       }
       if (!ok && dblclick) {
         const pt = await run(wc, 'mediaPoint');
         if (pt && (await dblclick(wc, pt))) {
           const l = await run(wc, 'afterLike');
           if (l.state === 'blocked') return fail(l);
-          ok = l.state === 'liked';
+          ok = l.state === 'liked' || answered(await net.since(t, 'like'));
         }
       }
+      const sent = await netProof(net, t, 'like');
+      if (!ok && refused(sent) && F.pushedBack(refused(sent).body)) return fail({ note: `Instagram answered the like: ${refused(sent).body.slice(0, 120)}` });
+      ok ||= answered(sent);
       if (ok) {
         likes++;
         done++;
-      } else why.push(post.state ? `pressed Like but it didn't take${covered ? ` (the click was covered by ${covered})` : ''}` : `no Like button on the post (icons seen: ${(post.icons || []).join(', ') || 'none'})`);
+      } else why.push([post.state ? `pressed Like but it didn't take${covered ? ` (the click was covered by ${covered})` : ''}` : `no Like button on the post (icons seen: ${(post.icons || []).join(', ') || 'none'})`, heard(sent, net.watched)].filter(Boolean).join(': '));
     }
     const closed = cleared.filter(Boolean);
-    const out = { followed, liked: likes > 0, likes, likesDone: done, likeWhy: [...why, ...(closed.length ? [closed[0]] : [])].join('; '), private: isPrivate, tried: hrefs.length };
+    const hidden = shown && shown.shown === false && shown.why ? [`the follow tab stayed hidden: ${shown.why}`] : [];
+    const out = { followed, liked: likes > 0, likes, likesDone: done, likeWhy: [...why, ...(closed.length ? [closed[0]] : []), ...(why.length ? hidden : [])].join('; '), private: isPrivate, tried: hrefs.length, onScreen: shown ? shown.shown !== false : null };
     // Something didn't take: keep a picture of the page, for "See what Instagram showed".
     if (unconfirmed || (hrefs.length && !done && !likes)) out.shot = await picture(handle, unconfirmed ? `couldn't confirm the follow (${unconfirmed})` : `no post liked (${why.join('; ')})`);
-    if (unconfirmed) return { ...out, result: 'failed', clicked: true, note: `couldn't confirm the follow (${unconfirmed})` };
+    if (unconfirmed) return { ...out, result: 'failed', clicked: true, note: `couldn't confirm the follow (${[unconfirmed, ...hidden].join('; ')})` };
     return { ...out, result: followed ? 'followed' : p.state === 'follow' ? 'notfollowed' : 'already' };
   }
 

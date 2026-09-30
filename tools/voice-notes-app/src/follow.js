@@ -256,3 +256,6 @@ export async function followPage(action) {
   }
   throw new Error(`Unknown follow step: ${action}`);
 }
+
+// Is an answer from Instagram a push-back ("feedback_required", "try again later", a spam flag)?
+export const pushedBack = (text) => /feedback_required|"spam"\s*:\s*true|try again later|please wait a few minutes|we restrict certain activity|action blocked|checkpoint_required|challenge_required/i.test(String(text || ''));
