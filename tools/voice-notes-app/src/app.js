@@ -3,6 +3,7 @@ import * as audio from './audio.js';
 import * as leads from './leads.js';
 import * as replies from './replies.js';
 import * as discover from './find.js';
+import * as limits from './limits.js';
 
 // Read this off the screen when recording the pitch. About 32 seconds at a normal pace.
 const PITCH_SCRIPT = `Figured a real voice beats another copy-paste DM. I'm Garrett with Torrey Labs — we're a peptide company here in San Diego, every batch third-party tested.
@@ -91,6 +92,8 @@ const DEFAULT_SETTINGS = {
   removeMode: 'delete',
   followGate: true,
   followPerDay: 50,
+  // How much the account does a day and an hour (Setup > Safety limits). See src/limits.js.
+  limits: structuredClone(limits.DEFAULT_LIMITS),
   engageAfterSend: true,
   claude: { key: '' },
   torrey: { key: '', site: 'https://torreylabs.store', percent: 20 },
@@ -207,7 +210,7 @@ const saveTemplate = () => store.put('kv', 'template', S.template);
 // The follow runner lives in the main process and needs the Airtable details; the token stays in these settings.
 const pushFollowConfig = () => {
   const { token, baseId, table } = S.settings.airtable;
-  window.api.followConfig({ token, baseId, table, perDay: S.settings.followPerDay });
+  window.api.followConfig({ token, baseId, table, perDay: S.settings.followPerDay, limits: S.settings.limits, startedAt: startedAt() });
   window.api.findConfig({ token, baseId, table, perDay: S.settings.find.perDay, tags: S.settings.find.tags });
 };
 const saveSettings = () => {
@@ -936,13 +939,25 @@ async function queueSend(p) {
 }
 
 // One send at a time in the hidden tab, silently.
+const isVoiceJob = (j) => !j.engage && !j.reply && !j.audit && !j.replycheck;
+
 async function runQueue() {
   if (S.bg.current) return;
   while (S.bg.jobs.length) {
+    // Voice notes wait while the safety limits say so (Setup > Safety limits); everything else carries on.
+    let g = { ok: true };
+    if (S.bg.jobs.some((j) => isVoiceJob(j) && !j.force)) {
+      g = voiceGate();
+      // A wait already under way keeps its spread-out end time.
+      if (g.ok && S.bg.hold && S.bg.hold.until > Date.now()) g = { ...S.bg.hold.g, ok: false, until: S.bg.hold.until };
+    }
+    const ready = S.bg.jobs.filter((j) => !isVoiceJob(j) || j.force || g.ok);
+    if (!ready.length) return holdQueue(g);
+    if (g.ok) S.bg.hold = null;
     // Sends first, then replies going out, then looks at chats for replies, then checks of failed sends.
     const rank = (j) => (j.engage ? 0 : j.samples ? 1 : j.reply ? 2 : j.replycheck ? (j.urgent || j.hurry ? 2 : 3) : j.audit ? 4 : 1);
-    const next = S.bg.jobs.reduce((best, j, k) => (rank(j) < rank(S.bg.jobs[best]) ? k : best), 0);
-    const job = S.bg.jobs.splice(next, 1)[0];
+    const job = ready.reduce((best, j) => (rank(j) < rank(best) ? j : best), ready[0]);
+    S.bg.jobs.splice(S.bg.jobs.indexOf(job), 1);
     const p = S.prospects.find((x) => x.id === job.pid);
     if (job.engage) {
       if (p) await engage(p);
@@ -962,6 +977,7 @@ async function runQueue() {
       continue;
     }
     if (!p || p.status !== 'sending') continue;
+    delete p.waitingLimit;
     const cur = (S.bg.current = { pid: p.id, handle: p.handle, text: 'Starting...', until: 0 });
     paintQueue();
     let issue = '';
@@ -1000,6 +1016,38 @@ async function runQueue() {
     S.watchSend = false;
     showRightPane();
   }
+}
+
+// Voice notes waiting on a safety limit: the strip says why and when the next one goes, and the queue looks again
+// then (and every few minutes). A wait between notes gets a random extra so they don't go out on a timer.
+let holdTimer = null;
+function holdQueue(g) {
+  const c = capsNow();
+  const same = S.bg.hold && S.bg.hold.g.reason === g.reason && S.bg.hold.until >= g.until;
+  if (!same) {
+    let until = g.until;
+    if (g.reason === 'gap') until += Math.round(Math.random() * 0.4 * c.dmGapMs);
+    // A day's limit opens at midnight, but voice notes wait for the morning.
+    if ((g.reason === 'day' || g.reason === 'total') && c.window?.on) until = limits.nextWindow(until - 60 * 1000, c.window);
+    S.bg.hold = { g, until };
+  }
+  for (const j of S.bg.jobs.filter(isVoiceJob)) {
+    const p = S.prospects.find((x) => x.id === j.pid);
+    if (p) p.waitingLimit = true;
+  }
+  clearTimeout(holdTimer);
+  holdTimer = setTimeout(runQueue, Math.max(1000, Math.min(S.bg.hold.until - Date.now() + 500, 5 * 60 * 1000)));
+  paintQueue();
+}
+
+// "Send one now" on the strip: the next voice note goes out despite the limit, after you confirm.
+function sendOneAnyway() {
+  const j = S.bg.jobs.find(isVoiceJob);
+  if (!j) return;
+  if (!confirm(`Send the next voice note now, even though ${limits.reasonText(S.bg.hold?.g || {}, 'dm') || 'the safety limit says to wait'}?`)) return;
+  j.force = true;
+  S.bg.hold = null;
+  runQueue();
 }
 
 // Leads that say "send failed" whose voice note went out anyway (the app couldn't confirm it at the time): opens
@@ -1461,7 +1509,16 @@ function paintQueue() {
   const el = document.getElementById('send-queue');
   if (!el) return;
   const cur = S.bg.current;
-  el.hidden = !cur;
+  const waiting = S.bg.jobs.filter(isVoiceJob).length;
+  const hold = !cur && S.bg.hold && waiting ? S.bg.hold : null;
+  el.hidden = !cur && !hold;
+  if (hold) {
+    const when = hold.until - Date.now() > 12 * 3600e3 || hold.g.reason === 'day' || hold.g.reason === 'total' || hold.g.reason === 'window' ? `at ${clock(hold.until)}` : `in ${countdown(hold.until - Date.now())}`;
+    return el.replaceChildren(
+      h('span', { class: 'grow' }, h('b', {}, `Next voice note ${when}`), `: ${limits.reasonText(hold.g, 'dm')} · ${waiting} waiting`),
+      h('button', { class: 'link', onclick: sendOneAnyway }, 'Send one now'),
+    );
+  }
   if (!cur) return el.replaceChildren();
   const left = cur.until ? ` · ${countdown(cur.until - Date.now())} left` : '';
   const queued = S.bg.jobs.filter((j) => !j.engage && !j.replycheck && !j.audit).length;
@@ -1480,7 +1537,7 @@ function paintQueue() {
     h('button', { class: 'link', onclick: toggleWatch }, S.watchSend ? 'Hide' : 'Watch'),
   );
 }
-setInterval(() => S.bg.current?.until && paintQueue(), 1000);
+setInterval(() => (S.bg.current?.until || S.bg.hold) && paintQueue(), 1000);
 
 function toggleWatch() {
   S.watchSend = !S.watchSend;
@@ -1491,6 +1548,8 @@ function toggleWatch() {
 // Sends in the Instagram pane you can see, handing off to you if a step needs a click.
 async function sendNow(p) {
   if (S.rec || S.sending) return;
+  const g = voiceGate();
+  if (!g.ok && !confirm(`Safety limit: ${limits.reasonText(g, 'dm')}. Send this one anyway?`)) return;
   const samples = await clipFor(p);
   if (!samples) return;
   stopPlay();
@@ -1749,6 +1808,96 @@ function nextTodo(fromId) {
   return list.find((p) => S.prospects.indexOf(p) > i) || list[0] || null;
 }
 
+// ---------- Safety limits ----------
+// When the account started this (its first voice note sent from the app, or today), for the warm-up.
+function startedAt() {
+  const times = S.prospects.filter((p) => p.sentAt && p.sentBy !== 'airtable').map((p) => p.sentAt);
+  return times.length ? Math.min(...times) : Date.now();
+}
+// When each voice note went out, over the last day or so (sent from the app, or marked sent by hand).
+const voiceTimes = () => S.prospects.filter((p) => p.status === 'sent' && p.sentAt > Date.now() - 26 * 3600e3).map((p) => p.sentAt);
+const capsNow = () => limits.caps(S.settings.limits, Date.now(), startedAt(), { fast: S.fast });
+// Whether a voice note can go out now; the follow tab's counts come along for the combined limit.
+function voiceGate() {
+  const f = S.follow?.times || {};
+  return limits.gate('dm', { dm: voiceTimes(), follow: f.follow || [], like: f.like || [] }, capsNow(), Date.now());
+}
+let lastVoicePush = '';
+function pushVoiceTimes() {
+  const t = voiceTimes();
+  const key = t.join(',');
+  if (key === lastVoicePush) return;
+  lastVoicePush = key;
+  window.api.voiceTimes(t).catch(() => {});
+}
+
+// Setup > Safety limits: the account's age sets the caps; any daily cap can be set lower; the warm-up and the
+// daytime window for voice notes can be turned off. Shows what's been done today against each cap.
+function limitsCard() {
+  const lim = S.settings.limits;
+  const c = capsNow();
+  const L = limits.LEVELS[c.level];
+  const f = S.follow || {};
+  const done = { dm: sentToday(), follow: f.today || 0, like: f.likesToday || 0 };
+  const save = () => {
+    saveSettings().then(flashSaved);
+    paintSentToday();
+    const el = document.getElementById('limits-card');
+    if (el) el.replaceWith(limitsCard());
+    runQueue();
+  };
+  const customField = (k, label) =>
+    h(
+      'label',
+      { class: 'field' },
+      `${label} (the most is ${L[k]})`,
+      h('input', {
+        type: 'number',
+        min: 1,
+        max: L[k],
+        placeholder: String(L[k]),
+        value: lim.custom[k],
+        onchange: (e) => ((lim.custom[k] = e.target.value ? Math.min(L[k], Math.max(1, parseInt(e.target.value, 10) || 1)) : ''), save()),
+      }),
+    );
+  const row = (what, k, hour, extra = '') => h('div', { class: 'log-row' }, h('b', { class: 'small' }, what), h('span', { class: 'small' }, `${done[k]} of ${c[k]} today · at most ${hour} an hour${extra}`));
+  return h(
+    'div',
+    { class: 'card', id: 'limits-card' },
+    h('p', { class: 'muted small' }, "Instagram doesn't publish its limits, so these stay well under what accounts doing outreach report getting flagged for. Voice notes, follows and likes each have a daily and an hourly cap, the three share a combined daily cap, and a new setup warms up over its first 10 days. Nothing is lost at a cap: queued voice notes wait and go out when there's room, and following picks up again."),
+    h(
+      'label',
+      { class: 'field' },
+      'How old is the Instagram account?',
+      h(
+        'select',
+        { onchange: (e) => ((lim.level = e.target.value), save()) },
+        Object.entries(limits.LEVELS).map(([k, v]) => h('option', { value: k, selected: k === c.level }, v.label)),
+      ),
+    ),
+    row('Voice notes', 'dm', c.dmHour, `, ${Math.round(c.dmGapMs / 60000)}+ min apart${c.window?.on ? `, ${hourText(c.window.from)} to ${hourText(c.window.to)}` : ''}`),
+    row('Follows', 'follow', c.followHour),
+    row('Likes', 'like', c.likeHour),
+    h('div', { class: 'log-row' }, h('b', { class: 'small' }, 'All together'), h('span', { class: 'small' }, `${done.dm + done.follow + done.like} of ${c.total} today`)),
+    c.ramp < 1 ? h('p', { class: 'small' }, `Warming up: day ${c.days + 1} of 10, so today's caps are ${Math.round(c.ramp * 100)}% of the full ones (${L.dm} voice notes, ${L.follow} follows, ${L.like} likes).`) : null,
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: lim.ramp !== false, onchange: (e) => ((lim.ramp = e.target.checked), save()) }), 'Warm up: start at about a third of the caps and build to the full ones over 10 days'),
+    h(
+      'label',
+      { class: 'check' },
+      h('input', { type: 'checkbox', checked: lim.window.on, onchange: (e) => ((lim.window.on = e.target.checked), save()) }),
+      `Only send voice notes during the day (Pacific), from `,
+      h('input', { type: 'number', min: 0, max: 23, value: lim.window.from, class: 'hour-input', onchange: (e) => ((lim.window.from = Math.min(22, Math.max(0, parseInt(e.target.value, 10) || 0))), save()) }),
+      ' to ',
+      h('input', { type: 'number', min: 1, max: 24, value: lim.window.to, class: 'hour-input', onchange: (e) => ((lim.window.to = Math.min(24, Math.max(lim.window.from + 1, parseInt(e.target.value, 10) || 20))), save()) }),
+      ' (24-hour clock)',
+    ),
+    h('p', { class: 'small' }, 'Lower a daily cap (blank keeps the one for the account age):'),
+    h('div', { class: 'grid2' }, customField('dm', 'Voice notes a day'), customField('like', 'Likes a day')),
+    h('p', { class: 'muted small' }, "Follows a day is set on the Follow screen; the lower of that and the cap here applies. Replies to people who wrote back aren't counted: they're conversations, not outreach. If Instagram ever shows \"action blocked\" or \"try again later\", following and liking stop for 48 hours on their own; pause the voice notes too and start again at about half."),
+  );
+}
+const hourText = (hr) => new Date(2000, 0, 1, hr % 24).toLocaleTimeString([], { hour: 'numeric' });
+
 // Voice notes sent since midnight on this Mac, counting ones you marked sent by hand.
 function sentToday() {
   const midnight = new Date().setHours(0, 0, 0, 0);
@@ -1757,7 +1906,8 @@ function sentToday() {
 
 function sentBadge() {
   const n = sentToday();
-  return h('span', { id: 'sent-today', class: 'badge sent', title: `${n} voice note${n === 1 ? '' : 's'} sent today` }, `✓ ${n}`);
+  const cap = S.settings ? capsNow().dm : 0;
+  return h('span', { id: 'sent-today', class: 'badge sent', title: `${n} voice note${n === 1 ? '' : 's'} sent today${cap ? ` (today's safe limit: ${cap})` : ''}` }, cap ? `✓ ${n}/${cap}` : `✓ ${n}`);
 }
 
 // In place, so a background send never interrupts recording or typing.
@@ -1769,6 +1919,7 @@ async function markSent(p) {
   delete p.sendIssue;
   await saveProspects();
   paintSentToday();
+  pushVoiceTimes();
   queueEngage(p);
   const at = S.settings.airtable;
   if (at.writeBack && at.token && p.airtableId) {
@@ -2985,6 +3136,9 @@ function setupView() {
       h('label', { class: 'check' }, h('input', { type: 'radio', name: 'remove-mode', checked: st.removeMode === 'skip', onchange: () => ((st.removeMode = 'skip'), saveSettings().then(flashSaved)) }), 'marks it Skip in Airtable (Status and Track), with the reason. It stays out for good.'),
     ),
 
+    h('h2', {}, 'Safety limits (Instagram)'),
+    limitsCard(),
+
     h('h2', {}, 'Replies (Instagram)'),
     h(
       'div',
@@ -3072,7 +3226,10 @@ function followStatus(f) {
       setup: 'Add your Airtable token in Setup to start.',
       checking: 'Checking Airtable for who to follow...',
       working: `Following @${f.current?.handle || ''}...`,
-      cap: `Done for today (${f.today} of ${f.cap}). Starts again ${clock(until)}.`,
+      cap: `Done for today (${f.today} of ${f.cap} follows). Starts again ${clock(until)}.`,
+      likecap: `Done for today: ${f.likesToday} of ${f.likeCap} likes, and each follow comes with a like. Starts again ${clock(until)}.`,
+      totalcap: `Done for today: the combined limit for voice notes, follows and likes is reached (Setup > Safety limits). Starts again ${clock(until)}.`,
+      hour: `Pacing: the hourly limit is reached, so the next one is ${clock(until)}.`,
       paused: `Paused until ${clock(until)} because Instagram pushed back. See Recent below.`,
       empty: 'Nobody new to follow. Checking Airtable again in 30 minutes.',
       error: 'Hit a snag (see Recent below). Trying again in 10 minutes.',
@@ -3124,12 +3281,14 @@ function followHint() {
 }
 
 function logText(e) {
-  if (e.afterSend && (e.result === 'followed' || e.result === 'already')) {
-    const likes = e.likes ? `liked ${e.likes} post${e.likes === 1 ? '' : 's'}` : e.private ? 'private, nothing to like' : 'no posts liked';
-    return `After the voice note: ${e.result === 'followed' ? 'followed' : 'already following'}, ${likes}`;
+  const likes = e.likes ? `liked ${e.likes} post${e.likes === 1 ? '' : 's'}` : e.private ? 'private, nothing to like' : `no posts liked${e.likeWhy ? ` (${e.likeWhy})` : ''}`;
+  if (e.result === 'limit') return e.note;
+  if (e.afterSend && (e.result === 'followed' || e.result === 'already' || e.result === 'notfollowed')) {
+    const fol = e.result === 'followed' ? 'followed' : e.result === 'already' ? 'already following' : "didn't follow (the follow limit is reached)";
+    return `After the voice note: ${fol}, ${likes}`;
   }
-  if (e.result === 'followed') return e.liked ? 'Followed and liked their latest post' : e.private ? 'Followed (private, nothing to like)' : "Followed (didn't like a post)";
-  if (e.result === 'already') return e.liked ? 'Already following; liked their latest post' : 'Already following';
+  if (e.result === 'followed') return e.liked ? 'Followed and liked their latest post' : `Followed, ${likes}`;
+  if (e.result === 'already') return e.liked ? 'Already following; liked their latest post' : `Already following, ${likes}`;
   if (e.result === 'notfound') return 'Account not found, skipped';
   if (e.result === 'blocked') return `Instagram pushed back ("${e.note}"). Paused for 48 hours.${e.followed ? ' The follow went through.' : ''}`;
   if (e.result === 'loggedout') return 'Instagram is logged out. Stopped.';
@@ -3137,7 +3296,28 @@ function logText(e) {
   return e.note;
 }
 
-const logClass = (e) => ({ followed: 'ok', already: 'muted', notfound: 'muted', blocked: 'bad', failed: 'bad', loggedout: 'bad', error: 'warn' })[e.result] || '';
+const logClass = (e) =>
+  // A follow that should have come with a like but didn't stands out, so a like step that stops working is noticed.
+  (['followed', 'already', 'notfollowed'].includes(e.result) && !e.likes && !e.liked && !e.private && e.likeWhy && !/no posts yet/.test(e.likeWhy) ? 'warn' : '') ||
+  ({ followed: 'ok', already: 'muted', notfollowed: 'muted', limit: 'muted', notfound: 'muted', blocked: 'bad', failed: 'bad', loggedout: 'bad', error: 'warn' })[e.result] ||
+  '';
+
+// Follow screen: "Check the like step" opens one profile and its first post in the follow tab and says what it
+// finds, without following or liking anything.
+async function probeLikes() {
+  const input = document.getElementById('probe-handle');
+  const handle = leads.cleanHandle(input?.value || '');
+  if (!handle) return toast('Type an Instagram handle first.');
+  const out = document.getElementById('probe-out');
+  out.textContent = `Looking at @${handle}...`;
+  try {
+    const lines = await window.api.followProbe(handle);
+    S.probe = lines.join('\n');
+  } catch (e) {
+    S.probe = `The check failed: ${errText(e)}`;
+  }
+  out.textContent = S.probe;
+}
 
 function followView() {
   const f = S.follow;
@@ -3170,7 +3350,7 @@ function followView() {
         ? h(
             'p',
             { class: 'muted small' },
-            [`Today: ${f.today} of ${f.cap} follows`, `${f.total} followed in all`, f.skipped ? `${f.skipped} not found` : ''].filter(Boolean).join(' · '),
+            [`Today: ${f.today} of ${f.cap} follows`, f.likeCap ? `${f.likesToday} of ${f.likeCap} likes` : '', `${f.total} followed in all`, f.skipped ? `${f.skipped} not found` : ''].filter(Boolean).join(' · '),
           )
         : null,
     ),
@@ -3204,7 +3384,21 @@ function followView() {
     h(
       'p',
       { class: 'muted small' },
-      'Pacing: your daily limit above (the day resets at midnight Pacific), 2 to 6 minutes between accounts, any time of day. If Instagram shows "action blocked", "try again later" or a security check, it stops and waits 48 hours.',
+      'Pacing: your daily limit above, capped by Setup > Safety limits (with a like for each follow, an hourly cap, and a combined cap with voice notes; the day resets at midnight Pacific), 2 to 6 minutes between accounts, any time of day. If Instagram shows "action blocked", "try again later" or a security check, it stops and waits 48 hours.',
+    ),
+    h('h2', {}, 'Check the like step'),
+    h(
+      'div',
+      { class: 'card' },
+      h('p', { class: 'muted small' }, "Opens a profile and its first post in the follow tab and says whether the app can see the posts and the Like button. Nothing is followed or liked. If likes aren't happening, run it on one of the accounts above and press Copy."),
+      h(
+        'div',
+        { class: 'row-flex' },
+        h('input', { id: 'probe-handle', placeholder: '@handle', value: S.probeHandle ?? (f?.log?.find((e) => e.handle)?.handle || ''), oninput: (e) => (S.probeHandle = e.target.value) }),
+        h('button', { onclick: probeLikes }, 'Check'),
+        h('button', { class: 'link', onclick: () => S.probe && window.api.copyText(S.probe).then((ok) => toast(ok ? 'Copied.' : "Couldn't copy.")) }, 'Copy'),
+      ),
+      h('pre', { id: 'probe-out', class: 'small probe-out' }, S.probe || ''),
     ),
     h('p', { class: 'muted small' }, 'While this screen is open, the right side shows the follow tab so you can watch. Following keeps running when you go back to Leads.'),
   );
@@ -3493,6 +3687,7 @@ document.addEventListener('keydown', (e) => {
     torrey: { ...DEFAULT_SETTINGS.torrey, ...saved.torrey },
     replies: { ...DEFAULT_SETTINGS.replies, ...saved.replies },
     find: { ...DEFAULT_SETTINGS.find, ...saved.find },
+    limits: { ...DEFAULT_SETTINGS.limits, ...saved.limits, window: { ...DEFAULT_SETTINGS.limits.window, ...saved.limits?.window }, custom: { ...DEFAULT_SETTINGS.limits.custom, ...saved.limits?.custom } },
   };
   // The cap used to default to 100, which is fewer leads than the formula matches.
   if (S.settings.airtable.max === 100) S.settings.airtable.max = DEFAULT_SETTINGS.airtable.max;
@@ -3504,12 +3699,16 @@ document.addEventListener('keydown', (e) => {
   S.removed = { ids: [], handles: [], ...((await store.get('kv', 'removed')) || {}) };
   for (const p of S.prospects.filter((x) => x.status === 'sending')) {
     p.status = 'todo';
-    p.sendIssue = 'the app closed before it sent';
+    // One that was only waiting on a safety limit goes back to To do as it was, to send again.
+    if (!p.waitingLimit) p.sendIssue = 'the app closed before it sent';
+    delete p.waitingLimit;
   }
+  S.fast = await window.api.testFast().catch(() => false);
   const fixedSegs = S.template.filter((s) => s.kind === 'fixed');
   if (fixedSegs.length && fixedSegs.every((s) => !S.lens[fixedKey(s)])) S.view = 'setup';
   pushFollowConfig();
   S.follow = await window.api.followState();
+  pushVoiceTimes();
   S.find = await window.api.findState();
   render();
   if (S.settings.autoSync) sync({ quiet: true });

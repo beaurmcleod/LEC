@@ -108,8 +108,20 @@ export async function followPage(action) {
     if (byText(/^requested$/i)) return 'requested';
     return '';
   };
+  // The heart is an svg labelled Like (Unlike once liked), usually inside a button; comment hearts are smaller.
   const likeButtons = (label) =>
-    [...document.querySelectorAll(`svg[aria-label="${label}"]`)].filter((el) => el.getBoundingClientRect().height >= 18);
+    [...document.querySelectorAll(`svg[aria-label="${label}"], button[aria-label="${label}"], [role=button][aria-label="${label}"]`)].filter((el) => el.getBoundingClientRect().height >= 18);
+  // Their posts on the profile, newest first, pinned ones left out.
+  const postLinks = () =>
+    [
+      ...new Set(
+        [...document.querySelectorAll('main a[href*="/p/"], main a[href*="/reel/"]')]
+          .filter((a) => shown(a) && !a.querySelector('svg[aria-label*="pinned" i]'))
+          .map((a) => a.getAttribute('href')),
+      ),
+    ];
+  // What icons a page shows, for saying why a Like button wasn't found.
+  const icons = () => [...new Set([...document.querySelectorAll('svg[aria-label]')].filter(shown).map((s) => s.getAttribute('aria-label')))].slice(0, 14);
   const likeState = () => (likeButtons('Unlike').length ? 'liked' : likeButtons('Like').length ? 'like' : '');
   const dismiss = () => byText(/^not now$/i)?.click();
 
@@ -134,11 +146,12 @@ export async function followPage(action) {
     if (loggedOut()) return { state: 'loggedout' };
     if (notFound()) return { state: 'notfound' };
     const isPrivate = /this account is private/i.test(mainText());
-    // Newest first, pinned posts left out.
-    const posts = [...document.querySelectorAll('main a[href*="/p/"], main a[href*="/reel/"]')]
-      .filter((a) => shown(a) && !a.querySelector('svg[aria-label*="pinned" i]'))
-      .map((a) => a.getAttribute('href'));
-    return { state: followState(), private: isPrivate, posts: [...new Set(posts)].slice(0, 12) };
+    // The page shows the Follow button before its grid of posts has loaded, so wait for the posts (unless the
+    // account says it has none).
+    const claimed = /(?:^|\n)\s*0 posts?\b/i.test(mainText()) ? 0 : null;
+    let posts = postLinks();
+    if (!isPrivate && !posts.length && claimed !== 0) posts = (await waitFor(() => (postLinks().length ? postLinks() : null), 10000)) || [];
+    return { state: followState(), private: isPrivate, posts: posts.slice(0, 12), postCount: claimed, icons: posts.length ? [] : icons() };
   }
   // Short fixed waits let the page finish settling before a click.
   if (action === 'clickFollow') {
@@ -155,12 +168,23 @@ export async function followPage(action) {
     await waitFor(() => blocked() || loggedOut() || likeState(), 15000);
     dismiss();
     if (blocked()) return { state: 'blocked', note: blocked() };
-    return { state: likeState() };
+    const state = likeState();
+    return { state, icons: state ? [] : icons() };
   }
   if (action === 'clickLike') {
     await sleep(800);
     const el = likeButtons('Like')[0];
     return el ? point(el) : null;
+  }
+  // The middle of the post's picture or video, for a double-click (which likes it) when the heart can't be used.
+  if (action === 'mediaPoint') {
+    const media = [...document.querySelectorAll('main article img, main article video, main video, main img')]
+      .filter((el) => shown(el) && el.getBoundingClientRect().width >= 200 && el.getBoundingClientRect().height >= 200)
+      .sort((a, b) => b.getBoundingClientRect().width * b.getBoundingClientRect().height - a.getBoundingClientRect().width * a.getBoundingClientRect().height)[0];
+    if (!media) return null;
+    media.scrollIntoView({ block: 'center', inline: 'center' });
+    const r = media.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   }
   if (action === 'afterLike') {
     await waitFor(() => blocked() || likeState() === 'liked', 6000);

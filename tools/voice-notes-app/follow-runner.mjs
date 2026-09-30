@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import * as F from './src/follow.js';
 import * as leads from './src/leads.js';
+import * as L from './src/limits.js';
 
 const LOG_MAX = 60;
 const EMPTY_RETRY_MS = 30 * 60 * 1000;
@@ -8,8 +9,13 @@ const ERROR_RETRY_MS = 10 * 60 * 1000;
 
 // Follows and likes one lead at a time in its own Instagram tab, within the pacing in src/follow.js.
 // Its counters, pause and log live in a small JSON file so they survive restarts.
-export function createFollowRunner({ view, statePath, igBase, click, emit, onFollowed, fast = false }) {
-  let state = { enabled: false, stopNote: '', days: {}, pausedUntil: 0, nextAt: 0, skipped: {}, log: [] };
+export function createFollowRunner({ view, statePath, igBase, click, dblclick, emit, onFollowed, fast = false }) {
+  let state = { enabled: false, stopNote: '', days: {}, pausedUntil: 0, nextAt: 0, skipped: {}, log: [], times: { follow: [], like: [] } };
+  // The safety limits from Setup, when the account started doing this, and when voice notes went out (the app
+  // tells this process, since they count toward the combined daily limit).
+  let limits = L.DEFAULT_LIMITS;
+  let startedAt = Date.now();
+  let dmTimes = [];
   let at = null;
   let perDay = F.LIMITS.defaultPerDay;
   let timer = null;
@@ -23,6 +29,22 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
     state.log = [{ at: Date.now(), ...entry }, ...state.log].slice(0, LOG_MAX);
   };
 
+  // Timestamps of what was done (follows and likes here, voice notes from the app), for the hourly and combined limits.
+  const timesNow = () => ({ dm: dmTimes, follow: state.times?.follow || [], like: state.times?.like || [] });
+  function budget(now = Date.now()) {
+    const c = L.caps(limits, now, startedAt, { fast });
+    c.follow = Math.min(c.follow, perDay);
+    const t = timesNow();
+    return { c, t, follow: L.gate('follow', t, c, now), like: L.gate('like', t, c, now), total: L.gate('follow', t, { ...c, follow: 1e9, followHour: 1e9 }, now) };
+  }
+  const todayCount = (kind, now) => (state.times?.[kind] || []).filter((t) => F.dayKey(t) === F.dayKey(now)).length;
+  const note = (kind, now, n = 1) => {
+    const keep = now - 26 * 60 * 60 * 1000;
+    state.times = state.times || { follow: [], like: [] };
+    for (let i = 0; i < n; i++) state.times[kind].push(now);
+    state.times[kind] = state.times[kind].filter((t) => t > keep);
+  };
+
   function snapshot() {
     const now = Date.now();
     return {
@@ -32,7 +54,11 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
       current,
       queue,
       today: F.followedToday(state, now),
-      cap: perDay,
+      cap: Math.min(perDay, budget(now).c.follow),
+      likesToday: todayCount('like', now),
+      likeCap: budget(now).c.like,
+      ramp: budget(now).c.ramp,
+      times: { follow: state.times?.follow || [], like: state.times?.like || [] },
       total: Object.values(state.days || {}).reduce((a, b) => a + b, 0),
       skipped: Object.keys(state.skipped).length,
       log: state.log.slice(0, 25),
@@ -51,9 +77,9 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
   const open = (wc, url) => wc.loadURL(url).catch(() => {});
   const pause = () => new Promise((r) => setTimeout(r, fast ? 100 : 1500 + Math.random() * 2500));
 
-  // Follows the account in `wc` if needed, then likes the posts at `likeAt` (0 = newest; pinned posts don't
-  // count). Posts already liked are left alone.
-  async function visit(wc, handle, likeAt = [0]) {
+  // Follows the account in `wc` if needed (unless `follow` is false), then likes the posts at `likeAt` (0 = newest;
+  // pinned posts don't count). Posts already liked are left alone. When a like doesn't happen, `likeWhy` says why.
+  async function visit(wc, handle, likeAt = [0], { follow = true } = {}) {
     await open(wc, `${igBase}/${encodeURIComponent(handle)}/`);
     const p = await run(wc, 'profile');
     if (p.state === 'blocked') return { result: 'blocked', note: p.note };
@@ -63,7 +89,7 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
 
     let followed = false;
     let requested = p.state === 'requested';
-    if (p.state === 'follow') {
+    if (p.state === 'follow' && follow) {
       if (!(await click(wc, await run(wc, 'clickFollow')))) return { result: 'failed', note: "couldn't click Follow" };
       const a = await run(wc, 'afterFollow');
       if (a.state === 'blocked') return { result: 'blocked', note: a.note };
@@ -75,26 +101,49 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
     // Private accounts (or a pending request) have nothing to like.
     const isPrivate = p.private || requested;
     let likes = 0;
+    let done = 0;
+    const why = [];
     const hrefs = isPrivate ? [] : likeAt.map((i) => p.posts[i]).filter(Boolean);
+    if (!isPrivate && likeAt.length && !hrefs.length) why.push(p.postCount === 0 ? 'no posts yet' : `couldn't find their posts on the profile${p.icons?.length ? ` (icons seen: ${p.icons.join(', ')})` : ''}`);
     for (const href of hrefs) {
       await pause();
       await open(wc, new URL(href, igBase).href);
       const post = await run(wc, 'post');
-      if (post.state === 'blocked') return { result: 'blocked', followed, liked: likes > 0, likes, note: post.note };
-      if (post.state === 'liked') likes++;
-      else if (post.state === 'like' && (await click(wc, await run(wc, 'clickLike')))) {
-        const l = await run(wc, 'afterLike');
-        if (l.state === 'blocked') return { result: 'blocked', followed, liked: likes > 0, likes, note: l.note };
-        if (l.state === 'liked') likes++;
+      const fail = (l) => ({ result: 'blocked', followed, liked: likes > 0, likes, likesDone: done, note: l.note });
+      if (post.state === 'blocked') return fail(post);
+      if (post.state === 'liked') {
+        likes++;
+        continue;
       }
+      let ok = false;
+      // The heart first (twice, in case the first press only focused the page), then a double-click on the picture.
+      for (let attempt = 0; attempt < 2 && !ok && post.state === 'like'; attempt++) {
+        if (!(await click(wc, await run(wc, 'clickLike')))) break;
+        const l = await run(wc, 'afterLike');
+        if (l.state === 'blocked') return fail(l);
+        ok = l.state === 'liked';
+      }
+      if (!ok && dblclick) {
+        const pt = await run(wc, 'mediaPoint');
+        if (pt && (await dblclick(wc, pt))) {
+          const l = await run(wc, 'afterLike');
+          if (l.state === 'blocked') return fail(l);
+          ok = l.state === 'liked';
+        }
+      }
+      if (ok) {
+        likes++;
+        done++;
+      } else why.push(post.state ? "pressed Like but it didn't take" : `no Like button on the post (icons seen: ${(post.icons || []).join(', ') || 'none'})`);
     }
-    return { result: followed ? 'followed' : 'already', followed, liked: likes > 0, likes, private: isPrivate };
+    return { result: followed ? 'followed' : p.state === 'follow' ? 'notfollowed' : 'already', followed, liked: likes > 0, likes, likesDone: done, likeWhy: why.join('; '), private: isPrivate };
   }
 
   async function settle(lead, r) {
     const now = Date.now();
     // A click that couldn't be confirmed still counts toward today's limit, to stay on the safe side.
-    if (r.followed || r.clicked) F.recordFollow(state, now);
+    if (r.followed || r.clicked) (F.recordFollow(state, now), note('follow', now));
+    if (r.likesDone) note('like', now, r.likesDone);
     if (r.result === 'blocked') state.pausedUntil = now + F.LIMITS.blockPauseMs;
     if (r.result === 'notfound') state.skipped[lead.id] = 'not found';
     if (r.result === 'loggedout' || r.result === 'failed') {
@@ -102,7 +151,7 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
       state.stopNote = r.result === 'loggedout' ? 'loggedout' : `${r.note} on @${lead.handle}`;
     }
     state.nextAt = now + (fast ? 1500 : F.randomGap());
-    addLog({ handle: lead.handle, result: r.result, followed: !!r.followed, liked: !!r.liked, private: !!r.private, note: r.note || '' });
+    addLog({ handle: lead.handle, result: r.result, followed: !!r.followed, liked: !!r.liked, likes: r.likes || 0, likeWhy: r.likeWhy || '', private: !!r.private, note: r.note || '' });
     await save();
     if (r.followed || r.result === 'already') {
       try {
@@ -123,6 +172,14 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
     if (!g.ok) {
       setPhase(g.reason, g.until);
       return schedule(g.until - now);
+    }
+    // Each follow comes with a like, so both budgets (and the combined one) need room, in the day and the hour.
+    const b = budget(now);
+    const hold = [b.follow, b.like, b.total].find((x) => !x.ok);
+    if (hold) {
+      const kind = hold === b.follow ? (hold.reason === 'day' ? 'cap' : 'hour') : hold === b.like ? (hold.reason === 'day' ? 'likecap' : 'hour') : 'totalcap';
+      setPhase(kind, hold.until);
+      return schedule(hold.until - now);
     }
     if (!at?.token) return setPhase('setup');
 
@@ -161,12 +218,18 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
       try {
         state = { ...state, ...JSON.parse(await fs.readFile(statePath, 'utf8')) };
       } catch {}
+      // Follows counted before the hourly and combined limits existed only have a day's total.
+      const now = Date.now();
+      const missing = F.followedToday(state, now) - todayCount('follow', now);
+      if (missing > 0) note('follow', F.nextDay(now) - 24 * 60 * 60 * 1000 + 60 * 1000, missing);
       tick();
     },
     // Airtable details and the daily limit, from the app's settings.
     configure(cfg) {
       at = cfg;
       perDay = F.clampPerDay(cfg.perDay);
+      if (cfg.limits) limits = cfg.limits;
+      if (cfg.startedAt) startedAt = cfg.startedAt;
       if (!busy && ['setup', 'cap'].includes(phase.kind)) tick();
       else emit(snapshot());
     },
@@ -175,10 +238,22 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
     async engage(wc, { handle, airtableId }) {
       const now = Date.now();
       if (state.pausedUntil > now) return { result: 'paused', until: state.pausedUntil };
-      const r = await visit(wc, handle, [0, 3]).catch((e) => ({ result: 'failed', note: e.message }));
-      if (r.followed || r.clicked) F.recordFollow(state, now);
+      // Inside the limits: follow only while follows have room, and like only as many posts as likes have room for.
+      const b = budget(now);
+      const canFollow = b.follow.ok && b.total.ok;
+      const likeRoom = b.total.ok ? Math.min(2, L.left('like', b.t, b.c, now)) : 0;
+      if (!canFollow && !likeRoom) {
+        const why = L.reasonText(!b.follow.ok ? b.follow : !b.like.ok ? b.like : b.total, !b.follow.ok ? 'follow' : !b.like.ok ? 'like' : 'follow');
+        addLog({ handle, result: 'limit', note: `Skipped the follow and likes: ${why}`, afterSend: true });
+        await save();
+        emit(snapshot());
+        return { result: 'limit', note: why };
+      }
+      const r = await visit(wc, handle, [0, 3].slice(0, likeRoom), { follow: canFollow }).catch((e) => ({ result: 'failed', note: e.message }));
+      if (r.followed || r.clicked) (F.recordFollow(state, now), note('follow', now));
+      if (r.likesDone) note('like', now, r.likesDone);
       if (r.result === 'blocked') state.pausedUntil = now + F.LIMITS.blockPauseMs;
-      addLog({ handle, result: r.result, followed: !!r.followed, liked: !!r.liked, likes: r.likes || 0, private: !!r.private, note: r.note || '', afterSend: true });
+      addLog({ handle, result: r.result, followed: !!r.followed, liked: !!r.liked, likes: r.likes || 0, likeWhy: r.likeWhy || '', private: !!r.private, note: r.note || '', afterSend: true });
       await save();
       emit(snapshot());
       if (airtableId && at?.token) {
@@ -193,12 +268,48 @@ export function createFollowRunner({ view, statePath, igBase, click, emit, onFol
       }
       return r;
     },
+    // When voice notes went out, from the app, for the combined daily limit.
+    setVoiceTimes(times) {
+      dmTimes = Array.isArray(times) ? times.filter((t) => Number.isFinite(t)) : [];
+      emit(snapshot());
+    },
     setEnabled(on) {
       state.enabled = on;
       state.stopNote = '';
       save();
       if (!busy) tick();
       else emit(snapshot());
+    },
+    // Says what the like step sees on one profile and its first post, without following or liking anything: is
+    // the grid of posts there, is the Like button, and what else the page shows if not.
+    async probe(handle) {
+      while (busy) await new Promise((r) => setTimeout(r, 400));
+      busy = true;
+      const lines = [];
+      try {
+        const wc = view().webContents;
+        await open(wc, `${igBase}/${encodeURIComponent(handle)}/`);
+        const p = await run(wc, 'profile');
+        lines.push(`@${handle}'s profile: ${p.state || 'unknown'}${p.private ? ' (private: nothing to like)' : ''}`);
+        if (p.state === 'blocked') lines.push(`Instagram pushed back: "${p.note}"`);
+        else if (p.state && !p.private) {
+          lines.push(`Posts found on the profile: ${p.posts?.length || 0}${p.postCount === 0 ? ' (the account has none)' : ''}${p.posts?.length ? '' : p.icons?.length ? `. Icons on the page: ${p.icons.join(', ')}` : ''}`);
+          if (p.posts?.length) {
+            await pause();
+            await open(wc, new URL(p.posts[0], igBase).href);
+            const post = await run(wc, 'post');
+            const media = await run(wc, 'mediaPoint');
+            lines.push(`First post (${p.posts[0]}): ${post.state === 'like' ? 'the Like button is there' : post.state === 'liked' ? 'already liked' : post.state === 'blocked' ? `Instagram pushed back ("${post.note}")` : `no Like button found. Icons on the page: ${(post.icons || []).join(', ') || 'none'}`}`);
+            lines.push(`The picture to double-click: ${media ? 'found' : 'not found'}`);
+          }
+        }
+      } catch (e) {
+        lines.push(`The test failed: ${e.message}`);
+      } finally {
+        busy = false;
+        if (state.enabled) tick();
+      }
+      return lines;
     },
     // The finder works in this same tab between follows: waits for a visit to finish, runs `fn`, then carries on.
     async exclusive(fn) {

@@ -260,6 +260,21 @@ async function clickPoint(wc, pt) {
   return true;
 }
 
+// A double-click, which Instagram treats as a like on a post's picture.
+async function doubleClickPoint(wc, pt) {
+  if (!pt) return false;
+  const z = wc.getZoomFactor();
+  const x = Math.round(pt.x * z);
+  const y = Math.round(pt.y * z);
+  wc.sendInputEvent({ type: 'mouseMove', x, y });
+  for (const clickCount of [1, 2]) {
+    wc.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount });
+    wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount });
+    await sleep(60);
+  }
+  return true;
+}
+
 // Keyboard focus. Loading a page or clicking in an Instagram tab moves the keyboard there, which would send
 // your Space (record) into Instagram. So the app remembers where you last put the keyboard yourself, the
 // recorder or the DM tab, and hands it back: the hidden tabs never keep it, and app-driven loads and clicks
@@ -818,6 +833,10 @@ ipcMain.handle('airtable:remove', (_e, at, id, opts) => leads.removeAirtable(at,
 ipcMain.handle('follow:config', (_e, at) => follower.configure(at));
 ipcMain.handle('follow:set', (_e, on) => follower.setEnabled(!!on));
 ipcMain.handle('follow:state', () => follower.snapshot());
+ipcMain.handle('follow:probe', (_e, handle) => quietly(() => follower.probe(handle)));
+ipcMain.handle('follow:voiceTimes', (_e, times) => follower.setVoiceTimes(times));
+// Test runs only: no waiting between voice notes and no hourly limits.
+ipcMain.handle('app:testFast', () => process.env.TVN_TEST_FOLLOW === '1');
 ipcMain.handle('find:config', (_e, cfg) => finder.configure(cfg));
 ipcMain.handle('find:set', (_e, on) => finder.setEnabled(!!on));
 ipcMain.handle('find:state', () => finder.snapshot());
@@ -840,6 +859,7 @@ app.whenReady().then(async () => {
     statePath: path.join(app.getPath('userData'), 'follow-state.json'),
     igBase: IG_BASE,
     click: clickPoint,
+    dblclick: doubleClickPoint,
     emit: (s) => toRecorder(s, 'follow:status'),
     onFollowed: (m) => toRecorder(m, 'follow:followed'),
     // Test runs only: short gaps between accounts. The daily limit still applies.
