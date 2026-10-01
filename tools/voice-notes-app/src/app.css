@@ -283,3 +283,19 @@ button.link.bad { color: var(--bad); }
 .hour-input { width: 4em; }
 /* Follow > Check the like step: the report keeps its lines. */
 .probe-out { white-space: pre-wrap; }
+
+/* Setup tabs, checklist and "More" groups */
+.checklist { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border-radius: 999px; padding: 3px 10px; font-size: 12px; background: var(--chip); color: var(--muted); }
+.chip.ok { color: var(--ok); }
+.subtabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+details.more { font-size: 13px; }
+details.more > summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+details.more > .more-body { display: grid; gap: 8px; margin-top: 8px; }
+
+/* The pipeline line under the tabs */
+.pipeline { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; padding: 6px 12px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.pipeline .arrow { color: var(--muted); }
+.pipeline button.stage { border: 0; background: none; padding: 2px 6px; color: var(--muted); }
+.pipeline button.stage.has { color: var(--text); }
+.pipeline button.stage b { font-variant-numeric: tabular-nums; }

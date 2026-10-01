@@ -1608,9 +1608,50 @@ const pendingReplies = () => S.prospects.filter((p) => p.reply?.pending);
 
 // Updates the screen after a background change, unless that would interrupt recording or typing.
 function refreshQuietly() {
-  if (S.rec || S.view === 'setup' || document.activeElement?.matches?.('input, textarea')) return paintQueue();
+  if (S.rec || S.view === 'setup' || document.activeElement?.matches?.('input, textarea')) return (paintQueue(), paintPipeline());
   render();
 }
+
+// Where every lead is on the way from "found" to "replied", one line, each stage a tap to its screen.
+function pipelineCounts() {
+  const todo = S.prospects.filter((p) => p.status === 'todo' && p.handle);
+  const gate = S.settings.followGate;
+  const waitingSort = (S.find?.found || []).filter((e) => {
+    const v = S.findVerdicts[e.handle];
+    return !v || !v.status || v.status === 'New';
+  }).length;
+  return {
+    sort: waitingSort,
+    follow: todo.filter((p) => p.airtableId && !p.followedAt).length,
+    day: gate ? todo.filter((p) => p.airtableId && p.followedAt && !followedLongEnough(p)).length : 0,
+    ready: todoList().length,
+    sent: S.prospects.filter((p) => p.status === 'sent' && p.handle).length,
+    replies: pendingReplies().length,
+  };
+}
+function pipelineStrip() {
+  const c = pipelineCounts();
+  const go = (view, filter) => () => {
+    S.view = view;
+    if (filter) S.filter = filter;
+    S.currentId = null;
+    render();
+  };
+  const stages = [
+    ['Waiting for the sort', c.sort, go('find'), 'Accounts Find saved that the daily sort has not looked at yet. It marks each Qualified or Skipped and adds the good ones to Leads.'],
+    ['To follow', c.follow, go('follow'), 'Leads waiting to be followed, with two of their posts liked.'],
+    ['Followed, waiting a day', c.day, go('leads', 'todo'), 'Followed, and about to become ready: a lead can be messaged a day after it was followed.'],
+    ['Ready for a voice note', c.ready, go('leads', 'todo'), 'Leads you can record and send to now.'],
+    ['Sent', c.sent, go('leads', 'sent'), 'Voice notes sent.'],
+    ['Replies waiting', c.replies, go('replies'), 'Replies waiting on you.'],
+  ];
+  return h(
+    'nav',
+    { id: 'pipeline', class: 'pipeline' },
+    stages.map(([label, n, onclick, title], i) => [i ? h('span', { class: 'arrow' }, '›') : null, h('button', { class: `stage ${n ? 'has' : ''}`, title, onclick }, h('b', {}, n), ' ', label)]),
+  );
+}
+const paintPipeline = () => document.getElementById('pipeline')?.replaceWith(pipelineStrip());
 
 // The strip under the tabs that shows what's sending in the background.
 function queueStrip() {
@@ -1976,7 +2017,7 @@ function limitsCard() {
   return h(
     'div',
     { class: 'card', id: 'limits-card' },
-    h('p', { class: 'muted small' }, "Instagram doesn't publish its limits, so these stay well under what accounts doing outreach report getting flagged for. Voice notes, follows and likes each have a daily and an hourly cap, the three share a combined daily cap, and a new setup warms up over its first 10 days. Nothing is lost at a cap: queued voice notes wait and go out when there's room, and following picks up again."),
+    h('p', { class: 'muted small' }, "Instagram doesn't publish its limits, so these stay well under what accounts doing outreach report getting flagged for. Nothing is lost at a cap: queued voice notes wait and following picks up again."),
     h(
       'label',
       { class: 'field' },
@@ -2005,7 +2046,7 @@ function limitsCard() {
     ),
     h('p', { class: 'small' }, 'Lower a daily cap (blank keeps the one for the account age):'),
     h('div', { class: 'grid2' }, customField('dm', 'Voice notes a day'), customField('like', 'Likes a day')),
-    h('p', { class: 'muted small' }, "Follows a day is set on the Follow screen; the lower of that and the cap here applies. Replies to people who wrote back aren't counted: they're conversations, not outreach. If Instagram ever shows \"action blocked\" or \"try again later\", following and liking stop for 48 hours on their own; pause the voice notes too and start again at about half."),
+    more('Good to know', h('p', { class: 'muted small' }, "Voice notes, follows and likes each have a daily and an hourly cap, the three share a combined daily cap, and a new setup warms up over its first 10 days. Follows a day is also set on the Follow screen; the lower of the two applies. Replies to people who wrote back aren't counted: they're conversations, not outreach. If Instagram ever shows \"action blocked\" or \"try again later\", following and liking stop for 48 hours on their own; pause the voice notes too and start again at about half.")),
   );
 }
 const hourText = (hr) => new Date(2000, 0, 1, hr % 24).toLocaleTimeString([], { hour: 'numeric' });
@@ -3163,6 +3204,41 @@ function repliesView() {
   );
 }
 
+// Setup is six short tabs instead of one long page. The checklist on top says what's still to do and jumps there;
+// the controls most people never touch sit under "More".
+const SETUP_TABS = [
+  ['voice', 'Voice note'],
+  ['sending', 'Sending'],
+  ['leads', 'Airtable'],
+  ['safety', 'Safety'],
+  ['replies', 'Auto-reply'],
+  ['autovoice', 'Auto-voice'],
+];
+const goSetupTab = (id) => {
+  S.setupTab = id;
+  render();
+};
+
+// What's set up and what isn't, one tap from the fix.
+function setupChecklist() {
+  const st = S.settings;
+  const items = [
+    ['Pitch recorded', !missingFixed().length, 'voice'],
+    ['Airtable connected', !!st.airtable.token, 'leads'],
+    ['Claude key', !!st.claude.key, 'replies'],
+    ['Invite key (partner codes)', !!st.torrey.key, 'replies'],
+    ['Auto-voice (optional)', !!(st.eleven.key && st.eleven.voiceId), 'autovoice'],
+  ];
+  return h(
+    'div',
+    { class: 'checklist', id: 'setup-checklist' },
+    items.map(([label, ok, tab]) => h('button', { class: `chip ${ok ? 'ok' : ''}`, title: ok ? 'Done' : 'Tap to set this up', onclick: () => goSetupTab(tab) }, `${ok ? '✓' : '○'} ${label}`)),
+  );
+}
+
+// A collapsed group for the rarely-needed controls.
+const more = (title, ...children) => h('details', { class: 'more' }, h('summary', {}, title), h('div', { class: 'more-body' }, ...children));
+
 function setupView() {
   const st = S.settings;
   const at = st.airtable;
@@ -3179,137 +3255,166 @@ function setupView() {
     obj[k] = e.target.checked;
     saveSettings().then(flashSaved);
   };
+  const box = (obj, k, label, after) => h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!obj[k], onchange: (e) => (check(obj, k)(e), after?.()) }), label);
   const total = S.template.filter((s) => s.kind === 'fixed').reduce((n, s) => n + (S.lens[fixedKey(s)] || 0), 0);
+  // Opens on the pitch until it's recorded, then on Airtable until it's connected, then on the pitch again.
+  if (!SETUP_TABS.some(([id]) => id === S.setupTab)) S.setupTab = !missingFixed().length && !at.token ? 'leads' : 'voice';
+  const tab = S.setupTab;
+
+  const panes = {
+    voice: () => [
+      h('h2', {}, 'Your voice note, in order'),
+      S.template.map(segmentCard),
+      h('div', { class: 'row-flex' }, h('button', { onclick: () => addSegment('fixed') }, '+ Pitch part'), h('button', { onclick: () => addSegment('slot') }, '+ Custom line')),
+      h('p', { class: 'muted small' }, `Recorded parts total ${secs(total)}; keep the whole note under 60s. A custom line can use ${PLACEHOLDERS.map((k) => `{${k}}`).join(' ')}.`),
+      more(
+        'Tips for the pitch',
+        h('p', { class: 'muted small' }, 'Record the pitch once, in one take, reading the script on screen, on the same mic and in the same spot you use for the intro line.'),
+        h('p', { class: 'muted small' }, 'Want a custom line in the middle of the pitch? Add a pitch part, then use the arrows to put the line between the two.'),
+        h('p', { class: 'muted small' }, 'Only say "every batch third-party tested" if you can send the certificate the moment someone asks, and keep the referral example true to the numbers.'),
+      ),
+      h('h2', {}, 'How the clip is joined'),
+      h(
+        'div',
+        { class: 'card' },
+        box(st, 'matchLevels', "Match each lead's intro to the pitch's volume (recommended)"),
+        box(st, 'breath', "Put one of your pitch's own breaths between the intro and the pitch, so the join sounds natural", paintBreath),
+        h('div', { id: 'breath-info', class: 'row-flex small' }),
+        box(st, 'toneMatch', "Match the intro's tone to the pitch (EQ), so a take recorded closer to or farther from the mic still sounds like the same voice"),
+        h('p', { class: 'muted small' }, "Fine-tune the join by ear under Listen on any lead's page."),
+        more('More', h('label', { class: 'field' }, 'Silence before the clip starts in Instagram (ms)', h('input', { type: 'number', min: 0, max: 2000, value: st.leadInMs, oninput: num(st, 'leadInMs') }))),
+      ),
+    ],
+
+    sending: () => [
+      h('h2', {}, 'When you press Send'),
+      h(
+        'div',
+        { class: 'card' },
+        box(st, 'autoSend', "Send the voice note for me (off: it stops after recording so I can check it and press Instagram's send myself)"),
+        box(st, 'autoOpen', "Open the lead's Instagram profile when I open a lead"),
+        box(st, 'engageAfterSend', 'After a voice note sends, follow them and like their 1st and 4th posts (pinned posts skipped)'),
+        box(st, 'monitorWatching', 'Play the clip out loud when I use Send while watching (background sends are always silent)'),
+      ),
+      h('h2', {}, 'How it all fits together'),
+      h(
+        'ol',
+        { class: 'steps' },
+        h('li', {}, h('b', {}, 'Find'), ' searches hashtags and saves each new account to IG Prospects. A daily sort marks each Qualified or Skipped, fills in their name, business, role and what they do, and adds the good ones to Leads.'),
+        h('li', {}, h('b', {}, 'Follow'), ' follows each new lead and likes two of their posts, up to your daily limit. A lead shows up for a voice note a day after it was followed.'),
+        h('li', {}, h('b', {}, 'Leads'), ': hit Start next lead, record your lines (Space), listen (Enter), then Send (⌘ Enter). It goes out as a normal voice note, and the follow and likes happen again if they were missed.'),
+        h('li', {}, h('b', {}, 'Replies'), ' watches your inbox, tells a yes from a question from a no, and answers with their own partner code.'),
+      ),
+    ],
+
+    leads: () => [
+      h('h2', {}, 'Connect Airtable'),
+      h(
+        'div',
+        { class: 'card' },
+        h(
+          'p',
+          { class: 'muted small' },
+          'Make a personal access token at ',
+          h('a', { href: 'https://airtable.com/create/tokens', target: '_blank' }, 'airtable.com/create/tokens'),
+          ': add the scopes data.records:read and data.records:write, and add the Torrey Labs base under Access. Copy it once it shows, since Airtable only shows it once.',
+        ),
+        h('label', { class: 'field' }, 'Token', h('input', { type: 'password', value: at.token, placeholder: 'pat...', oninput: txt(at, 'token') })),
+        h('div', { class: 'row-flex' }, h('button', { id: 'at-test-btn', onclick: testAirtable }, 'Test connection'), h('span', { id: 'at-test', class: 'grow small muted' }, '')),
+        box(st, 'autoSync', 'Check for new leads on launch and every 15 minutes'),
+        box(at, 'writeBack', 'When a note is sent, update Airtable: Status = Sent, Channel = Instagram, Sent at = today, Touches = 1'),
+        box(st, 'followGate', 'Only DM leads the app followed at least a day ago (recommended). Off: Ready leads can be messaged right away.'),
+        more(
+          'More',
+          h('label', { class: 'field' }, 'Base ID', h('input', { value: at.baseId, oninput: txt(at, 'baseId') })),
+          h('label', { class: 'field' }, 'Table', h('input', { value: at.table, oninput: txt(at, 'table') })),
+          h('label', { class: 'field' }, 'Which leads to pull (Airtable formula)', h('textarea', { oninput: txt(at, 'formula') }, at.formula)),
+          h('label', { class: 'field' }, 'Max leads per sync', h('input', { type: 'number', min: 1, max: 1000, value: at.max, oninput: num(at, 'max') })),
+          h('p', { class: 'small' }, h('b', {}, 'Remove lead'), " (on a lead's page) takes it out of the app and:"),
+          h('label', { class: 'check' }, h('input', { type: 'radio', name: 'remove-mode', checked: st.removeMode !== 'skip', onchange: () => ((st.removeMode = 'delete'), saveSettings().then(flashSaved)) }), 'deletes its record from Airtable. If Google Maps finds the place again, TL1 adds it back as New.'),
+          h('label', { class: 'check' }, h('input', { type: 'radio', name: 'remove-mode', checked: st.removeMode === 'skip', onchange: () => ((st.removeMode = 'skip'), saveSettings().then(flashSaved)) }), 'marks it Skip in Airtable (Status and Track), with the reason. It stays out for good.'),
+        ),
+      ),
+    ],
+
+    safety: () => [h('h2', {}, 'Daily and hourly limits'), limitsCard()],
+
+    replies: () => [
+      h('h2', {}, 'Answering replies'),
+      h(
+        'div',
+        { class: 'card' },
+        box(st.replies, 'watch', "Watch sent leads' chats for replies", applyBackground),
+        box(st.replies, 'auto', 'Answer a yes or a question for more info on its own, with their own partner code and how to set up'),
+        h('label', { class: 'field' }, 'Wait before answering (minutes)', h('input', { type: 'number', min: 0, max: 240, step: 'any', value: st.replies.delayMin, oninput: (e) => ((st.replies.delayMin = Math.min(240, Math.max(0, parseFloat(e.target.value) || 0))), saveSettings().then(flashSaved)) })),
+        h('p', { class: 'muted small' }, "If you answer them yourself first, the app drops its answer. A no is marked not interested; anything unclear waits under Replies for you."),
+      ),
+      h('h2', {}, 'Keys'),
+      h(
+        'div',
+        { class: 'card' },
+        h('label', { class: 'field' }, 'Claude API key (writes each reply in your voice)', h('input', { type: 'password', value: st.claude.key, oninput: txt(st.claude, 'key'), placeholder: 'sk-ant-...' })),
+        h('div', { class: 'row-flex' }, h('button', { onclick: () => testKey('claude'), disabled: !!S.busy }, 'Test Claude'), h('span', { id: 'claude-test', class: 'small muted' }), h('span', { class: 'muted small' }, 'Make one at console.anthropic.com. It stays in this app.')),
+        h('label', { class: 'field' }, 'Torrey Labs invite key (issues partner codes)', h('input', { id: 'torrey-key', type: 'password', value: st.torrey.key, oninput: txt(st.torrey, 'key') })),
+        h('div', { class: 'row-flex' }, h('button', { id: 'torrey-make', onclick: makeInviteKey }, 'Make a new key'), h('button', { id: 'torrey-copy', onclick: copyInviteKey }, 'Copy key'), h('button', { id: 'torrey-show', onclick: toggleInviteKey }, 'Show key'), h('button', { onclick: () => testKey('torrey'), disabled: !!S.busy }, 'Test Torrey Labs'), h('span', { id: 'torrey-test', class: 'small muted' })),
+        h('p', { class: 'muted small' }, 'Press Make a new key (it is copied for you), then give Lovable the same value as the AFFILIATE_INVITE_KEY secret. This key can only create partner invites on torreylabs.store.'),
+        h('label', { class: 'field' }, 'Store address in messages', h('input', { value: st.torrey.site, oninput: txt(st.torrey, 'site') })),
+      ),
+      more(
+        'More',
+        box(st.replies, 'quick', "Watch the inbox for unread messages every 30 seconds, and read a lead's chat the moment it writes"),
+        box(st.replies, 'notify', 'Show a notification when a lead replies'),
+        box(st.replies, 'background', 'Keep working in the background: closing the window hides it (Mac) and the app keeps watching, with the Mac kept awake. Quit from the menu to stop.', applyBackground),
+        h(
+          'div',
+          { class: 'grid2' },
+          h('label', { class: 'field' }, 'Check older leads every (minutes)', h('input', { type: 'number', min: 10, max: 120, value: st.replies.everyMin, oninput: (e) => ((st.replies.everyMin = Math.min(120, Math.max(10, parseInt(e.target.value, 10) || 10))), saveSettings().then(flashSaved)) })),
+          h('label', { class: 'field' }, 'Sign replies as', h('input', { value: st.replies.from, oninput: txt(st.replies, 'from') })),
+        ),
+        h('label', { class: 'field' }, 'Partner share (%)', h('input', { type: 'number', min: 0, max: 50, value: st.torrey.percent, oninput: (e) => ((st.torrey.percent = Math.min(50, Math.max(0, parseInt(e.target.value, 10) || 0))), saveSettings().then(flashSaved)) })),
+      ),
+    ],
+
+    autovoice: () => [
+      h('h2', {}, 'Auto-voice (optional)'),
+      h(
+        'div',
+        { class: 'card' },
+        h('p', { class: 'muted small' }, "Skip recording each lead's lines: an ElevenLabs clone of your voice says them instead. Leave blank to record them yourself."),
+        h('label', { class: 'field' }, 'ElevenLabs API key', h('input', { type: 'password', value: el.key, oninput: txt(el, 'key') })),
+        h('label', { class: 'field' }, 'Voice ID (your cloned voice)', h('input', { value: el.voiceId, oninput: txt(el, 'voiceId') })),
+        h('div', { class: 'row-flex' }, h('button', { onclick: testVoice, disabled: !ttsReady() || !!S.busy }, 'Test voice'), S.busy ? h('span', { class: 'muted small' }, S.busy) : null),
+        more(
+          'Voice tuning',
+          h(
+            'label',
+            { class: 'field' },
+            'Model',
+            h(
+              'select',
+              { onchange: txt(el, 'model') },
+              (MODELS.some(([id]) => id === el.model) ? MODELS : [...MODELS, [el.model, el.model]]).map(([id, label]) => h('option', { value: id, selected: id === el.model }, label)),
+            ),
+          ),
+          slider(el, 'speed', 'Speed', 0.7, 1.2, 0.01, 'Slower', 'Faster'),
+          slider(el, 'stability', 'Stability', 0, 1, 0.01, 'More variable', 'More stable'),
+          slider(el, 'similarity', 'Similarity', 0, 1, 0.01, 'Low', 'High'),
+          slider(el, 'style', 'Style exaggeration', 0, 1, 0.01, 'None', 'Exaggerated'),
+          box(el, 'speakerBoost', 'Speaker boost (closer to your real voice)'),
+          h('p', { class: 'muted small' }, 'Multilingual v2 uses every slider. v3 and v4 mostly listen to Stability (v3 rounds it to 0, 0.5 or 1).'),
+          h('button', { class: 'link', onclick: resetVoice }, 'Reset sliders'),
+        ),
+      ),
+    ],
+  };
 
   return h(
     'main',
     {},
-    h('h2', {}, 'How it works'),
-    h(
-      'ol',
-      { class: 'steps' },
-      h('li', {}, 'Record your pitch below once, in one take, reading the script on screen. Use the same mic and spot you will use for the intro line.'),
-      h('li', {}, 'Connect Airtable. New leads from Make show up by themselves (checked on launch and every 15 minutes).'),
-      h('li', {}, 'Turn on Follow. It follows each lead and likes their latest post, up to your daily limit. A lead shows up for a DM a day after it was followed.'),
-      h('li', {}, 'To find new accounts, open Find, press "Try one hashtag" to see what it reads from Instagram, then Start searching. Each account it reads goes to your IG Prospects table for the daily sort.'),
-      h('li', {}, 'Hit Start next lead. You get a short script, and their profile opens in Instagram on the right.'),
-      h('li', {}, 'Record your lines (Space), Preview to listen (Enter), then Send (⌘ Enter). The app opens their DM, plays the clip into the mic, and hits send. It arrives as a normal voice note.'),
-    ),
-    h('h2', {}, 'Your voice note, in order'),
-    S.template.map(segmentCard),
-    h('div', { class: 'row-flex' }, h('button', { onclick: () => addSegment('fixed') }, '+ Pitch part'), h('button', { onclick: () => addSegment('slot') }, '+ Custom line')),
-    h('p', { class: 'muted small' }, 'Want a custom line in the middle of the pitch? Add a pitch part, then use the arrows to put the line between the two.'),
-    h('p', { class: 'muted small' }, 'Before you record the pitch: only say "every batch third-party tested" if you can send the certificate the moment someone asks, and keep the referral example true to the numbers.'),
-    h('p', { class: 'muted small' }, `Custom lines can use: ${PLACEHOLDERS.map((k) => `{${k}}`).join(' ')}. Recorded parts total ${secs(total)}; keep the whole note under 60s.`),
-
-    h('h2', {}, 'Splicing and sending'),
-    h(
-      'div',
-      { class: 'card' },
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.matchLevels, onchange: check(st, 'matchLevels') }), "Match each lead's intro to the pitch's volume (recommended)"),
-      h(
-        'label',
-        { class: 'check' },
-        h('input', { type: 'checkbox', checked: st.breath, onchange: (e) => (check(st, 'breath')(e), paintBreath()) }),
-        "Put one of your pitch's own breaths between the intro and the pitch, so the join sounds natural",
-      ),
-      h('div', { id: 'breath-info', class: 'row-flex small' }),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.toneMatch, onchange: check(st, 'toneMatch') }), "Match the intro's tone to the pitch (EQ), so a take recorded closer to or farther from the mic still sounds like the same voice"),
-      h('p', { class: 'muted small' }, "Fine-tune the join by ear under Listen on any lead's page: play just the join, trim the intro or breath volume, or add silence."),
-      h('label', { class: 'field' }, 'Silence before the clip starts in Instagram (ms)', h('input', { type: 'number', min: 0, max: 2000, value: st.leadInMs, oninput: num(st, 'leadInMs') })),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.monitorWatching, onchange: check(st, 'monitorWatching') }), 'Play the clip out loud when I use Send while watching (background sends are always silent)'),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.autoOpen, onchange: check(st, 'autoOpen') }), "Open the lead's Instagram profile when I open a lead"),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.autoSend, onchange: check(st, 'autoSend') }), "Send hits Instagram's send button for me (off: it stops after recording so I can check it and send myself)"),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.engageAfterSend, onchange: check(st, 'engageAfterSend') }), 'After a voice note sends, follow them and like their 1st and 4th posts (pinned posts skipped)'),
-    ),
-
-    h('h2', {}, 'Airtable'),
-    h(
-      'div',
-      { class: 'card' },
-      h(
-        'p',
-        { class: 'muted small' },
-        'Make a personal access token at ',
-        h('a', { href: 'https://airtable.com/create/tokens', target: '_blank' }, 'airtable.com/create/tokens'),
-        ': add the scopes data.records:read and data.records:write, and add the Torrey Labs base under Access. Copy it once it shows, since Airtable only shows it once.',
-      ),
-      h('label', { class: 'field' }, 'Token', h('input', { type: 'password', value: at.token, placeholder: 'pat...', oninput: txt(at, 'token') })),
-      h('label', { class: 'field' }, 'Base ID', h('input', { value: at.baseId, oninput: txt(at, 'baseId') })),
-      h('label', { class: 'field' }, 'Table', h('input', { value: at.table, oninput: txt(at, 'table') })),
-      h('div', { class: 'row-flex' }, h('button', { id: 'at-test-btn', onclick: testAirtable }, 'Test connection'), h('span', { id: 'at-test', class: 'grow small muted' }, '')),
-      h('label', { class: 'field' }, 'Which leads to pull (Airtable formula)', h('textarea', { oninput: txt(at, 'formula') }, at.formula)),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.followGate, onchange: check(st, 'followGate') }), 'Only DM leads the app followed at least a day ago (recommended). Off: Ready leads can be messaged right away.'),
-      h('label', { class: 'field' }, 'Max leads per sync', h('input', { type: 'number', min: 1, max: 1000, value: at.max, oninput: num(at, 'max') })),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.autoSync, onchange: check(st, 'autoSync') }), 'Check for new leads on launch and every 15 minutes'),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: at.writeBack, onchange: check(at, 'writeBack') }), 'When a note is sent, update Airtable: Status = Sent, Channel = Instagram, Sent at = today, Touches = 1'),
-      h('p', { class: 'small' }, h('b', {}, 'Remove lead'), ' (on a lead\'s page) takes it out of the app and:'),
-      h('label', { class: 'check' }, h('input', { type: 'radio', name: 'remove-mode', checked: st.removeMode !== 'skip', onchange: () => ((st.removeMode = 'delete'), saveSettings().then(flashSaved)) }), 'deletes its record from Airtable. If Google Maps finds the place again, TL1 adds it back as New.'),
-      h('label', { class: 'check' }, h('input', { type: 'radio', name: 'remove-mode', checked: st.removeMode === 'skip', onchange: () => ((st.removeMode = 'skip'), saveSettings().then(flashSaved)) }), 'marks it Skip in Airtable (Status and Track), with the reason. It stays out for good.'),
-    ),
-
-    h('h2', {}, 'Safety limits (Instagram)'),
-    limitsCard(),
-
-    h('h2', {}, 'Replies (Instagram)'),
-    h(
-      'div',
-      { class: 'card' },
-      h('p', { class: 'muted small' }, "A hidden Instagram tab watches your inbox for unread messages, and when a lead you sent a voice note to writes back, the app reads it in their chat and works out whether they're interested, want more info, or aren't interested. Interested or wanting more info gets an answer written for them (their name, their business and something they offer), with a partner code made from their business name and how to set up their portal, sent after the wait below. If you answer them yourself first, the app drops its answer. A no is marked not interested; anything unclear waits under Replies for you. Each reply sends you a notification."),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.replies.watch, onchange: (e) => (check(st.replies, 'watch')(e), applyBackground()) }), "Watch sent leads' chats for replies"),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.replies.quick, onchange: check(st.replies, 'quick') }), 'Watch the inbox for unread messages every 30 seconds, and read a lead\'s chat the moment it writes (quick replies)'),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.replies.notify, onchange: check(st.replies, 'notify') }), 'Show a notification when a lead replies'),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.replies.background, onchange: (e) => (check(st.replies, 'background')(e), applyBackground()) }), 'Keep working in the background: closing the window hides it (Mac) and the app keeps watching, with the Mac kept awake. Quit from the menu to stop.'),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.replies.auto, onchange: check(st.replies, 'auto') }), 'Answer a yes or a question for more info on its own, with their own partner code and how to set up'),
-      h('label', { class: 'field' }, 'Wait before answering (minutes)', h('input', { type: 'number', min: 0, max: 240, step: 'any', value: st.replies.delayMin, oninput: (e) => ((st.replies.delayMin = Math.min(240, Math.max(0, parseFloat(e.target.value) || 0))), saveSettings().then(flashSaved)) })),
-      h('div', { class: 'grid2' }, h('label', { class: 'field' }, 'Check new leads every (minutes)', h('input', { type: 'number', min: 10, max: 120, value: st.replies.everyMin, oninput: (e) => ((st.replies.everyMin = Math.min(120, Math.max(10, parseInt(e.target.value, 10) || 10))), saveSettings().then(flashSaved)) })), h('label', { class: 'field' }, 'Sign replies as', h('input', { value: st.replies.from, oninput: txt(st.replies, 'from') }))),
-      h('label', { class: 'field' }, 'Claude API key (writes each reply in your voice)', h('input', { type: 'password', value: st.claude.key, oninput: txt(st.claude, 'key'), placeholder: 'sk-ant-...' })),
-      h('div', { class: 'row-flex' }, h('button', { onclick: () => testKey('claude'), disabled: !!S.busy }, 'Test Claude'), h('span', { id: 'claude-test', class: 'small muted' })),
-      h('p', { class: 'muted small' }, 'Make a key at console.anthropic.com. It stays in this app.'),
-      h('label', { class: 'field' }, 'Torrey Labs invite key (issues partner codes)', h('input', { id: 'torrey-key', type: 'password', value: st.torrey.key, oninput: txt(st.torrey, 'key') })),
-      h('div', { class: 'row-flex' }, h('button', { id: 'torrey-make', onclick: makeInviteKey }, 'Make a new key'), h('button', { id: 'torrey-copy', onclick: copyInviteKey }, 'Copy key'), h('button', { id: 'torrey-show', onclick: toggleInviteKey }, 'Show key'), h('button', { onclick: () => testKey('torrey'), disabled: !!S.busy }, 'Test Torrey Labs'), h('span', { id: 'torrey-test', class: 'small muted' })),
-      h('p', { class: 'muted small' }, "This key can only create partner invites on torreylabs.store, nothing else. Press Make a new key (it's copied for you; Copy key copies it again, and Show key lets you read it), then give Lovable the same value as the AFFILIATE_INVITE_KEY secret. It only ever lives here and in Lovable."),
-      h('div', { class: 'grid2' }, h('label', { class: 'field' }, 'Store address in messages', h('input', { value: st.torrey.site, oninput: txt(st.torrey, 'site') })), h('label', { class: 'field' }, 'Partner share (%)', h('input', { type: 'number', min: 0, max: 50, value: st.torrey.percent, oninput: (e) => ((st.torrey.percent = Math.min(50, Math.max(0, parseInt(e.target.value, 10) || 0))), saveSettings().then(flashSaved)) }))),
-    ),
-
-    h('h2', {}, 'Auto-voice (optional)'),
-    h(
-      'div',
-      { class: 'card' },
-      h('p', { class: 'muted small' }, "Skip recording each lead's lines: an ElevenLabs clone of your voice says them instead. Leave blank to record them yourself."),
-      h('label', { class: 'field' }, 'ElevenLabs API key', h('input', { type: 'password', value: el.key, oninput: txt(el, 'key') })),
-      h('label', { class: 'field' }, 'Voice ID (your cloned voice)', h('input', { value: el.voiceId, oninput: txt(el, 'voiceId') })),
-      h(
-        'label',
-        { class: 'field' },
-        'Model',
-        h(
-          'select',
-          { onchange: txt(el, 'model') },
-          (MODELS.some(([id]) => id === el.model) ? MODELS : [...MODELS, [el.model, el.model]]).map(([id, label]) =>
-            h('option', { value: id, selected: id === el.model }, label),
-          ),
-        ),
-      ),
-      slider(el, 'speed', 'Speed', 0.7, 1.2, 0.01, 'Slower', 'Faster'),
-      slider(el, 'stability', 'Stability', 0, 1, 0.01, 'More variable', 'More stable'),
-      slider(el, 'similarity', 'Similarity', 0, 1, 0.01, 'Low', 'High'),
-      slider(el, 'style', 'Style exaggeration', 0, 1, 0.01, 'None', 'Exaggerated'),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: el.speakerBoost, onchange: check(el, 'speakerBoost') }), 'Speaker boost (closer to your real voice)'),
-      h('p', { class: 'muted small' }, 'Multilingual v2 uses every slider. v3 and v4 mostly listen to Stability (v3 rounds it to 0, 0.5 or 1).'),
-      h(
-        'div',
-        { class: 'row-flex' },
-        h('button', { onclick: testVoice, disabled: !ttsReady() || !!S.busy }, 'Test voice'),
-        h('button', { class: 'link', onclick: resetVoice }, 'Reset sliders'),
-      ),
-      S.busy ? h('p', { class: 'muted small' }, S.busy) : null,
-    ),
-    h(
-      'p',
-      { id: 'build', class: 'muted small center' },
-      S.build ? `Build ${S.build.commit}, installed ${new Date(S.build.built).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}` : 'Development build',
-    ),
+    setupChecklist(),
+    h('div', { class: 'subtabs' }, SETUP_TABS.map(([id, label]) => h('button', { class: `tab ${tab === id ? 'on' : ''}`, onclick: () => goSetupTab(id) }, label))),
+    panes[tab](),
+    h('p', { id: 'build', class: 'muted small center' }, S.build ? `Build ${S.build.commit}, installed ${new Date(S.build.built).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}` : 'Development build'),
   );
 }
 
@@ -3339,7 +3444,7 @@ function followStatus(f) {
       checking: 'Checking Airtable for who to follow...',
       working: `Following @${f.current?.handle || ''}...`,
       cap: `Done for today (${f.today} of ${f.cap} follows). Starts again ${clock(until)}.`,
-      likecap: `Done for today: ${f.likesToday} of ${f.likeCap} likes, and each follow comes with a like. Starts again ${clock(until)}.`,
+      likecap: `Done for today: ${f.likesToday} of ${f.likeCap} likes, and each follow comes with two likes. Starts again ${clock(until)}.`,
       totalcap: `Done for today: the combined limit for voice notes, follows and likes is reached (Setup > Safety limits). Starts again ${clock(until)}.`,
       hour: `Pacing: the hourly limit is reached, so the next one is ${clock(until)}.`,
       away: "Waiting for you to step away: following flips the Instagram pane through profiles, so it holds off while you're using the app (2 minutes with no keyboard or mouse).",
@@ -3400,8 +3505,8 @@ function logText(e) {
     const fol = e.result === 'followed' ? 'followed' : e.result === 'already' ? 'already following' : "didn't follow (the follow limit is reached)";
     return `After the voice note: ${fol}, ${likes}`;
   }
-  if (e.result === 'followed') return e.liked ? 'Followed and liked their latest post' : `Followed, ${likes}`;
-  if (e.result === 'already') return e.liked ? 'Already following; liked their latest post' : `Already following, ${likes}`;
+  if (e.result === 'followed') return e.liked ? `Followed and liked ${e.likes === 1 ? 'a post' : `${e.likes} posts`}` : `Followed, ${likes}`;
+  if (e.result === 'already') return e.liked ? `Already following; liked ${e.likes === 1 ? 'a post' : `${e.likes} posts`}` : `Already following, ${likes}`;
   if (e.result === 'notfound') return 'Account not found, skipped';
   if (e.result === 'blocked') return `Instagram pushed back ("${e.note}"). Paused for 48 hours.${e.followed ? ' The follow went through.' : ''}`;
   if (e.result === 'loggedout') return 'Instagram is logged out. Stopped.';
@@ -3551,6 +3656,7 @@ window.api.onFollow((f) => {
   const dot = document.getElementById('follow-dot');
   if (dot) dot.className = `dot ${followDot()}`;
   if (S.view === 'follow') render();
+  else paintPipeline();
 });
 
 window.api.onFollowed(({ airtableId, followedAt }) => {
@@ -3747,7 +3853,7 @@ window.api.onFind((f) => {
   S.find = f;
   const dot = document.getElementById('find-dot');
   if (dot) dot.className = `dot ${findDot()}`;
-  if (S.view !== 'find') return;
+  if (S.view !== 'find') return paintPipeline();
   // While you're typing in this screen, only the status line updates, so nothing you're editing is lost.
   if (document.activeElement?.matches?.('input, textarea')) {
     const el = document.getElementById('find-status');
@@ -3766,7 +3872,7 @@ function render() {
   const p = current();
   if (S.currentId && !p) S.currentId = null;
   const body = S.view === 'setup' ? setupView() : S.view === 'follow' ? followView() : S.view === 'find' ? findView() : S.view === 'replies' ? repliesView() : p ? detailView(p) : leadsView();
-  $app.replaceChildren(header(), queueStrip(), body);
+  $app.replaceChildren(header(), ...(S.view === 'setup' ? [] : [pipelineStrip()]), queueStrip(), body);
   syncBadge();
   paintQueue();
   if (S.view === 'setup') paintBreath();

@@ -377,7 +377,9 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, k
       } else {
         current = lead;
         setPhase('working');
-        const r = await visit(view().webContents, lead.handle).catch((e) => ({ result: 'failed', note: e.message }));
+        // A follow comes with two likes (their 1st and 4th posts), as many as the like limits leave room for.
+        const likeRoom = Math.min(2, L.left('like', b.t, b.c, now));
+        const r = await visit(view().webContents, lead.handle, [0, 3].slice(0, likeRoom)).catch((e) => ({ result: 'failed', note: e.message }));
         current = null;
         queue = queue.slice(1);
         await settle(lead, r);
