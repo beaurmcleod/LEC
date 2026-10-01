@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('api', {
   grab: () => ipcRenderer.invoke('ig:grab'),
   igDo: (action, handle, target) => ipcRenderer.invoke('ig:do', action, handle, target),
   engage: (handle, airtableId) => ipcRenderer.invoke('ig:engage', handle, airtableId),
+  userAway: () => ipcRenderer.invoke('app:userAway'),
   dmInbox: (target) => ipcRenderer.invoke('dm:inbox', target),
   dmThread: (href) => ipcRenderer.invoke('dm:thread', href),
   dmSend: (args) => ipcRenderer.invoke('dm:send', args),

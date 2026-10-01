@@ -131,7 +131,7 @@ const MODELS = [
 
 const PLACEHOLDERS = ['name', 'first', 'kind', 'detail', 'crowd', 'role', 'business', 'handle', 'note', 'hook', 'category'];
 // Refreshed from Airtable on every sync, unless you've edited that field here.
-const REFRESH_FIELDS = ['first', 'role', 'business', 'category', 'hook', 'bridge', 'bio', 'research', 'notes', 'atStatus', 'followedAt', 'channel', 'atSentAt'];
+const REFRESH_FIELDS = ['first', 'role', 'business', 'category', 'hook', 'bridge', 'bio', 'research', 'notes', 'atStatus', 'followedAt', 'igLiked', 'channel', 'atSentAt'];
 const MAX_SECONDS = 59;
 const SYNC_MS = 15 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -939,7 +939,7 @@ async function queueSend(p) {
 }
 
 // One send at a time in the hidden tab, silently.
-const isVoiceJob = (j) => !j.engage && !j.reply && !j.audit && !j.replycheck;
+const isVoiceJob = (j) => !j.engage && !j.reply && !j.audit && !j.replycheck && !j.talkcheck;
 
 async function runQueue() {
   if (S.bg.current) return;
@@ -955,7 +955,7 @@ async function runQueue() {
     if (!ready.length) return holdQueue(g);
     if (g.ok) S.bg.hold = null;
     // Sends first, then replies going out, then looks at chats for replies, then checks of failed sends.
-    const rank = (j) => (j.engage ? (j.catchUp ? 3 : 0) : j.samples ? 1 : j.reply ? 2 : j.replycheck ? (j.urgent || j.hurry ? 2 : 3) : j.audit ? 4 : 1);
+    const rank = (j) => (j.engage ? (j.catchUp ? 3 : 0) : j.samples ? 1 : j.reply ? 2 : j.replycheck ? (j.urgent || j.hurry ? 2 : 3) : j.talkcheck ? 3 : j.audit ? 4 : 1);
     const job = ready.reduce((best, j) => (rank(j) < rank(best) ? j : best), ready[0]);
     S.bg.jobs.splice(S.bg.jobs.indexOf(job), 1);
     const p = S.prospects.find((x) => x.id === job.pid);
@@ -969,6 +969,10 @@ async function runQueue() {
     }
     if (job.audit) {
       if (p && p.status === 'todo' && p.sendIssue) await auditOne(p);
+      continue;
+    }
+    if (job.talkcheck) {
+      if (p && p.status === 'todo') await talkCheckOne(p);
       continue;
     }
     if (job.replycheck) {
@@ -1083,21 +1087,33 @@ async function auditOne(p) {
   refreshQuietly();
 }
 
-// Leads that got a voice note but were never followed (the step failed, or ran on an older build): caught up on
-// their own, one at a time, 2 to 6 minutes apart, within the safety limits. Each lead gets up to 3 tries, 6 hours
-// apart; a fresh send waits 10 minutes first, since its own follow-and-like runs right after it.
+// Leads that got a voice note but were never followed (the step failed, or ran on an older build), or were followed
+// but never liked (the hour's likes were used up), are caught up on their own, one at a time, 2 to 6 minutes apart,
+// within the safety limits. Each lead gets up to 3 tries, 6 hours apart; a fresh send waits 10 minutes first, since
+// its own follow-and-like runs right after it. It only runs while you're away from the computer (see `S.away`),
+// because it puts the Instagram pane through their profiles and posts.
 let lastCatchUp = 0;
 let catchUpGap = 0;
+// Followed, but no like has gone in and Airtable doesn't have one either.
+const owesLikes = (p) => !!p.followedAt && p.likesDone !== true && p.igLiked !== 'true';
 const catchUpLeft = (now = Date.now()) =>
   S.prospects.filter(
-    (p) => p.status === 'sent' && p.handle && !p.followedAt && p.atStatus !== 'Not interested' && p.sentAt && now - p.sentAt > 10 * 60 * 1000 && now - p.sentAt < 30 * DAY_MS && (p.catchUp?.tries || 0) < 3,
+    (p) =>
+      p.status === 'sent' &&
+      p.handle &&
+      (!p.followedAt || owesLikes(p)) &&
+      p.atStatus !== 'Not interested' &&
+      p.sentAt &&
+      now - p.sentAt > 10 * 60 * 1000 &&
+      now - p.sentAt < 30 * DAY_MS &&
+      (p.catchUp?.tries || 0) < 3,
   );
 const catchUpDue = (now = Date.now()) =>
   catchUpLeft(now)
     .filter((p) => !p.catchUp?.at || now - p.catchUp.at > 6 * 60 * 60 * 1000)
     .sort((a, b) => b.sentAt - a.sentAt);
 function catchUpEngage() {
-  if (!S.settings.engageAfterSend || S.bg.current || S.bg.jobs.some((j) => j.engage)) return;
+  if (!S.settings.engageAfterSend || !S.away || S.bg.current || S.bg.jobs.some((j) => j.engage)) return;
   const now = Date.now();
   if (now - lastCatchUp < catchUpGap) return;
   const p = catchUpDue(now)[0];
@@ -1119,6 +1135,8 @@ function queueEngage(p) {
     airtableReply(p, { 'IG log': `${new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}, after the voice note: the follow and likes are off in Setup` });
     return;
   }
+  // While you're using the app the pane would jump between profiles: leave it to the catch-up, once you step away.
+  if (!S.away) return;
   S.bg.jobs.unshift({ pid: p.id, engage: true });
   runQueue();
 }
@@ -1127,10 +1145,24 @@ async function engage(p, job = {}) {
   S.bg.current = { pid: p.id, handle: p.handle, text: '', until: 0, engage: true };
   paintQueue();
   const r = await window.api.engage(p.handle, p.airtableId || '').catch((e) => ({ result: 'failed', note: errText(e) }));
-  // Followed (or already following): done, here as in Airtable. A limit or a pause isn't a try.
-  if (r.followed || r.result === 'already') p.followedAt ||= new Date().toISOString();
-  if (job.catchUp && (r.result === 'limit' || r.result === 'paused') && p.catchUp) p.catchUp.tries = Math.max(0, p.catchUp.tries - 1);
+  // Followed (or already following): done, here as in Airtable. Likes are done once one went in or there's nothing
+  // to like (a private account, no posts); otherwise they're owed, and the catch-up comes back for them.
+  if (r.followed || r.result === 'already') {
+    p.followedAt ||= new Date().toISOString();
+    p.likesDone = r.likes > 0 || !!r.private || /no posts yet/.test(r.likeWhy || '');
+  }
+  // A limit, a pause, or you being in the app isn't a try: nothing was done.
+  if (job.catchUp && ['limit', 'paused', 'later'].includes(r.result) && p.catchUp) {
+    p.catchUp.tries = Math.max(0, p.catchUp.tries - 1);
+    if (r.result === 'later') p.catchUp.at = 0;
+  }
   saveProspects();
+  if (r.result === 'later') {
+    S.away = false;
+    S.bg.current = null;
+    paintQueue();
+    return;
+  }
   if (r.result === 'blocked') toast(`Instagram pushed back while following @${p.handle} ("${r.note}"). Follows and likes pause for 48 hours.`, 8000);
   else if (r.result === 'paused') toast(`@${p.handle}: the follow and likes were skipped (following is paused after an Instagram push-back). See the Follow screen.`, 8000);
   else if (r.result === 'failed') toast(`@${p.handle}: the follow step didn't finish (${r.note}). See the Follow screen.`, 8000);
@@ -1282,6 +1314,41 @@ async function replyCheckOne(p, job = {}) {
   refreshQuietly();
 }
 
+// A lead still on the to-do list whose chat is in the inbox: we're already talking to them (by hand, outside the
+// app). Their own chat is opened from their profile and, when it holds a message (Instagram labels each one
+// "React to message from ..."), the lead moves to Sent here and in Airtable, so it isn't sent a cold voice note on
+// top of the conversation. It doesn't count as a voice note sent today.
+async function talkCheckOne(p) {
+  S.bg.current = { pid: p.id, handle: p.handle, text: '', until: 0, check: true };
+  paintQueue();
+  const r = await window.api.readChat('send', p.handle, replies.leadNames(p)).catch((e) => ({ state: 'error', error: errText(e), messages: [] }));
+  p.talkCheckedAt = Date.now();
+  const said = (r.messages || []).filter((m) => m.who);
+  if (r.state === 'ok' && said.length && p.status === 'todo') {
+    p.status = 'sent';
+    p.sentAt = Date.now();
+    p.sentBy = 'conversation';
+    delete p.sendIssue;
+    paintSentToday();
+    toast(`@${p.handle}: you're already talking to them, so they've moved to Sent. (${said.some((m) => !m.mine) ? 'They wrote back.' : 'You wrote first.'})`, 9000);
+    const at = S.settings.airtable;
+    if (at.writeBack && at.token && p.airtableId) {
+      window.api.markSent(at, p.airtableId).then(
+        () => {
+          p.atStatus = 'Sent';
+          saveProspects();
+        },
+        (e) => toast(`Moved to Sent here, but Airtable said: ${errText(e)}`, 8000),
+      );
+    }
+    queueEngage(p);
+  }
+  S.bg.current = null;
+  paintQueue();
+  await saveProspects();
+  refreshQuietly();
+}
+
 // What a read of one chat means. Messages are only placed against our voice note, so a chat where the app
 // didn't find it says nothing either way. Returns whether there's a new reply from them.
 async function judgeChat(p, r) {
@@ -1336,6 +1403,11 @@ async function unreadScan({ manual = false } = {}) {
     else {
       const plan = replies.inboxPlan(res.rows, S.prospects);
       Object.assign(scan, { unread: plan.unread, leads: plan.mine });
+      // To-do leads that already have a chat with us: one look at each.
+      for (const { p } of replies.talkPlan(res.rows, S.prospects)) {
+        if (!S.bg.jobs.some((j) => j.talkcheck && j.pid === p.id) && !(S.bg.current?.check && S.bg.current.pid === p.id)) S.bg.jobs.push({ pid: p.id, talkcheck: true });
+      }
+      if (S.bg.jobs.some((j) => j.talkcheck)) runQueue();
       for (const { p, row } of plan.note) p.inboxSeen = { preview: row.preview, at: Date.now(), baseline: true };
       if (plan.note.length) await saveProspects();
       for (const { p, row } of plan.read) {
@@ -1700,7 +1772,8 @@ async function restoreSent(list) {
     const when = leads.sentAtMs(inc.atSentAt);
     if (ex) {
       seen.add(ex.id);
-      Object.assign(ex, { atStatus: inc.atStatus, channel: inc.channel, atSentAt: inc.atSentAt });
+      Object.assign(ex, { atStatus: inc.atStatus, channel: inc.channel, atSentAt: inc.atSentAt, igLiked: inc.igLiked });
+      if (inc.followedAt) ex.followedAt ||= inc.followedAt;
       ex.airtableId ||= inc.airtableId;
       if (ex.status !== 'todo') continue;
       Object.assign(ex, { status: 'sent', sentAt: when || ex.sentAt || Date.now(), sentBy: 'airtable' });
@@ -1850,11 +1923,11 @@ function nextTodo(fromId) {
 // ---------- Safety limits ----------
 // When the account started this (its first voice note sent from the app, or today), for the warm-up.
 function startedAt() {
-  const times = S.prospects.filter((p) => p.sentAt && p.sentBy !== 'airtable').map((p) => p.sentAt);
+  const times = S.prospects.filter((p) => p.sentAt && p.sentBy !== 'airtable' && p.sentBy !== 'conversation').map((p) => p.sentAt);
   return times.length ? Math.min(...times) : Date.now();
 }
 // When each voice note went out, over the last day or so (sent from the app, or marked sent by hand).
-const voiceTimes = () => S.prospects.filter((p) => p.status === 'sent' && p.sentAt > Date.now() - 26 * 3600e3).map((p) => p.sentAt);
+const voiceTimes = () => S.prospects.filter((p) => p.status === 'sent' && p.sentBy !== 'conversation' && p.sentAt > Date.now() - 26 * 3600e3).map((p) => p.sentAt);
 const capsNow = () => limits.caps(S.settings.limits, Date.now(), startedAt(), { fast: S.fast });
 // Whether a voice note can go out now; the follow tab's counts come along for the combined limit.
 function voiceGate() {
@@ -1940,7 +2013,7 @@ const hourText = (hr) => new Date(2000, 0, 1, hr % 24).toLocaleTimeString([], { 
 // Voice notes sent since midnight on this Mac, counting ones you marked sent by hand.
 function sentToday() {
   const midnight = new Date().setHours(0, 0, 0, 0);
-  return S.prospects.filter((p) => p.status === 'sent' && p.sentAt >= midnight).length;
+  return S.prospects.filter((p) => p.status === 'sent' && p.sentBy !== 'conversation' && p.sentAt >= midnight).length;
 }
 
 function sentBadge() {
@@ -3269,6 +3342,7 @@ function followStatus(f) {
       likecap: `Done for today: ${f.likesToday} of ${f.likeCap} likes, and each follow comes with a like. Starts again ${clock(until)}.`,
       totalcap: `Done for today: the combined limit for voice notes, follows and likes is reached (Setup > Safety limits). Starts again ${clock(until)}.`,
       hour: `Pacing: the hourly limit is reached, so the next one is ${clock(until)}.`,
+      away: "Waiting for you to step away: following flips the Instagram pane through profiles, so it holds off while you're using the app (2 minutes with no keyboard or mouse).",
       paused: `Paused until ${clock(until)} because Instagram pushed back. See Recent below.`,
       empty: 'Nobody new to follow. Checking Airtable again in 30 minutes.',
       error: 'Hit a snag (see Recent below). Trying again in 10 minutes.',
@@ -3410,7 +3484,7 @@ function followView() {
         ? h(
             'p',
             { class: 'small' },
-            `Catching up: ${catchUpLeft().length} lead${catchUpLeft().length === 1 ? '' : 's'} got a voice note but no follow yet. Each is followed and 2 posts liked on its own, a few minutes apart (Recent below, and their IG log in Airtable).`,
+            `Catching up: ${catchUpLeft().length} lead${catchUpLeft().length === 1 ? '' : 's'} got a voice note but no follow or likes yet. Each is followed and 2 posts liked on its own, a few minutes apart, once you've been away from the computer for 2 minutes (Recent below, and their IG log in Airtable).${S.away ? '' : ' Holding off while you use the app.'}`,
           )
         : null,
     ),
@@ -3772,6 +3846,7 @@ document.addEventListener('keydown', (e) => {
     delete p.waitingLimit;
   }
   S.fast = await window.api.testFast().catch(() => false);
+  S.away = await window.api.userAway().catch(() => true);
   const fixedSegs = S.template.filter((s) => s.kind === 'fixed');
   if (fixedSegs.length && fixedSegs.every((s) => !S.lens[fixedKey(s)])) S.view = 'setup';
   pushFollowConfig();
@@ -3788,6 +3863,7 @@ document.addEventListener('keydown', (e) => {
   setTimeout(() => checkReplies(), 45 * 1000);
   setInterval(() => checkReplies(), 60 * 1000);
   // Leads that got a voice note but no follow yet: caught up a few minutes apart.
+  setInterval(() => window.api.userAway().then((a) => (S.away = a), () => {}), 5000);
   setTimeout(() => catchUpEngage(), S.fast ? 3000 : 90 * 1000);
   setInterval(() => catchUpEngage(), S.fast ? 2000 : 60 * 1000);
   // The inbox watcher: unread messages from leads, once a minute. Clicking a notification lands on Replies.

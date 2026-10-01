@@ -9,7 +9,7 @@ const ERROR_RETRY_MS = 10 * 60 * 1000;
 
 // Follows and likes one lead at a time in its own Instagram tab, within the pacing in src/follow.js.
 // Its counters, pause and log live in a small JSON file so they survive restarts.
-export function createFollowRunner({ view, statePath, igBase, click, dblclick, key, snap, reveal, emit, onFollowed, fast = false, build = 'dev' }) {
+export function createFollowRunner({ view, statePath, igBase, click, dblclick, key, snap, reveal, away, emit, onFollowed, fast = false, build = 'dev' }) {
   let state = { enabled: false, stopNote: '', days: {}, pausedUntil: 0, nextAt: 0, skipped: {}, log: [], times: { follow: [], like: [] } };
   // The safety limits from Setup, when the account started doing this, and when voice notes went out (the app
   // tells this process, since they count toward the combined daily limit).
@@ -359,6 +359,11 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, k
       return schedule(hold.until - now);
     }
     if (!at?.token) return setPhase('setup');
+    // Following flips the right pane through profiles and posts: not while the app is in use.
+    if (away && !away()) {
+      setPhase('away', now + 60 * 1000);
+      return schedule(60 * 1000);
+    }
 
     busy = true;
     let next = 0;

@@ -250,6 +250,7 @@ export function makeProspect(f) {
     source: f.source || 'manual',
     atStatus: f.atStatus || '',
     followedAt: f.followedAt || '',
+    igLiked: f.igLiked || '',
     channel: f.channel || '',
     atSentAt: f.atSentAt || '',
     status: 'todo',
@@ -290,6 +291,7 @@ export function fromFields(obj, extra = {}) {
     name: pick(obj, 'name to say', 'spoken name'),
     atStatus: pick(obj, 'status'),
     followedAt: pick(obj, 'ig followed at'),
+    igLiked: pick(obj, 'ig liked'),
     channel: pick(obj, 'channel'),
     atSentAt: pick(obj, 'sent at'),
   });

@@ -171,7 +171,7 @@ const hrefKey = (h) => String(h || '').split(/[?#]/)[0].replace(/\/+$/, '').toLo
 export const leadNames = (p) => [p.business, p.name, p.first, p.handle].filter(Boolean);
 
 // Is this inbox row (a display name, or the handle when they have no display name) that lead?
-export function rowMatches(row, p) {
+export function rowMatches(row, p, { firstName = true } = {}) {
   if (row.href && p.dm?.href && hrefKey(row.href) === hrefKey(p.dm.href)) return true;
   const n = flat(row.name);
   if (n.length < 3) return false;
@@ -183,7 +183,23 @@ export function rowMatches(row, p) {
     if (Math.min(n.length, f.length) >= 6 && (n.includes(f) || f.includes(n))) return true;
   }
   const first = flat(p.first);
-  return first.length >= 4 && n === first;
+  return firstName && first.length >= 4 && n === first;
+}
+
+// To-do leads that have a chat in the inbox (we're already talking to them, say by hand), by name, handle or thread:
+// each is worth one look at its own chat, which is opened from its profile, so it's surely theirs. A first name
+// alone isn't enough here, and a lead is looked at again no sooner than every 6 hours.
+export function talkPlan(rows, prospects, now = Date.now()) {
+  const out = [];
+  for (const row of rows) {
+    if (!row.preview) continue;
+    for (const p of prospects) {
+      if (p.status !== 'todo' || !p.handle || !rowMatches(row, p, { firstName: false })) continue;
+      if (p.talkCheckedAt && now - p.talkCheckedAt < 6 * 60 * 60 * 1000) continue;
+      if (!out.some((x) => x.p === p)) out.push({ p, row });
+    }
+  }
+  return out;
 }
 
 // From one look at the inbox: the sent leads whose chat should be read now, and what to remember so a message

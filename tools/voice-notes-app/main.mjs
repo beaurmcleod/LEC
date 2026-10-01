@@ -1,4 +1,4 @@
-import { app, BaseWindow, Notification, WebContentsView, clipboard, ipcMain, powerSaveBlocker, screen, session, shell, systemPreferences, webContents } from 'electron';
+import { app, BaseWindow, Notification, WebContentsView, clipboard, ipcMain, powerMonitor, powerSaveBlocker, screen, session, shell, systemPreferences, webContents } from 'electron';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -431,9 +431,23 @@ async function revealFollow() {
     },
   };
 }
+// Whether it's fine to put the follow tab on screen for a while: nobody is using the app. Following and liking
+// flips the right pane through profiles and posts, which got in the way of typing a reply, so it waits until the
+// window is hidden or minimized, or the computer has had no keyboard or mouse for a couple of minutes (or the
+// Follow screen is open, where that tab is the one on screen anyway). Test runs skip the wait.
+const AWAY_MS = 2 * 60 * 1000;
+function userAway() {
+  if (process.env.TVN_TEST_BUSY === '1') return false;
+  if (process.env.TVN_TEST_FOLLOW === '1') return true;
+  if (!win || !win.isVisible() || win.isMinimized()) return true;
+  if (wantedPane === 'follow') return true;
+  return powerMonitor.getSystemIdleTime() * 1000 >= AWAY_MS;
+}
+ipcMain.handle('app:userAway', () => userAway());
 // After a voice note sends: follow them and like their 1st and 4th posts, in the hidden send tab.
 // In the follow tab (never the tab that sent: Instagram keeps the chat open over its pages, which swallows clicks).
-ipcMain.handle('ig:engage', (_e, handle, airtableId) => quietly(() => follower.engageNow(handle, airtableId, true)));
+// Not while you're using the app: it answers 'later' and nothing is touched.
+ipcMain.handle('ig:engage', (_e, handle, airtableId) => (userAway() ? quietly(() => follower.engageNow(handle, airtableId, true)) : { result: 'later', note: 'you were using the app' }));
 
 // ---------- Replies: read the DM inbox and answer in a thread, in the hidden send tab ----------
 const runDm = (wc, action, arg) => wc.executeJavaScript(`(${dmPage})(${JSON.stringify(action)}, ${JSON.stringify(arg ?? null)})`, true);
@@ -895,6 +909,7 @@ app.whenReady().then(async () => {
     },
     snap: (name, report) => snapTab('follow', name, report),
     reveal: revealFollow,
+    away: userAway,
     emit: (s) => toRecorder(s, 'follow:status'),
     onFollowed: (m) => toRecorder(m, 'follow:followed'),
     // Test runs only: short gaps between accounts. The daily limit still applies.
