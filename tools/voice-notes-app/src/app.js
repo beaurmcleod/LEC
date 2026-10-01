@@ -955,12 +955,12 @@ async function runQueue() {
     if (!ready.length) return holdQueue(g);
     if (g.ok) S.bg.hold = null;
     // Sends first, then replies going out, then looks at chats for replies, then checks of failed sends.
-    const rank = (j) => (j.engage ? 0 : j.samples ? 1 : j.reply ? 2 : j.replycheck ? (j.urgent || j.hurry ? 2 : 3) : j.audit ? 4 : 1);
+    const rank = (j) => (j.engage ? (j.catchUp ? 3 : 0) : j.samples ? 1 : j.reply ? 2 : j.replycheck ? (j.urgent || j.hurry ? 2 : 3) : j.audit ? 4 : 1);
     const job = ready.reduce((best, j) => (rank(j) < rank(best) ? j : best), ready[0]);
     S.bg.jobs.splice(S.bg.jobs.indexOf(job), 1);
     const p = S.prospects.find((x) => x.id === job.pid);
     if (job.engage) {
-      if (p) await engage(p);
+      if (p) await engage(p, job);
       continue;
     }
     if (job.reply) {
@@ -1083,7 +1083,34 @@ async function auditOne(p) {
   refreshQuietly();
 }
 
-// Once a note is sent: follow them and like their 1st and 4th posts. It runs in the hidden send tab, straight
+// Leads that got a voice note but were never followed (the step failed, or ran on an older build): caught up on
+// their own, one at a time, 2 to 6 minutes apart, within the safety limits. Each lead gets up to 3 tries, 6 hours
+// apart; a fresh send waits 10 minutes first, since its own follow-and-like runs right after it.
+let lastCatchUp = 0;
+let catchUpGap = 0;
+const catchUpLeft = (now = Date.now()) =>
+  S.prospects.filter(
+    (p) => p.status === 'sent' && p.handle && !p.followedAt && p.atStatus !== 'Not interested' && p.sentAt && now - p.sentAt > 10 * 60 * 1000 && now - p.sentAt < 30 * DAY_MS && (p.catchUp?.tries || 0) < 3,
+  );
+const catchUpDue = (now = Date.now()) =>
+  catchUpLeft(now)
+    .filter((p) => !p.catchUp?.at || now - p.catchUp.at > 6 * 60 * 60 * 1000)
+    .sort((a, b) => b.sentAt - a.sentAt);
+function catchUpEngage() {
+  if (!S.settings.engageAfterSend || S.bg.current || S.bg.jobs.some((j) => j.engage)) return;
+  const now = Date.now();
+  if (now - lastCatchUp < catchUpGap) return;
+  const p = catchUpDue(now)[0];
+  if (!p) return;
+  p.catchUp = { tries: (p.catchUp?.tries || 0) + 1, at: now };
+  saveProspects();
+  lastCatchUp = now;
+  catchUpGap = S.fast ? 1000 : (2 + Math.random() * 4) * 60 * 1000;
+  S.bg.jobs.push({ pid: p.id, engage: true, catchUp: true });
+  runQueue();
+}
+
+// Once a note is sent: follow them and like their 1st and 4th posts. It runs in the follow tab, straight
 // after that send and before the next one.
 function queueEngage(p) {
   if (!p.handle) return;
@@ -1096,10 +1123,14 @@ function queueEngage(p) {
   runQueue();
 }
 
-async function engage(p) {
+async function engage(p, job = {}) {
   S.bg.current = { pid: p.id, handle: p.handle, text: '', until: 0, engage: true };
   paintQueue();
   const r = await window.api.engage(p.handle, p.airtableId || '').catch((e) => ({ result: 'failed', note: errText(e) }));
+  // Followed (or already following): done, here as in Airtable. A limit or a pause isn't a try.
+  if (r.followed || r.result === 'already') p.followedAt ||= new Date().toISOString();
+  if (job.catchUp && (r.result === 'limit' || r.result === 'paused') && p.catchUp) p.catchUp.tries = Math.max(0, p.catchUp.tries - 1);
+  saveProspects();
   if (r.result === 'blocked') toast(`Instagram pushed back while following @${p.handle} ("${r.note}"). Follows and likes pause for 48 hours.`, 8000);
   else if (r.result === 'paused') toast(`@${p.handle}: the follow and likes were skipped (following is paused after an Instagram push-back). See the Follow screen.`, 8000);
   else if (r.result === 'failed') toast(`@${p.handle}: the follow step didn't finish (${r.note}). See the Follow screen.`, 8000);
@@ -3300,7 +3331,7 @@ function logText(e) {
   if (e.result === 'notfound') return 'Account not found, skipped';
   if (e.result === 'blocked') return `Instagram pushed back ("${e.note}"). Paused for 48 hours.${e.followed ? ' The follow went through.' : ''}`;
   if (e.result === 'loggedout') return 'Instagram is logged out. Stopped.';
-  if (e.result === 'failed') return `${e.afterSend ? 'After the voice note' : 'Stopped'}: ${e.note}${e.likes ? `; ${likes}` : ''}`;
+  if (e.result === 'failed') return `${e.afterSend ? 'After the voice note' : e.now ? 'Follow + like now' : 'Stopped'}: ${e.note}${e.likes ? `; ${likes}` : ''}`;
   return e.note;
 }
 
@@ -3373,6 +3404,13 @@ function followView() {
             'p',
             { class: 'muted small' },
             [`Today: ${f.today} of ${f.cap} follows`, f.likeCap ? `${f.likesToday} of ${f.likeCap} likes` : '', `${f.total} followed in all`, f.skipped ? `${f.skipped} not found` : ''].filter(Boolean).join(' · '),
+          )
+        : null,
+      catchUpLeft().length
+        ? h(
+            'p',
+            { class: 'small' },
+            `Catching up: ${catchUpLeft().length} lead${catchUpLeft().length === 1 ? '' : 's'} got a voice note but no follow yet. Each is followed and 2 posts liked on its own, a few minutes apart (Recent below, and their IG log in Airtable).`,
           )
         : null,
     ),
@@ -3749,6 +3787,9 @@ document.addEventListener('keydown', (e) => {
   // Replies: a first look shortly after launch, then on the schedule in Setup.
   setTimeout(() => checkReplies(), 45 * 1000);
   setInterval(() => checkReplies(), 60 * 1000);
+  // Leads that got a voice note but no follow yet: caught up a few minutes apart.
+  setTimeout(() => catchUpEngage(), S.fast ? 3000 : 90 * 1000);
+  setInterval(() => catchUpEngage(), S.fast ? 2000 : 60 * 1000);
   // The inbox watcher: unread messages from leads, once a minute. Clicking a notification lands on Replies.
   setTimeout(() => unreadScan(), 20 * 1000);
   setInterval(() => unreadScan(), 30 * 1000);

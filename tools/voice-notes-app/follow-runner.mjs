@@ -190,20 +190,57 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, k
   async function visitWatched(wc, handle, likeAt, follow, net, shown) {
     await open(wc, `${igBase}/${encodeURIComponent(handle)}/`);
     const cleared = [await clearCover(wc)];
-    const p = await run(wc, 'profile');
+    let p = await run(wc, 'profile');
+    const known = (x) => ['follow', 'following', 'requested'].includes(x.state);
+    if (!known(p) && !['blocked', 'loggedout', 'notfound'].includes(p.state)) {
+      // No Follow button yet (the header still loading, or re-drawn): load the profile once more.
+      await open(wc, `${igBase}/${encodeURIComponent(handle)}/`);
+      cleared.push(await clearCover(wc));
+      p = await run(wc, 'profile');
+    }
     if (p.state === 'blocked') return { result: 'blocked', note: p.note };
     if (p.state === 'loggedout') return { result: 'loggedout' };
     if (p.state === 'notfound') return { result: 'notfound' };
-    if (!['follow', 'following', 'requested'].includes(p.state)) return { result: 'failed', note: "couldn't find the Follow button" };
+    p.posts ||= [];
 
     let followed = false;
+    let clicked = false;
     let requested = p.state === 'requested';
     // A follow that went in but doesn't show on the page doesn't stop the likes: the page is still theirs.
     let unconfirmed = '';
+    let pt = null;
+    if (!known(p)) {
+      const why = `no Follow button on their profile, twice (${p.seen || 'nothing in the header'})`;
+      // Nothing to like either: there's nothing more to do on this page.
+      if (!p.posts.length) return { result: 'failed', note: `couldn't find the Follow button (${why})`, shot: await picture(handle, why) };
+      if (follow) unconfirmed = why;
+    }
     if (p.state === 'follow' && follow) {
+      pt = await run(wc, 'clickFollow');
+      if (pt?.missing && /^(following|requested)$/.test(pt.state)) {
+        // Followed in the meantime (by hand, or Instagram shows it now): nothing to click.
+        p.state = pt.state;
+        requested = p.state === 'requested';
+        pt = null;
+      } else if (pt?.missing) {
+        // The button went away for a moment: load the profile again and try once more.
+        await open(wc, `${igBase}/${encodeURIComponent(handle)}/`);
+        cleared.push(await clearCover(wc));
+        const again = await run(wc, 'profile');
+        if (again.state === 'blocked') return { result: 'blocked', note: again.note };
+        if (/^(following|requested)$/.test(again.state)) p.state = again.state;
+        requested = p.state === 'requested';
+        pt = again.state === 'follow' ? await run(wc, 'clickFollow') : known(again) ? null : { missing: true, seen: again.seen };
+        if (again.posts?.length && !p.posts?.length) p.posts = again.posts;
+      }
+    }
+    if (p.state === 'follow' && follow && pt?.missing) {
+      // Still no Follow button to click: say what the header showed, keep a picture, and go on to the likes.
+      unconfirmed = `no Follow button to click, twice (${pt.seen || 'nothing in the header'})`;
+    } else if (p.state === 'follow' && follow && pt) {
       const t = Date.now();
-      const pt = await run(wc, 'clickFollow');
       if (!(await click(wc, pt))) return { result: 'failed', note: "couldn't click Follow" };
+      clicked = true;
       const a = await run(wc, 'afterFollow');
       if (a.state === 'blocked') return { result: 'blocked', note: a.note };
       const sent = await netProof(net, t, 'follow');
@@ -265,8 +302,8 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, k
     const out = { followed, liked: likes > 0, likes, likesDone: done, likeWhy: [...why, ...(closed.length ? [closed[0]] : []), ...(why.length ? hidden : [])].join('; '), private: isPrivate, tried: hrefs.length, onScreen: shown ? shown.shown !== false : null };
     // Something didn't take: keep a picture of the page, for "See what Instagram showed".
     if (unconfirmed || (hrefs.length && !done && !likes)) out.shot = await picture(handle, unconfirmed ? `couldn't confirm the follow (${unconfirmed})` : `no post liked (${why.join('; ')})`);
-    if (unconfirmed) return { ...out, result: 'failed', clicked: true, note: `couldn't confirm the follow (${[unconfirmed, ...hidden].join('; ')})` };
-    return { ...out, result: followed ? 'followed' : p.state === 'follow' ? 'notfollowed' : 'already' };
+    if (unconfirmed) return { ...out, result: 'failed', clicked, note: `couldn't confirm the follow (${[unconfirmed, ...hidden].join('; ')})` };
+    return { ...out, result: followed ? 'followed' : /^(following|requested)$/.test(p.state) ? 'already' : 'notfollowed' };
   }
 
   // One line for the lead's IG log in Airtable: when, what happened, and why a like didn't.
@@ -401,14 +438,15 @@ export function createFollowRunner({ view, statePath, igBase, click, dblclick, k
       if (r.followed || r.clicked) (F.recordFollow(state, now), note('follow', now));
       if (r.likesDone) note('like', now, r.likesDone);
       if (r.result === 'blocked') state.pausedUntil = now + F.LIMITS.blockPauseMs;
-      addLog({ handle, result: r.result, followed: !!r.followed, liked: !!r.liked, likes: r.likes || 0, likeWhy: r.likeWhy || '', private: !!r.private, note: r.note || '', afterSend, shot: r.shot || '' });
+      addLog({ handle, result: r.result, followed: !!r.followed, liked: !!r.liked, likes: r.likes || 0, likeWhy: r.likeWhy || '', private: !!r.private, note: r.note || '', afterSend, now: !afterSend, shot: r.shot || '' });
       logAirtable(airtableId, r, afterSend);
       r.line = summary(r, afterSend);
       await save();
       emit(snapshot());
       if (airtableId && at?.token) {
         try {
-          if (r.followed) {
+          // Already following counts as followed from now, so the lead isn't picked up again.
+          if (r.followed || r.result === 'already') {
             await leads.markFollowedAirtable(at, airtableId, r.liked, new Date(now));
             onFollowed({ airtableId, followedAt: new Date(now).toISOString() });
           } else if (r.liked) await leads.markLikedAirtable(at, airtableId);

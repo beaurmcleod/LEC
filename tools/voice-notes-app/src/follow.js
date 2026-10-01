@@ -202,7 +202,11 @@ export async function followPage(action) {
   }
   if (action === 'profile') {
     const settled = await waitFor(() => blocked() || loggedOut() || notFound() || followState(), 15000);
-    if (!settled) return { state: 'unknown' };
+    // No Follow button: still say what the header held, and hand back the posts so the likes can go ahead.
+    if (!settled) {
+      const posts = postLinks();
+      return { state: 'unknown', seen: followSeen(), posts: posts.slice(0, 12), icons: posts.length ? [] : icons() };
+    }
     dismiss();
     if (blocked()) return { state: 'blocked', note: blocked() };
     if (loggedOut()) return { state: 'loggedout' };
@@ -216,10 +220,16 @@ export async function followPage(action) {
     return { state: followState(), private: isPrivate, posts: posts.slice(0, 12), postCount: claimed, icons: posts.length ? [] : icons() };
   }
   // Short fixed waits let the page finish settling before a click.
+  // The point to click on the profile's Follow button. The header can re-render for a moment after the page loads,
+  // so it waits up to 6 s for the button; when it never shows, says what the header held instead.
   if (action === 'clickFollow') {
     await sleep(800);
-    const el = followButton();
-    return el && /^(follow|follow back)$/i.test(label(el)) ? point(el) : null;
+    const el = await waitFor(() => {
+      const b = followButton();
+      return b && /^(follow|follow back)$/i.test(label(b)) ? b : null;
+    }, 6000);
+    if (el) return point(el);
+    return { missing: true, state: followState(), seen: followSeen() };
   }
   if (action === 'afterFollow') {
     const s = await waitFor(() => blocked() || (/^(following|requested)$/.test(followState()) && followState()), 8000);
