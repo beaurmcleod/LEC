@@ -1,3 +1,5 @@
+import { safeJson } from './text.js';
+
 function voiceSettings(s) {
   return {
     stability: s.stability,
@@ -17,7 +19,7 @@ async function request({ key, voiceId, model }, text, settings) {
   return fetch(`${ELEVEN_API}/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`, {
     method: 'POST',
     headers: { 'xi-api-key': key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
-    body: JSON.stringify(body),
+    body: safeJson(body),
   });
 }
 

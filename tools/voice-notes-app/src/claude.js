@@ -1,5 +1,6 @@
 // Writing the reply to a lead, with Claude. The API key lives in Setup, never in the code.
 import Anthropic from '@anthropic-ai/sdk';
+import { deepWellFormed } from './text.js';
 
 const MODEL = 'claude-opus-5-5';
 // CLAUDE_API lets tests point the app at a local stand-in.
@@ -17,8 +18,10 @@ function plainError(e) {
 
 // One structured answer: { intent, reply, why }. Uses the server-side fallback so a safety decline on the
 // main model is answered by another model instead of failing the reply.
-export async function draftReply(key, prompt) {
+export async function draftReply(key, rawPrompt) {
   const c = client(key);
+  // A bio cut in the middle of an emoji left half of one in the request, which Claude rejects as invalid JSON.
+  const prompt = deepWellFormed(rawPrompt);
   const req = {
     model: MODEL,
     max_tokens: 2000,

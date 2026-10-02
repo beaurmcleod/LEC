@@ -1,3 +1,5 @@
+import { safeJson } from './text.js';
+
 const CATEGORY_PHRASES = {
   'Personal trainer': 'personal training',
   'Physical therapy': 'physical therapy',
@@ -410,7 +412,7 @@ export const pullSentAirtable = (at) => pullAirtable(at, SENT_FORMULA);
 async function patch(at, recordId, fields) {
   await call(
     `${tableUrl(at)}/${encodeURIComponent(recordId)}`,
-    { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) },
+    { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: safeJson({ fields }) },
     at,
   );
 }
@@ -516,7 +518,7 @@ export const pullLeadHandles = (at) => pullHandles(tableUrl(at), at, 'fldKs64Z4d
 export async function createProspect(at, fields) {
   const body = await call(
     prospectsUrl(at),
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields, typecast: true }) },
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: safeJson({ fields, typecast: true }) },
     at,
     'IG Prospects',
   );

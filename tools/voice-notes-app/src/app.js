@@ -3093,6 +3093,10 @@ function replyCard(p) {
       h('button', { class: 'enter', onclick: () => send(false), disabled: !!S.bg.current }, 'Send'),
       h('button', { onclick: () => send(true), disabled: !!S.bg.current, title: p.partner ? `Their code is ${p.partner.code}` : 'Reserves their code on torreylabs.store and adds the invite to the message' }, p.partner ? 'Send + their code' : 'Send + a code'),
       h('button', { class: 'link', onclick: () => window.api.igDo('openDm', p.handle, 'dm').then(() => window.api.showInstagram()).catch((e) => toast(errText(e))) }, 'Open the thread'),
+      // Claude couldn't write it (an error is showing): ask again, with the same message.
+      r.issue && st.claude.key && !r.draft
+        ? h('button', { class: 'link', id: 'reply-retry', onclick: async () => (toast('Asking Claude again...'), await handleReply(p, r.text, r.history, { key: r.key, voiceOnly: false }), await saveProspects(), render()) }, 'Write it again')
+        : null,
       h('span', { class: 'grow' }),
       h(
         'button',

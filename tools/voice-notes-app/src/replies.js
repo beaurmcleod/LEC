@@ -1,6 +1,7 @@
 // Replies to voice notes: reading what a lead wrote back, their partner code and invite on torreylabs.store,
 // and the message that goes out. Pure functions, so they can be tested without the app.
 import { kind } from './leads.js';
+import { clip } from './text.js';
 
 // torreylabs.store's own rules for a referral code (the bit after ?ref=): 4 to 25 letters, digits or single
 // dashes, starting and ending with a letter or digit, not a reserved word, not a TL- or CR- prefix.
@@ -114,7 +115,7 @@ export function replyPrompt(p, { text, history = [], from = 'Garrett', percent =
     `Lead: ${first || 'first name not known'}${p.business ? `, ${p.business}` : ''}${p.role ? ` (${p.role})` : ''}${p.category ? `, ${p.category}` : ''}, Instagram @${p.handle}.`,
     offer ? `What they offer (use this to be specific about them): ${offer}.` : '',
     p.hook ? `Something true about them from research: ${p.hook}` : '',
-    p.bio ? `Their Instagram bio: ${String(p.bio).slice(0, 300)}` : '',
+    p.bio ? `Their Instagram bio: ${clip(p.bio, 300)}` : '',
   ].filter(Boolean);
   const convo = history.length ? `Earlier messages in the thread (newest last):\n${history.map((m) => `${m.mine ? from : 'Them'}: ${m.text}`).join('\n')}` : '';
   return {

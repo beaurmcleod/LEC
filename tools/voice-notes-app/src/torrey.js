@@ -3,6 +3,8 @@
 // counts, so the key for it can do nothing else on the store. The key lives in Setup, never in the code.
 
 // The store's address as typed in Setup, with https:// added when it was left off.
+import { safeJson } from './text.js';
+
 const base = (cfg) => {
   const s = String(cfg.site || '').trim().replace(/\/+$/, '');
   return /^https?:\/\//i.test(s) ? s : `https://${s}`;
@@ -26,7 +28,7 @@ async function call(cfg, payload) {
     res = await fetch(endpoint(cfg), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key: String(cfg.key || '').trim(), ...payload }),
+      body: safeJson({ key: String(cfg.key || '').trim(), ...payload }),
       signal: AbortSignal.timeout(30000),
     });
   } catch (e) {
