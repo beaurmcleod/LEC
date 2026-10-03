@@ -1116,7 +1116,10 @@ function catchUpEngage() {
   if (!S.settings.engageAfterSend || !S.away || S.bg.current || S.bg.jobs.some((j) => j.engage)) return;
   const now = Date.now();
   if (now - lastCatchUp < catchUpGap) return;
-  const p = catchUpDue(now)[0];
+  // While the follow limit is used up, only leads that already follow back (and just need their likes) are worth a visit.
+  const f = S.follow;
+  const followFull = !!f && (f.today >= f.cap || ['cap', 'hour', 'totalcap', 'paused'].includes(f.phase?.kind));
+  const p = catchUpDue(now).find((x) => x.followedAt || !followFull);
   if (!p) return;
   p.catchUp = { tries: (p.catchUp?.tries || 0) + 1, at: now };
   saveProspects();
@@ -1151,8 +1154,9 @@ async function engage(p, job = {}) {
     p.followedAt ||= new Date().toISOString();
     p.likesDone = r.likes > 0 || !!r.private || /no posts yet/.test(r.likeWhy || '');
   }
-  // A limit, a pause, or you being in the app isn't a try: nothing was done.
-  if (job.catchUp && ['limit', 'paused', 'later'].includes(r.result) && p.catchUp) {
+  // A limit (including the follow limit, when only the likes went in), a pause, or you being in the app isn't a try:
+  // the follow is still owed and the catch-up comes back for it.
+  if (job.catchUp && ['limit', 'paused', 'later', 'notfollowed'].includes(r.result) && p.catchUp) {
     p.catchUp.tries = Math.max(0, p.catchUp.tries - 1);
     if (r.result === 'later') p.catchUp.at = 0;
   }
@@ -1293,6 +1297,8 @@ async function replyCheckOne(p, job = {}) {
   paintQueue();
   const r = await window.api.readChat('send', p.handle, replies.leadNames(p)).catch((e) => ({ state: 'error', error: errText(e), messages: [] }));
   p.replyCheckedAt = Date.now();
+  // A read receipt ("Seen yesterday") under our note isn't a message from them.
+  r.messages = (r.messages || []).filter((m) => !replies.isReceipt(m));
   let found = false;
   noteSeen(p, r);
   if (job.row) {

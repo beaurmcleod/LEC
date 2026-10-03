@@ -245,7 +245,7 @@ export async function dmPage(action, arg) {
     const cr = chat.getBoundingClientRect();
     const REACT = 'React to message from ';
     const count = (el) => el.querySelectorAll(`[aria-label^="${REACT}"]`).length;
-    const noise = /^(seen|sent|delivered|sending\.*|view transcription|reply|react|more|edited|\d{1,2}:\d{2}( ?[ap]m)?|\d+:\d{2}|(mon|tue|wed|thu|fri|sat|sun)[a-z]*,? (at )?\d{1,2}:\d{2} ?[ap]m|[a-z]{3} \d{1,2}, \d{4},? \d{1,2}:\d{2} ?[ap]m|(mon|tue|wed|thu|fri|sat|sun)[a-z]* \d{1,2}:\d{2} ?[ap]m|today|yesterday)$/i;
+    const noise = /^((seen|sent|delivered)( (just now|yesterday|today|\d+ ?(s|sec|secs|m|min|mins|h|hr|hrs|d|day|days|w|wk|wks)\.?( ago)?|(mon|tue|wed|thu|fri|sat|sun)[a-z]*( at \d{1,2}:\d{2} ?[ap]m)?|at \d{1,2}:\d{2} ?[ap]m))?|sending\.*|view transcription|reply|react|more|edited|\d{1,2}:\d{2}( ?[ap]m)?|\d+:\d{2}|(mon|tue|wed|thu|fri|sat|sun)[a-z]*,? (at )?\d{1,2}:\d{2} ?[ap]m|[a-z]{3} \d{1,2}, \d{4},? \d{1,2}:\d{2} ?[ap]m|(mon|tue|wed|thu|fri|sat|sun)[a-z]* \d{1,2}:\d{2} ?[ap]m|today|yesterday)$/i;
     const hover = '[aria-label^="React to message"], [aria-label="More"], [aria-label="Reply"], [aria-label="Copy"], [aria-label="Forward"], [role=textbox]';
     const ownText = (el) => [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).filter(Boolean).join(' ');
     // A voice message has a Play (or Pause) button, and a "View transcription" link under it.

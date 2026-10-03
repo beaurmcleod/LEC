@@ -169,6 +169,10 @@ const flat = (s) => String(s || '').toLowerCase().replace(/&/g, 'and').replace(/
 const hrefKey = (h) => String(h || '').split(/[?#]/)[0].replace(/\/+$/, '').toLowerCase();
 
 // The names a lead goes by, for telling their chat's own text apart from what they wrote.
+// Instagram's read receipts under a message ("Seen", "Seen yesterday", "Seen 18h ago", "Delivered"): not something a lead wrote.
+export const RECEIPT = /^(seen|sent|delivered)( (just now|yesterday|today|\d+ ?(s|sec|secs|m|min|mins|h|hr|hrs|d|day|days|w|wk|wks)\.?( ago)?|(mon|tue|wed|thu|fri|sat|sun)[a-z]*( at \d{1,2}:\d{2} ?[ap]m)?|at \d{1,2}:\d{2} ?[ap]m))?$/i;
+export const isReceipt = (m) => !m.voice && RECEIPT.test(String(m.text || '').trim());
+
 export const leadNames = (p) => [p.business, p.name, p.first, p.handle].filter(Boolean);
 
 // Is this inbox row (a display name, or the handle when they have no display name) that lead?
