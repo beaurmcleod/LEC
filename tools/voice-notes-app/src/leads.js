@@ -265,6 +265,9 @@ export function makeProspect(f) {
     threadId: f.threadId || '',
     emailSubject: f.emailSubject || '',
     emailBody: f.emailBody || '',
+    partnerCode: f.partnerCode || '',
+    partnerLink: f.partnerLink || '',
+    inviteLink: f.inviteLink || '',
     status: 'todo',
     sentAt: null,
     createdAt: Date.now(),
@@ -315,6 +318,9 @@ export function fromFields(obj, extra = {}) {
     threadId: pick(obj, 'gmail thread id'),
     emailSubject: pick(obj, 'email subject'),
     emailBody: pick(obj, 'email 1'),
+    partnerCode: pick(obj, 'partner code'),
+    partnerLink: pick(obj, 'partner link'),
+    inviteLink: pick(obj, 'invite link'),
   });
 }
 
@@ -447,6 +453,17 @@ export async function pullByIds(at, ids) {
 // one lands. Leads already handled here or by hand have Reply handled ticked, and Instagram leads have their own path.
 export const EMAIL_REPLY_FORMULA = "AND({Status}='Replied', {Email}!='', {Channel}!='Instagram', NOT({Reply handled}))";
 export const pullEmailReplies = (at) => pullAirtable({ ...at, max: 60 }, EMAIL_REPLY_FORMULA);
+
+// Leads whose email address is this one (a reply read from the mailbox, matched to the lead it answers).
+export async function findByEmail(at, email) {
+  const e = String(email || '').trim().toLowerCase();
+  if (!/^[^\s@'"\\]+@[^\s@'"\\]+$/.test(e)) return [];
+  const url = new URL(tableUrl(at));
+  url.searchParams.set('maxRecords', '5');
+  url.searchParams.set('filterByFormula', `LOWER({Email})='${e}'`);
+  const body = await call(url, {}, at);
+  return (body.records || []).map((r) => fromFields(r.fields || {}, { airtableId: r.id, source: 'airtable' }));
+}
 
 // The leads Airtable already has down as sent by Instagram voice note, so the Sent list can be rebuilt from it.
 export const pullSentAirtable = (at) => pullAirtable(at, SENT_FORMULA);

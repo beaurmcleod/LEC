@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.129.0",
+    "imapflow": "^2.2.5",
+    "mailparser": "^3.9.36",
     "nodemailer": "^10.0.15"
   }
 }

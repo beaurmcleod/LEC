@@ -128,12 +128,22 @@ export function stripQuoted(raw) {
     const m = re.exec(t);
     if (m && m.index < cut) cut = m.index;
   }
-  return t.slice(0, cut).trim();
+  const top = t.slice(0, cut).trim();
+  if (top || cut >= t.length) return top;
+  // Nothing above the quoted thread: they answered underneath it (or between its lines). Keep what they typed, which is
+  // everything except the quoted lines and the "On ... wrote:" line.
+  return t
+    .split('\n')
+    .filter((l) => !/^\s*>/.test(l))
+    .join('\n')
+    .replace(/(^|\n)[ \t]*On\s[^\n]{3,200}(\n[^\n]{0,120})?\swrote:[ \t]*(?=\n|$)/i, '$1')
+    .trim();
 }
 
 // TL5b stores a reply as "<subject>\n\n<body>". Returns { subject, body } with the quoted thread already left out.
+// An empty subject leaves the text starting with the blank line, which is kept so the first paragraph isn't taken for it.
 export function splitEmail(lastReply) {
-  const t = String(lastReply ?? '').replace(/\r\n?/g, '\n').trim();
+  const t = String(lastReply ?? '').replace(/\r\n?/g, '\n').replace(/\s+$/, '');
   const m = /^([^\n]*)\n\n([\s\S]*)$/.exec(t);
   return m ? { subject: m[1].trim(), body: stripQuoted(m[2]) } : { subject: '', body: stripQuoted(t) };
 }
@@ -155,7 +165,7 @@ export function replyPrompt(p, { text, history = [], from = 'Garrett', percent =
   ].filter(Boolean);
   const convo = history.length ? `Earlier messages in the thread (newest last):\n${history.map((m) => `${m.mine ? from : 'Them'}: ${m.text}`).join('\n')}` : '';
   return {
-    system: `You are ${from}, who runs Torrey Labs, a small San Diego research-peptide company. ${email ? `You emailed this person${subject ? ` (subject: "${subject}")` : ''} about partnering, and they just replied by email. Write a short, warm email in plain text, the way ${from} writes: plain words, no hype, no emojis, no subject line. Start with a greeting line ("Hi <first name>," or "Hi there,") and end with the sign-off.` : `You sent this person a short Instagram voice note about partnering, and they just wrote back. Write the way ${from} texts: warm, quick, plain words, no hype, no emojis, no subject line.`} Never invent facts about Torrey Labs beyond these:
+    system: `You are ${from}, who runs Torrey Labs, a small San Diego research-peptide company. ${email ? `You emailed this person about partnering, and they just replied by email. Write a short, warm email in plain text, the way ${from} writes: plain words, no hype, no emojis, no subject line. Start with a greeting line ("Hi <first name>," or "Hi there,") and end with the sign-off.` : `You sent this person a short Instagram voice note about partnering, and they just wrote back. Write the way ${from} texts: warm, quick, plain words, no hype, no emojis, no subject line.`} Never invent facts about Torrey Labs beyond these:
 - Torrey Labs is a San Diego company making research peptides more accessible and more affordable. Every batch is third-party tested, and every product has an independent lab report, published by lot number, that anyone can read at ${site} without an account.
 - The store is invite-only. We're looking to partner with small businesses.
 - Partner deal: they get a simple code. Anyone who uses it gets ${percent}% off their first order, and the partner earns ${percent}% of everything that customer orders, for life, on the item subtotal. They can take it as cash (paid after 14 days) or as store credit, which is worth 25% more.
@@ -186,7 +196,7 @@ For "no": one gracious sentence, no pitch, no code.
 For "unclear": reply naturally and briefly (one to three sentences) to move it forward, without the code.
 
 For "yes" and "question" the reply must contain, written exactly as these placeholders, their partner code ${code}, their share link ${link}, and their portal invite ${invite}. The app fills them in after the code is reserved. Never write a real code or link yourself.`,
-    user: [...facts, convo, `Their reply just now: "${text}"`].filter(Boolean).join('\n\n'),
+    user: [...facts, email && subject ? `Subject of the email thread: ${clip(String(subject).replace(/\s+/g, ' '), 150)}` : '', convo, `Their reply just now: "${text}"`].filter(Boolean).join('\n\n'),
     schema: {
       type: 'object',
       properties: {

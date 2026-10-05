@@ -103,7 +103,7 @@ const DEFAULT_SETTINGS = {
   replies: { watch: true, everyMin: 10, from: 'Garrett', auto: true, delayMin: 4, quick: true, notify: true, background: true },
   // Replies to emailed leads: answered from Garrett's mailbox with a Gmail app password. auto stays off until you've watched
   // a few go out; with it off, every answer waits under Replies for you to press Send.
-  mail: { on: true, user: 'garrett@torreylabshq.com', pass: '', auto: false, from: 'Garrett' },
+  mail: { on: true, read: true, user: 'garrett@torreylabshq.com', pass: '', auto: false, from: 'Garrett' },
   // Finding accounts by hashtag: profiles read a day, and the hashtags (one per line).
   find: { perDay: discover.LIMITS.defaultPerDay, tags: discover.DEFAULT_TAGS.join('\n') },
   airtable: {
@@ -151,7 +151,7 @@ const S = {
   said: {},
   replies: { checking: false, lastAt: 0, note: '', issue: '', scan: null },
   // Replies to emailed leads, by Airtable record id (see emailCheck).
-  emails: { items: {}, checking: false, lastAt: 0, note: '', issue: '' },
+  emails: { items: {}, checking: false, lastAt: 0, note: '', issue: '', cursor: null, seen: [], direct: null, polling: false },
   rec: null,
   busy: '',
   armed: null,
@@ -1625,9 +1625,11 @@ function refreshQuietly() {
 }
 
 // ---------- Replies to emails ----------
-// Leads emailed from Garrett's mailbox who write back. Make (TL5b) reads that mailbox and writes each reply into the lead's
-// Airtable row (Status Replied, Last reply), so the app picks them up there, has Claude write the answer, and sends it from
-// the mailbox itself with the app password in Setup. Each one is kept by the lead's Airtable record id.
+// Leads emailed from Garrett's mailbox who write back. The app reads that inbox itself every minute (IMAP, with the app
+// password in Setup), matches each message to its lead by email address, writes it into the lead's Airtable row the way Make's
+// TL5b does (Status Replied, Last reply), has Claude write the answer, and sends it from the same mailbox. TL5b's own copy of
+// each reply, and replies from an address the lead isn't listed under, still arrive through Airtable as a fallback. Each
+// conversation is kept by the lead's Airtable record id.
 const saveEmails = () => store.put('kv', 'emails', S.emails.items);
 const pendingEmails = () => Object.values(S.emails.items).filter((e) => e.pending);
 const pendingAll = () => pendingReplies().length + pendingEmails().length;
@@ -1655,13 +1657,16 @@ function paintEmailLine() {
     el.className = `grow small ${S.emails.issue ? 'bad' : 'muted'}`;
   }
 }
+const directHealthy = () => !!(S.settings.mail.read && S.emails.direct && !S.emails.direct.issue && Date.now() - S.emails.direct.at < 10 * 60 * 1000);
 function emailLine() {
   const m = S.settings.mail;
   if (!m.on) return 'Email replies are off (Setup > Auto-reply).';
   if (!m.pass) return 'Email: add the Gmail app password in Setup > Auto-reply to answer emailed leads.';
-  if (S.emails.checking) return 'Email: checking Airtable for replies...';
-  if (S.emails.issue) return `Email: couldn't check (${S.emails.issue})`;
-  return S.emails.lastAt ? `Email: answering as ${m.user} · last check ${ago(S.emails.lastAt)}: ${S.emails.note}` : `Email: answering as ${m.user} · no check yet`;
+  if (S.emails.checking || S.emails.polling) return 'Email: checking for replies...';
+  const d = S.emails.direct;
+  const reading = !m.read ? 'reading replies from Airtable' : !d ? 'about to read the inbox' : d.issue ? `couldn't read the inbox (${d.issue}); replies still come through Airtable` : `reading the inbox, checked ${ago(d.at)}`;
+  if (S.emails.issue) return `Email: couldn't check Airtable (${S.emails.issue}) · ${reading}`;
+  return `Email: answering as ${m.user} · ${reading}${S.emails.lastAt ? ` · Airtable: ${S.emails.note}` : ''}`;
 }
 
 // Looks in Airtable for emailed leads who wrote back and turns each new reply into something to answer.
@@ -1682,9 +1687,12 @@ async function emailCheck({ manual = false } = {}) {
       if (await takeEmailReply(r)) fresh++;
     }
     // Answered by hand (Reply handled ticked in Airtable) or no longer a reply there: it leaves the waiting list.
+    // (Only when the whole list came back: Airtable's answer is cut at 60 rows, and one past the cut isn't "handled".)
     const open = new Set(rows.map((r) => r.airtableId));
     for (const e of pendingEmails()) {
-      if (open.has(e.airtableId) || e.sending) continue;
+      if (rows.length >= 60 || open.has(e.airtableId) || e.sending) continue;
+      // One read from the inbox is only in Airtable once the app has written it there.
+      if (e.via === 'inbox' && (!st.airtable.writeBack || Date.now() - (e.created || 0) < 10 * 60 * 1000)) continue;
       Object.assign(e, { pending: false, auto: false, dismissed: true, note: 'Handled in Airtable, so nothing was sent.' });
     }
     await saveEmails();
@@ -1700,27 +1708,43 @@ async function emailCheck({ manual = false } = {}) {
   if (fresh || manual) refreshQuietly();
 }
 
-// One row from Airtable. Returns true when it is a reply the app hasn't seen.
-async function takeEmailReply(r) {
+// The same message, ignoring spacing and case. `fuzzy` also accepts two copies that begin alike (Make's text of a message and
+// the inbox's can differ in the tail: signatures, link formatting).
+const flat80 = (t) => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
+const emailLeadOf = (r) => ({ first: r.first, name: r.name, business: r.business, role: r.role, category: r.category, hook: r.hook, bio: r.bio, note: r.note, email: r.email, handle: r.handle });
+const sameText = (a, b, { fuzzy = false } = {}) => flat80(a) === flat80(b) || (fuzzy && flat80(a).length > 40 && flat80(a).slice(0, 80) === flat80(b).slice(0, 80));
+
+// Make's TL5b writes Status Replied and Reply handled unticked again when it gets to an email the app already answered.
+// An answer that went out (or a no) is put back as handled, so Airtable doesn't show it as waiting.
+async function repairEmailRow(ex, r) {
+  if (ex.pending || ex.sending || !(r.atStatus === 'Replied' && r.replyHandled !== 'true')) return;
+  await airtableEmail(ex, { [RF.handled]: true, ...(ex.partner ? { [RF.status]: 'Code sent' } : ex.intent === 'no' ? { [RF.status]: 'Not interested' } : {}) });
+}
+
+// Does the app already have this message for that lead? From the inbox the Message-ID says so (an item that came through
+// Airtable has none yet, so its text decides). From Airtable: a copy of the same text, or Make's copy of a message the inbox
+// reader took (Make stamps its own time on it, up to a quarter of an hour after the message arrived).
+function isDupEmail(ex, { via, messageId, body, at }) {
+  if (!ex) return false;
+  if (via === 'inbox') return ex.messageId ? ex.messageId === messageId : sameText(ex.key, body, { fuzzy: true });
+  return sameText(ex.key, body, { fuzzy: true }) || (ex.via === 'inbox' && directHealthy() && at <= ex.at + 20 * 60 * 1000);
+}
+
+// One reply, from the inbox (via 'inbox') or from a row Airtable has as Replied (via 'airtable'). Returns true when it is a
+// reply the app hasn't seen.
+async function takeEmailReply(r, { via = 'airtable', messageId = '', references = [], ambiguous = false } = {}) {
   if (!r.email || wasRemoved(r)) return false;
   const { subject, body } = replies.splitEmail(r.lastReply);
   if (!body) return false;
   const at = Date.parse(r.replyAt) || Date.now();
   const ex = S.emails.items[r.airtableId];
-  if (ex && ex.key === body && !ex.dismissed) return false;
-  if (ex && ex.key === body && ex.dismissed && ex.at >= at) return false;
-  const lead = {
-    first: r.first,
-    name: r.name,
-    business: r.business,
-    role: r.role,
-    category: r.category,
-    hook: r.hook,
-    bio: r.bio,
-    note: r.note,
-    email: r.email,
-    handle: r.handle,
-  };
+  if (ex?.sending) return false; // an answer to them is going out right now; this one is looked at again next time
+  if (isDupEmail(ex, { via, messageId, body, at })) {
+    if (via === 'inbox' && !ex.messageId) Object.assign(ex, { messageId, references: [...references, messageId] });
+    if (via === 'airtable') await repairEmailRow(ex, r);
+    return false;
+  }
+  const lead = emailLeadOf(r);
   // The thread so far: what we emailed, what they wrote before (and our answer to it), for the model to read.
   const history = [];
   if (r.emailBody) history.push({ mine: true, text: r.emailBody });
@@ -1729,10 +1753,115 @@ async function takeEmailReply(r) {
     if (ex.sent) history.push({ mine: true, text: ex.sent });
   }
   const again = !!(ex?.pending && ex.key !== body);
-  const e = Object.assign(ex || {}, { id: r.airtableId, airtableId: r.airtableId, lead, email: r.email, subject: subject || r.emailSubject, at, key: body, text: body, history: history.slice(-6), pending: true, dismissed: false, note: '', sent: ex?.sent && ex.key === body ? ex.sent : '' });
+  // A lead that already has a code (from a voice note, say) keeps it: the answer carries that one rather than a second.
+  const known = r.partnerCode && r.partnerLink && r.inviteLink ? { code: r.partnerCode, link: r.partnerLink, invite: r.inviteLink, at: Date.now() } : null;
+  const e = Object.assign(ex || {}, { id: r.airtableId, airtableId: r.airtableId, lead, email: r.email, subject: subject || r.emailSubject, at, key: body, text: body, history: history.slice(-6), pending: true, dismissed: false, note: '', sent: '', via, messageId, references: messageId ? [...references, messageId] : [], ambiguous, created: Date.now() });
+  if (!e.partner && known) e.partner = known;
   S.emails.items[r.airtableId] = e;
   await handleEmail(e, { keepSendAt: again });
   return true;
+}
+
+// Statuses of a lead we emailed. Anything else (never contacted, said no, bounced, ordered) isn't answered from the inbox.
+const EMAILED = ['Sent', 'Follow-up 1 sent', 'Follow-up 2 sent', 'Replied', 'Code sent', 'Frame yes'];
+
+// Reads the mailbox for new messages from emailed leads. Each is matched to its lead by the sender's address, written into the
+// lead's Airtable row the way Make's TL5b writes it, and handled like any email reply.
+async function emailPoll({ manual = false } = {}) {
+  const st = S.settings;
+  if (S.emails.polling || !emailReady() || !st.mail.read) {
+    if (manual && !emailReady()) toast(st.airtable.token ? 'Add the Gmail app password in Setup > Auto-reply first.' : 'Add your Airtable token first (Setup > Airtable).');
+    return;
+  }
+  S.emails.polling = true;
+  paintEmailLine();
+  let fresh = 0;
+  let more = false;
+  try {
+    const got = await window.api.mailRead(st.mail, S.emails.cursor);
+    const cache = new Map();
+    let retry = false;
+    for (const m of got.messages) {
+      if (S.emails.seen.includes(m.messageId)) continue;
+      const took = !m.bounce && !m.auto && m.text ? await takeInboxMessage(m, cache) : false;
+      if (took === 'retry') {
+        retry = true; // not handled yet: it stays unseen and the cursor stays put, so the next look takes it
+        continue;
+      }
+      if (took) fresh++;
+      S.emails.seen.push(m.messageId);
+    }
+    S.emails.seen = S.emails.seen.slice(-400);
+    await store.put('kv', 'emailSeen', S.emails.seen);
+    if (!retry) {
+      S.emails.cursor = { validity: got.validity, uid: got.lastUid };
+      await store.put('kv', 'emailCursor', S.emails.cursor);
+      more = !!got.more;
+    }
+    S.emails.direct = { at: Date.now(), n: got.messages.length, issue: '' };
+  } catch (err) {
+    // The cursor stays where it was, so a message that couldn't be handled (Airtable unreachable) is looked at again.
+    S.emails.direct = { at: Date.now(), n: 0, issue: errText(err) };
+  }
+  S.emails.polling = false;
+  paintEmailLine();
+  syncBadge();
+  if (fresh || manual) refreshQuietly();
+  if (more) setTimeout(() => emailPoll(), 1500); // more than one look's worth had arrived: carry on from where this one stopped
+}
+
+async function patchEmailRow(id, fields) {
+  const at = S.settings.airtable;
+  if (!at.writeBack || !at.token) return;
+  try {
+    await window.api.patchAirtable(at, id, fields);
+  } catch (err) {
+    toast(`Airtable said: ${errText(err)}`, 8000);
+  }
+}
+
+const flatSubject = (t) => String(t || '').replace(/^(\s*(re|fwd?):\s*)+/i, '').trim().toLowerCase();
+
+// Returns true for a new reply taken, false for one that needs nothing, and 'retry' when it can't be taken yet.
+async function takeInboxMessage(m, cache) {
+  const at = S.settings.airtable;
+  let found = cache.get(m.from);
+  if (!found) {
+    found = await window.api.findLeadsByEmail(at, m.from);
+    cache.set(m.from, found);
+  }
+  const eligible = found.filter((l) => EMAILED.includes(l.atStatus) && l.channel !== 'Instagram');
+  if (!eligible.length) return false; // not a lead we emailed (warm-up traffic, a newsletter, someone else)
+  // Several leads can share an address (an info@ box): the one whose email subject the reply carries, else the first, flagged
+  // so nothing goes out on its own.
+  const subj = flatSubject(m.subject);
+  const byThread = eligible.filter((l) => l.emailSubject && subj.includes(flatSubject(l.emailSubject)));
+  const lead = byThread[0] || eligible[0];
+  const ambiguous = eligible.length > 1 && byThread.length !== 1;
+  const ex = S.emails.items[lead.airtableId];
+  if (ex?.sending) return 'retry';
+  // A conversation Airtable has as handled starts again only with a message newer than the one that was handled (the first
+  // look reads two weeks of mail, most of it long dealt with).
+  if (lead.replyHandled === 'true' && (!lead.replyAt || Date.parse(m.date) <= Date.parse(lead.replyAt))) return false;
+  const lastReply = `${m.subject}\n\n${clipText(m.text, 20000)}`;
+  const { body } = replies.splitEmail(lastReply);
+  if (!body) return false;
+  if (isDupEmail(ex, { via: 'inbox', messageId: m.messageId, body, at: Date.parse(m.date) })) {
+    if (!ex.messageId) Object.assign(ex, { messageId: m.messageId, references: [...m.references, m.messageId] });
+    return false;
+  }
+  // Already answered by hand in Gmail (a reply to this message in the Sent folder)? Then there is nothing to draft. If the
+  // Sent folder can't be read this time, carry on: the same look is made again before anything goes out on its own.
+  const answered = await window.api.mailAnswered(S.settings.mail, m.from, m.date, { messageId: m.messageId }).catch(() => false);
+  if (answered) {
+    Object.assign((S.emails.items[lead.airtableId] ||= {}), { id: lead.airtableId, airtableId: lead.airtableId, lead: emailLeadOf(lead), email: lead.email || m.from, subject: m.subject, at: Date.parse(m.date) || Date.now(), key: body, text: body, history: [], pending: false, auto: false, dismissed: true, intent: '', note: 'You already answered them by email, so nothing was drafted.', sent: '', via: 'inbox', messageId: m.messageId, references: [...m.references, m.messageId], created: Date.now() });
+    await patchEmailRow(lead.airtableId, { [RF.status]: 'Replied', [RF.lastReply]: lastReply, [RF.received]: m.date, [RF.handled]: true });
+    await saveEmails();
+    return false;
+  }
+  // What Make's TL5b would have written, so Airtable shows the reply as soon as the app has it.
+  await patchEmailRow(lead.airtableId, { [RF.status]: 'Replied', [RF.lastReply]: lastReply, [RF.received]: m.date, [RF.handled]: false });
+  return takeEmailReply({ ...lead, lastReply, replyAt: m.date }, { via: 'inbox', messageId: m.messageId, references: m.references, ambiguous });
 }
 
 // What a reply gets: a yes or a question gets their code and how to set up, written for them; a no is marked and left alone;
@@ -1758,9 +1887,12 @@ async function handleEmail(e, { keepSendAt = false } = {}) {
   } catch (err) {
     e.issue = errText(err);
   }
+  const old = Date.now() - e.at > OLD_REPLY_MS;
+  if (e.ambiguous) why = `${why ? `${why} ` : ''}Several leads share this email address, so check it is the right one before sending.`;
   Object.assign(e, { intent, draft, why });
   const name = emailWho(e);
-  if (intent === 'no') {
+  // A no from a message days old (read on a first look, say) is shown for you to decide, not filed on its own.
+  if (intent === 'no' && !old) {
     e.pending = false;
     await airtableEmail(e, { [RF.status]: 'Not interested', [RF.intent]: 'No', [RF.handled]: true });
     toast(`${name} said no thanks by email. Marked not interested.`);
@@ -1768,8 +1900,7 @@ async function handleEmail(e, { keepSendAt = false } = {}) {
     return saveEmails();
   }
   await airtableEmail(e, { [RF.intent]: INTENT_LABEL[intent] || 'Unclear', [RF.suggested]: draft, [RF.handled]: false });
-  const old = Date.now() - e.at > OLD_REPLY_MS;
-  if ((intent === 'yes' || intent === 'question') && draft && !e.issue && st.mail.auto && !old) {
+  if ((intent === 'yes' || intent === 'question') && draft && !e.issue && st.mail.auto && !old && !e.ambiguous) {
     const delay = Math.max(0, Number(st.replies.delayMin) || 0) * 60 * 1000;
     let sendAt = Date.now() + delay + Math.round(delay * (Math.random() * 0.2 - 0.1));
     if (keepSendAt && prevSendAt) sendAt = Math.max(prevSendAt, Date.now() + 30 * 1000);
@@ -1806,19 +1937,42 @@ async function sendEmailNow(e, { text, withCode = false, scheduled = false }) {
   try {
     if (!st.mail.pass) throw new Error('Add the Gmail app password in Setup > Auto-reply first.');
     if (scheduled) {
+      // The switches and the age rule are checked again here: an answer armed before a switch was turned off, or while the
+      // Mac slept for days, must not go out on its own now. It stays as a draft.
+      if (!st.mail.on || !st.mail.auto || e.ambiguous || Date.now() - e.at > OLD_REPLY_MS) {
+        Object.assign(e, { auto: false, sendAt: null });
+        return;
+      }
       // Right before an answer goes out on its own, look at their row again: handled by hand, or they wrote more.
       const { found } = await window.api.pullAirtableByIds(st.airtable, [e.airtableId]);
       const now = found[0];
-      if (!now || now.atStatus !== 'Replied' || now.replyHandled === 'true') {
+      // Without write-back Airtable only knows what Make wrote (up to 15 minutes late), so its status can't say much.
+      if (!now || (st.airtable.writeBack && (now.atStatus !== 'Replied' || now.replyHandled === 'true')) || now.atStatus === 'Not interested') {
         Object.assign(e, { pending: false, auto: false, dismissed: true, note: now ? `Airtable has them as ${now.atStatus || 'handled'} now, so the answer was dropped.` : 'They were deleted from Airtable, so the answer was dropped.' });
         toast(`${emailWho(e)}: handled elsewhere, so the emailed answer was dropped.`, 6000);
         return;
       }
       const latest = replies.splitEmail(now.lastReply).body;
-      if (latest && latest !== e.key) {
+      if (latest && !sameText(latest, e.key, { fuzzy: true }) && Date.parse(now.replyAt) > e.at + 60 * 1000) {
         Object.assign(e, { history: [...e.history, { mine: false, text: e.key }].slice(-6), key: latest, text: latest, at: Date.parse(now.replyAt) || Date.now() });
         await handleEmail(e, { keepSendAt: true });
         return;
+      }
+      // Anything sent to them since their message (an answer typed by hand in Gmail)? Then this one is dropped. Their message's
+      // time is Make's when it came through Airtable, which can be up to 15 minutes after it arrived.
+      if (st.mail.read) {
+        let answered;
+        try {
+          answered = await window.api.mailAnswered(st.mail, e.email, new Date(e.via === 'airtable' ? e.at - 30 * 60 * 1000 : e.at).toISOString(), { messageId: e.via === 'inbox' ? e.messageId : '' });
+        } catch (err) {
+          throw new Error(`Couldn't look in your sent mail first (${errText(err)}), so it didn't go out on its own. Press Send when you're ready.`);
+        }
+        if (answered) {
+          Object.assign(e, { pending: false, auto: false, dismissed: true, note: 'You already answered them by email, so the answer was dropped.' });
+          await airtableEmail(e, { [RF.handled]: true });
+          toast(`${emailWho(e)}: you already answered by email, so the answer was dropped.`, 6000);
+          return;
+        }
       }
       text = e.draft;
     }
@@ -1836,8 +1990,14 @@ async function sendEmailNow(e, { text, withCode = false, scheduled = false }) {
       vals = e.partner;
       text = replies.hasSlots(text) ? replies.fillSlots(text, vals) : `${text.trim()}\n\n${replies.codeLines(vals)}`;
     }
-    await window.api.mailSend(st.mail, { to: e.email, subject: replies.reSubject(e.subject), text, name: st.mail.from || st.replies.from });
-    Object.assign(e, { pending: false, auto: false, sent: text, sentAt: Date.now(), issue: '' });
+    // Noted before it goes, saved right after: if the app is closed in between, it comes back as a draft to check, never as an
+    // answer that would go out again by itself.
+    e.sendingAt = Date.now();
+    await saveEmails();
+    // Replying to the message the app read, so the answer sits in the same conversation in their mail and in garrett@'s.
+    await window.api.mailSend(st.mail, { to: e.email, subject: replies.reSubject(e.subject), text, name: st.mail.from || st.replies.from, inReplyTo: e.messageId && e.via === 'inbox' ? e.messageId : '', references: e.via === 'inbox' ? e.references : [] });
+    Object.assign(e, { pending: false, auto: false, sent: text, sentAt: Date.now(), issue: '', sendingAt: 0 });
+    await saveEmails();
     await airtableEmail(e, {
       [RF.suggested]: text,
       [RF.handled]: true,
@@ -1848,7 +2008,7 @@ async function sendEmailNow(e, { text, withCode = false, scheduled = false }) {
     notifyReply(`Answered ${emailWho(e)}`, vals ? `Emailed their code ${vals.code} and how to set up.` : 'Your email went out.');
   } catch (err) {
     // A failed answer turns into a draft for you, so it can't keep retrying on its own.
-    Object.assign(e, { pending: true, auto: false, draft: text, issue: errText(err) });
+    Object.assign(e, { pending: true, auto: false, draft: text, issue: errText(err), sendingAt: 0 });
     await airtableEmail(e, { [RF.suggested]: text, [RF.handled]: false });
     toast(`Couldn't email ${emailWho(e)}: ${errText(err)}. It's waiting under Replies.`, 8000);
     notifyReply(`Couldn't answer ${emailWho(e)}`, `${errText(err)} It's waiting under Replies.`);
@@ -3349,7 +3509,8 @@ async function testKey(which) {
   try {
     if (which === 'mail') {
       const r = await window.api.mailTest(st.mail);
-      say(`Connected: Gmail accepted ${r.user}.`, 'ok');
+      if (r.read) say(`Connected: Gmail accepted ${r.user} for sending and for reading the inbox.`, 'ok');
+      else say(`Sending works. Reading the inbox didn't: ${r.readIssue} Replies will still come through Airtable.`, 'warn');
     } else if (which === 'claude') {
       const r = await window.api.replyTest(st.claude.key);
       say(`Connected (${r.model}).`, 'ok');
@@ -3555,7 +3716,7 @@ function repliesView() {
         'div',
         { class: 'row-flex' },
         h('span', { id: 'email-line', class: `grow small ${S.emails.issue ? 'bad' : 'muted'}` }, emailLine()),
-        h('button', { id: 'email-check', onclick: () => emailCheck({ manual: true }), disabled: !!S.emails.checking }, 'Check email now'),
+        h('button', { id: 'email-check', onclick: async () => (await emailPoll({ manual: true }), await emailCheck({ manual: true })), disabled: !!(S.emails.checking || S.emails.polling) }, 'Check email now'),
       ),
     ),
     h('h2', {}, pendingTotal ? `Waiting on you (${pendingTotal})` : 'Nothing waiting on you'),
@@ -3746,11 +3907,12 @@ function setupView() {
       h(
         'div',
         { class: 'card' },
-        box(st.mail, 'on', 'Answer leads who reply to an email (they appear under Replies, from the replies Make saves in Airtable)'),
+        box(st.mail, 'on', 'Answer leads who reply to an email (they appear under Replies)'),
+        box(st.mail, 'read', 'Read the inbox here every minute, so a reply is picked up right away and your Sent folder is looked at before an answer goes out on its own. Without it, replies arrive through Airtable up to 15 minutes late and nothing is looked at first. If the inbox can\'t be read while this is on, answers wait for you instead of going out on their own.'),
         h('label', { class: 'field' }, 'Send from (the mailbox the emails came from)', h('input', { id: 'mail-user', value: st.mail.user, oninput: txt(st.mail, 'user'), placeholder: 'garrett@torreylabshq.com' })),
         h('label', { class: 'field' }, 'Gmail app password', h('input', { id: 'mail-pass', type: 'password', value: st.mail.pass, oninput: txt(st.mail, 'pass'), placeholder: '16 letters' })),
         h('div', { class: 'row-flex' }, h('button', { id: 'mail-test-btn', onclick: () => testKey('mail'), disabled: !!S.busy }, 'Test email'), h('span', { id: 'mail-test', class: 'small muted' })),
-        h('p', { class: 'muted small' }, 'Sign in to that Gmail as garrett@torreylabshq.com, open ', h('a', { href: 'https://myaccount.google.com/apppasswords', target: '_blank' }, 'myaccount.google.com/apppasswords'), ' (2-Step Verification has to be on), make one named Torrey Voice Notes, and paste the 16 letters here. It is not your normal password. The app only uses it to send answers from that address, it stays in this app, and you can revoke it any time on that same page.'),
+        h('p', { class: 'muted small' }, 'Sign in to that Gmail as garrett@torreylabshq.com, open ', h('a', { href: 'https://myaccount.google.com/apppasswords', target: '_blank' }, 'myaccount.google.com/apppasswords'), ' (2-Step Verification has to be on), make one named Torrey Voice Notes, and paste the 16 letters here. It is not your normal password. The app uses it to read replies in that inbox and look in its Sent folder (it never changes or deletes mail) and to send answers from that address. It stays in this app, and you can revoke it any time on that same page.'),
         box(st.mail, 'auto', 'Send a yes or a question\'s answer by email on its own, after the wait above. Leave off at first: every email answer then waits under Replies for you to press Send.'),
       ),
       h('h2', {}, 'Keys'),
@@ -4352,7 +4514,15 @@ document.addEventListener('keydown', (e) => {
   S.removed = { ids: [], handles: [], ...((await store.get('kv', 'removed')) || {}) };
   S.emails.items = (await store.get('kv', 'emails')) || {};
   // One that was being sent when the app closed goes back to waiting; it is not sent again unless you press Send.
-  for (const e of Object.values(S.emails.items)) delete e.sending;
+  for (const e of Object.values(S.emails.items)) {
+    delete e.sending;
+    if (e.sendingAt && e.pending) {
+      Object.assign(e, { auto: false, sendAt: null, issue: "The app closed while this was being emailed. Look in the Sent folder of garrett@ first: if it went, press Mark handled; if not, press Send." });
+    }
+    delete e.sendingAt;
+  }
+  S.emails.cursor = (await store.get('kv', 'emailCursor')) || null;
+  S.emails.seen = (await store.get('kv', 'emailSeen')) || [];
   for (const p of S.prospects.filter((x) => x.status === 'sending')) {
     p.status = 'todo';
     // One that was only waiting on a safety limit goes back to To do as it was, to send again.
@@ -4387,9 +4557,12 @@ document.addEventListener('keydown', (e) => {
   applyBackground();
   // Auto-replies whose time has come, and the countdowns on the Replies tab.
   setInterval(dueReplies, 15 * 1000);
-  // Emailed leads who wrote back: Airtable is checked every 5 minutes (Make writes each reply there every 15), answers that are due go out.
+  // Emailed leads who wrote back: the inbox is read every minute, Airtable is checked every 5 minutes as a fallback (Make writes each reply there every 15), answers that are due go out.
   setTimeout(() => emailCheck(), 60 * 1000);
   setInterval(() => emailCheck(), 5 * 60 * 1000);
+  // The inbox itself, once a minute.
+  setTimeout(() => emailPoll(), S.fast ? 2000 : 25 * 1000);
+  setInterval(() => emailPoll(), S.fast ? 2000 : 60 * 1000);
   setInterval(dueEmails, 15 * 1000);
   setInterval(() => S.view === 'replies' && (pendingReplies().some((p) => p.reply.auto) || pendingEmails().some((e) => e.auto)) && refreshQuietly(), 20 * 1000);
 })();
