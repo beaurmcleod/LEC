@@ -885,6 +885,7 @@ ipcMain.handle('find:test', (_e, tag) => finder.test(tag).catch((e) => `The test
 
 ipcMain.handle('airtable:pull', (_e, at) => leads.pullAirtable(at));
 ipcMain.handle('airtable:pullSent', (_e, at) => leads.pullSentAirtable(at));
+ipcMain.handle('airtable:pullByIds', (_e, at, ids) => leads.pullByIds(at, ids));
 ipcMain.handle('airtable:sent', (_e, at, id) => leads.markSentAirtable(at, id));
 ipcMain.handle('tts', (_e, text, settings) => speak(text, settings));
 

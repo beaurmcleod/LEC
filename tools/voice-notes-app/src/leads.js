@@ -255,6 +255,8 @@ export function makeProspect(f) {
     igLiked: f.igLiked || '',
     channel: f.channel || '',
     atSentAt: f.atSentAt || '',
+    track: f.track || '',
+    skipReason: f.skipReason || '',
     status: 'todo',
     sentAt: null,
     createdAt: Date.now(),
@@ -296,6 +298,8 @@ export function fromFields(obj, extra = {}) {
     igLiked: pick(obj, 'ig liked'),
     channel: pick(obj, 'channel'),
     atSentAt: pick(obj, 'sent at'),
+    track: pick(obj, 'track'),
+    skipReason: pick(obj, 'skip reason'),
   });
 }
 
@@ -404,6 +408,24 @@ export async function pullAirtable(at, formula = at.formula) {
     offset = body.offset;
   } while (offset && out.length < at.max);
   return out;
+}
+
+// Looks leads up by their Airtable record ids. `found` are their current rows; `missing` are ids Airtable no longer has.
+// The normal pull only brings back New / Researched / Ready leads, so this is how the app learns a lead it still
+// shows was skipped, emailed, errored or deleted since.
+export async function pullByIds(at, ids) {
+  const found = [];
+  const want = [...new Set(ids.filter((i) => /^rec\w+$/.test(i)))];
+  for (let i = 0; i < want.length; i += 30) {
+    const chunk = want.slice(i, i + 30);
+    const url = new URL(tableUrl(at));
+    url.searchParams.set('pageSize', '100');
+    url.searchParams.set('filterByFormula', `OR(${chunk.map((id) => `RECORD_ID()='${id}'`).join(',')})`);
+    const body = await call(url, {}, at);
+    for (const r of body.records || []) found.push(fromFields(r.fields || {}, { airtableId: r.id, source: 'airtable' }));
+  }
+  const have = new Set(found.map((f) => f.airtableId));
+  return { found, missing: want.filter((id) => !have.has(id)) };
 }
 
 // The leads Airtable already has down as sent by Instagram voice note, so the Sent list can be rebuilt from it.

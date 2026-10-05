@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('api', {
   reveal: (file) => ipcRenderer.invoke('clip:reveal', file),
   pullAirtable: (at) => ipcRenderer.invoke('airtable:pull', at),
   pullSentAirtable: (at) => ipcRenderer.invoke('airtable:pullSent', at),
+  pullAirtableByIds: (at, ids) => ipcRenderer.invoke('airtable:pullByIds', at, ids),
   markSent: (at, id) => ipcRenderer.invoke('airtable:sent', at, id),
   speak: (text, settings) => ipcRenderer.invoke('tts', text, settings),
   showPane: (which) => ipcRenderer.invoke('pane:show', which),

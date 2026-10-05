@@ -4,6 +4,7 @@ import * as leads from './leads.js';
 import * as replies from './replies.js';
 import * as discover from './find.js';
 import * as limits from './limits.js';
+import { clip as clipText } from './text.js';
 
 // Read this off the screen when recording the pitch. About 32 seconds at a normal pace.
 const PITCH_SCRIPT = `Figured a real voice beats another copy-paste DM. I'm Garrett with Torrey Labs — we're a peptide company here in San Diego, every batch third-party tested.
@@ -1793,6 +1794,11 @@ async function merge(incoming, { markNew = false } = {}) {
       if (autoName && inc.name) ex.name = inc.name;
       if (autoNote && inc.note) ex.note = inc.note;
       ex.airtableId ||= inc.airtableId;
+      // Skipped here only because Airtable had moved on, and Airtable has it as a lead to do again.
+      if (inc.source === 'airtable' && ex.status === 'skipped' && /^Airtable/.test(ex.skipNote || '')) {
+        ex.status = 'todo';
+        delete ex.skipNote;
+      }
       refreshed++;
     } else {
       if (markNew) inc.isNew = true;
@@ -1802,6 +1808,40 @@ async function merge(incoming, { markNew = false } = {}) {
   }
   await saveProspects();
   return { added, refreshed };
+}
+
+// Airtable statuses that mean the lead is no longer an Instagram to-do.
+const AT_DONE = ['Skip', 'Error', 'Research failed', 'Bounced'];
+
+// The pull only returns New / Researched / Ready leads. A lead Airtable has since skipped, emailed, errored or deleted
+// never comes back, so this Mac's old copy would sit under Waiting for good. Look those up by id and move them to Skipped.
+async function refreshStale(at, seen) {
+  const stale = S.prospects.filter((p) => p.status === 'todo' && p.airtableId && !seen.has(p.airtableId));
+  if (!stale.length) return 0;
+  const { found, missing } = await window.api.pullAirtableByIds(at, stale.map((p) => p.airtableId));
+  let moved = 0;
+  const skip = (p, note) => {
+    Object.assign(p, { status: 'skipped', sentAt: null, skipNote: note });
+    delete p.isNew;
+    moved++;
+  };
+  for (const inc of found) {
+    const p = stale.find((x) => x.airtableId === inc.airtableId);
+    if (!p) continue;
+    Object.assign(p, { atStatus: inc.atStatus, channel: inc.channel, atSentAt: inc.atSentAt, track: inc.track });
+    if (inc.followedAt) p.followedAt ||= inc.followedAt;
+    if (inc.igLiked) p.igLiked = inc.igLiked;
+    if (inc.atStatus === 'Skip' || inc.track === 'Skip') skip(p, `Airtable: Skip${inc.skipReason ? ` (${inc.skipReason})` : ''}`);
+    else if (AT_DONE.includes(inc.atStatus)) skip(p, `Airtable: ${inc.atStatus}`);
+    else if (leads.SENT_STATUSES.includes(inc.atStatus) && inc.channel !== 'Instagram')
+      skip(p, `Airtable: ${inc.atStatus}${inc.channel ? ` by ${inc.channel}` : ''}`);
+  }
+  for (const id of missing) {
+    const p = stale.find((x) => x.airtableId === id);
+    if (p) skip(p, 'Airtable: lead was deleted');
+  }
+  await saveProspects();
+  return moved;
 }
 
 // Airtable is the record of what went out. Leads it has down as sent by Instagram voice note come back under
@@ -1907,18 +1947,27 @@ async function sync({ quiet = false } = {}) {
     S.sync.pulled = pulled.length;
     const { added } = await merge(pulled, { markNew: !firstPull });
     let restored = 0;
+    let moved = 0;
     let sentIssue = '';
+    const seen = new Set(pulled.map((p) => p.airtableId));
     try {
-      restored = await restoreSent(await window.api.pullSentAirtable(at));
+      const sentList = await window.api.pullSentAirtable(at);
+      for (const p of sentList) seen.add(p.airtableId);
+      restored = await restoreSent(sentList);
     } catch (e) {
       sentIssue = errText(e);
+    }
+    try {
+      moved = await refreshStale(at, seen);
+    } catch (e) {
+      sentIssue ||= errText(e);
     }
     S.sync.at = Date.now();
     S.sync.error = '';
     const todo = S.prospects.filter((p) => p.status === 'todo');
     const ready = todo.filter(shown).length;
     if (!quiet)
-      toast(`Synced ${pulled.length} leads from Airtable (${added} new${restored ? `, ${restored} back under Sent` : ''}). ${ready} ready to send, ${todo.length - ready} waiting.`, 6000);
+      toast(`Synced ${pulled.length} leads from Airtable (${added} new${restored ? `, ${restored} back under Sent` : ''}${moved ? `, ${moved} moved to Skipped because Airtable skipped or emailed them` : ''}). ${ready} ready to send, ${todo.length - ready} waiting.`, 6000);
     if (sentIssue && !quiet) toast(`Couldn't read Airtable's sent leads: ${sentIssue}`, 8000);
   } catch (e) {
     S.sync.error = errText(e);
@@ -2098,6 +2147,7 @@ async function setStatus(p, status, { advance = true } = {}) {
   else {
     p.status = status;
     p.sentAt = null;
+    if (status !== 'skipped') delete p.skipNote;
     await saveProspects();
   }
   if (status === 'todo' || !advance) return render();
@@ -2463,7 +2513,7 @@ function leadRow(p) {
       'div',
       { class: 'who' },
       h('span', {}, h('b', {}, p.name || '(no name)')),
-      h('span', { class: 'muted small' }, [p.handle ? `@${p.handle}` : 'no handle', p.role, p.business !== p.name ? p.business : ''].filter(Boolean).join(' · ')),
+      h('span', { class: 'muted small' }, [p.handle ? `@${p.handle}` : 'no handle', p.role, p.business !== p.name ? p.business : '', p.status === 'skipped' ? clipText(p.skipNote, 70) : ''].filter(Boolean).join(' · ')),
     ),
     p.isNew ? h('span', { class: 'tag new' }, 'new') : null,
     intro,
