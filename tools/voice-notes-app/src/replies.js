@@ -82,17 +82,22 @@ export function offerPhrase(p) {
 // The message with their code and how to get set up, when the model isn't configured. It has the same shape as
 // the one the model writes: a yes from them, who we are, why them, how it works, their code and three steps, the
 // delivery line, and an open door for questions.
-export function fallbackMessage(p, { code, invite, link, from = 'Garrett', percent = 20 }) {
+export function fallbackMessage(p, { code, invite, link, from = 'Garrett', percent = 20, email = false }) {
   const name = String(p.first || '').trim();
   const biz = p.business && p.business !== name && p.business !== p.name ? p.business : '';
   const offer = offerPhrase(p);
   const fit = offer ? `, and your ${offer} community feels like a great fit` : ', and this feels like a great fit';
   return [
+    email ? `Hi ${name || 'there'},` : '',
     `Definitely${name ? `, ${name}` : ''}! We're Torrey Labs, a San Diego research-peptide company. We're making lab-tested peptides more accessible and more affordable, with third-party testing on every batch. We're partnering with small businesses like ${biz || 'yours'}${fit}.`,
     `How it works: you share a simple code. Anyone who uses it gets ${percent}% off their first order, and you earn ${percent}% on every order they place, for life. Take it as cash, or as store credit worth 25% more.`,
     `I made you a code: ${code}\n1) Open ${invite} to set up your portal (the code's already on it)\n2) Share ${link} or tell people to use ${code}`,
-    `We also offer in-person delivery on larger orders, or pickup. Everything is for research use only. Any questions at any point, just ask! – ${from}`,
-  ].join('\n\n');
+    email
+      ? `We also offer in-person delivery on larger orders, or pickup. Everything is for research use only. Any questions at any point, just ask!\n\n${from}\nTorrey Labs`
+      : `We also offer in-person delivery on larger orders, or pickup. Everything is for research use only. Any questions at any point, just ask! – ${from}`,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 // The lines that hand over a code, added to a draft you approve with "Send with code".
@@ -106,20 +111,51 @@ export const SLOTS = { code: '{CODE}', link: '{LINK}', invite: '{INVITE}' };
 export const fillSlots = (text, vals) => String(text || '').replaceAll(SLOTS.code, vals.code).replaceAll(SLOTS.link, vals.link).replaceAll(SLOTS.invite, vals.invite);
 export const hasSlots = (text) => Object.values(SLOTS).some((s) => String(text || '').includes(s));
 
+// ---------- Email replies ----------
+
+// What the person wrote, without the thread they quoted under it ("On Thu, Oct 1 ... wrote:", "> ..." lines, Outlook's
+// "From: / Sent:" block, "-----Original Message-----"). The quote header can wrap onto a second line.
+export function stripQuoted(raw) {
+  const t = String(raw ?? '').replace(/\r\n?/g, '\n');
+  const marks = [
+    /(^|\n)[ \t]*On\s[^\n]{3,200}(\n[^\n]{0,120})?\swrote:/i,
+    /(^|\n)[ \t]*-{2,}\s*(Original Message|Forwarded message)\s*-{2,}/i,
+    /(^|\n)[ \t]*From:[ \t]+[^\n]+\n[ \t]*(Sent|Date):/i,
+    /(^|\n)[ \t]*>/,
+  ];
+  let cut = t.length;
+  for (const re of marks) {
+    const m = re.exec(t);
+    if (m && m.index < cut) cut = m.index;
+  }
+  return t.slice(0, cut).trim();
+}
+
+// TL5b stores a reply as "<subject>\n\n<body>". Returns { subject, body } with the quoted thread already left out.
+export function splitEmail(lastReply) {
+  const t = String(lastReply ?? '').replace(/\r\n?/g, '\n').trim();
+  const m = /^([^\n]*)\n\n([\s\S]*)$/.exec(t);
+  return m ? { subject: m[1].trim(), body: stripQuoted(m[2]) } : { subject: '', body: stripQuoted(t) };
+}
+
+export const reSubject = (s) => (/^re:/i.test(String(s || '').trim()) ? String(s).trim() : `Re: ${String(s || '').trim() || 'your reply'}`);
+
 // What the model is asked to do with a reply. Returns { system, user, schema } for a structured answer.
-export function replyPrompt(p, { text, history = [], from = 'Garrett', percent = 20, site = 'https://torreylabs.store' }) {
+export function replyPrompt(p, { text, history = [], from = 'Garrett', percent = 20, site = 'https://torreylabs.store', channel = 'instagram', subject = '' }) {
   const { code, invite, link } = SLOTS;
+  const email = channel === 'email';
+  const signoff = email ? `"${from}" on its own line, with "Torrey Labs" under it` : `"– ${from}"`;
   const first = String(p.first || '').trim();
   const offer = offerPhrase(p);
   const facts = [
-    `Lead: ${first || 'first name not known'}${p.business ? `, ${p.business}` : ''}${p.role ? ` (${p.role})` : ''}${p.category ? `, ${p.category}` : ''}, Instagram @${p.handle}.`,
+    `Lead: ${first || 'first name not known'}${p.business ? `, ${p.business}` : ''}${p.role ? ` (${p.role})` : ''}${p.category ? `, ${p.category}` : ''}${email ? `, email ${p.email}` : `, Instagram @${p.handle}`}.`,
     offer ? `What they offer (use this to be specific about them): ${offer}.` : '',
     p.hook ? `Something true about them from research: ${p.hook}` : '',
     p.bio ? `Their Instagram bio: ${clip(p.bio, 300)}` : '',
   ].filter(Boolean);
   const convo = history.length ? `Earlier messages in the thread (newest last):\n${history.map((m) => `${m.mine ? from : 'Them'}: ${m.text}`).join('\n')}` : '';
   return {
-    system: `You are ${from}, who runs Torrey Labs, a small San Diego research-peptide company. You sent this person a short Instagram voice note about partnering, and they just wrote back. Write the way ${from} texts: warm, quick, plain words, no hype, no emojis, no subject line. Never invent facts about Torrey Labs beyond these:
+    system: `You are ${from}, who runs Torrey Labs, a small San Diego research-peptide company. ${email ? `You emailed this person${subject ? ` (subject: "${subject}")` : ''} about partnering, and they just replied by email. Write a short, warm email in plain text, the way ${from} writes: plain words, no hype, no emojis, no subject line. Start with a greeting line ("Hi <first name>," or "Hi there,") and end with the sign-off.` : `You sent this person a short Instagram voice note about partnering, and they just wrote back. Write the way ${from} texts: warm, quick, plain words, no hype, no emojis, no subject line.`} Never invent facts about Torrey Labs beyond these:
 - Torrey Labs is a San Diego company making research peptides more accessible and more affordable. Every batch is third-party tested, and every product has an independent lab report, published by lot number, that anyone can read at ${site} without an account.
 - The store is invite-only. We're looking to partner with small businesses.
 - Partner deal: they get a simple code. Anyone who uses it gets ${percent}% off their first order, and the partner earns ${percent}% of everything that customer orders, for life, on the item subtotal. They can take it as cash (paid after 14 days) or as store credit, which is worth 25% more.
@@ -141,7 +177,7 @@ For "yes", write it in this shape, in your own natural words, about 110 to 140 w
 1. "Definitely, <first name>!" then who we are in one sentence (Torrey Labs, San Diego, research peptides, more accessible and more affordable, third-party tested on every batch), then that we're partnering with small businesses like <their business> and why their <what they offer> community is a good fit.
 2. How it works: they share a simple code; anyone who uses it gets ${percent}% off their first order; they earn ${percent}% on every order, for life; cash or store credit worth 25% more.
 3. "I made you a code: ${code}" followed by two numbered steps: 1) open ${invite} to set up your portal (the code's already on it) 2) share ${link} or tell people to use ${code}.
-4. One line: in-person delivery on larger orders, or pickup; everything is for research use only; any questions at any point, just ask. Sign off "– ${from}".
+4. One line: in-person delivery on larger orders, or pickup; everything is for research use only; any questions at any point, just ask. Sign off ${signoff}.
 
 For "question", answer their question first in one or two plain sentences using only the facts above, then give the same shape more briefly (skip the company intro), so they can start whenever they're ready.
 

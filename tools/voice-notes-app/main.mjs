@@ -11,6 +11,7 @@ import { speak } from './src/voice.js';
 import { dmPage } from './src/dm-page.js';
 import { draftReply, testClaude } from './src/claude.js';
 import { createInvite, testTorrey } from './src/torrey.js';
+import { sendMail, testMail } from './src/mail.js';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const IG_BASE = (process.env.IG_BASE || 'https://www.instagram.com').replace(/\/$/, '');
@@ -858,6 +859,8 @@ ipcMain.handle('reply:draft', (_e, key, prompt) => draftReply(key, prompt));
 ipcMain.handle('reply:test', (_e, key) => testClaude(key));
 ipcMain.handle('torrey:invite', (_e, cfg, args) => createInvite(cfg, args));
 ipcMain.handle('torrey:test', (_e, cfg) => testTorrey(cfg));
+ipcMain.handle('mail:test', (_e, cfg) => testMail(cfg));
+ipcMain.handle('mail:send', (_e, cfg, msg) => sendMail(cfg, msg));
 // Copies text with the system clipboard (the page can't: its clipboard permission is off). False only if the write threw.
 ipcMain.handle('clipboard:text', (_e, text) => {
   try {
@@ -886,6 +889,7 @@ ipcMain.handle('find:test', (_e, tag) => finder.test(tag).catch((e) => `The test
 ipcMain.handle('airtable:pull', (_e, at) => leads.pullAirtable(at));
 ipcMain.handle('airtable:pullSent', (_e, at) => leads.pullSentAirtable(at));
 ipcMain.handle('airtable:pullByIds', (_e, at, ids) => leads.pullByIds(at, ids));
+ipcMain.handle('airtable:pullEmailReplies', (_e, at) => leads.pullEmailReplies(at));
 ipcMain.handle('airtable:sent', (_e, at, id) => leads.markSentAirtable(at, id));
 ipcMain.handle('tts', (_e, text, settings) => speak(text, settings));
 

@@ -257,6 +257,14 @@ export function makeProspect(f) {
     atSentAt: f.atSentAt || '',
     track: f.track || '',
     skipReason: f.skipReason || '',
+    // What an emailed lead wrote back, and what we emailed them (see pullEmailReplies).
+    email: f.email || '',
+    lastReply: f.lastReply || '',
+    replyAt: f.replyAt || '',
+    replyHandled: f.replyHandled || '',
+    threadId: f.threadId || '',
+    emailSubject: f.emailSubject || '',
+    emailBody: f.emailBody || '',
     status: 'todo',
     sentAt: null,
     createdAt: Date.now(),
@@ -300,6 +308,13 @@ export function fromFields(obj, extra = {}) {
     atSentAt: pick(obj, 'sent at'),
     track: pick(obj, 'track'),
     skipReason: pick(obj, 'skip reason'),
+    email: pick(obj, 'email'),
+    lastReply: pick(obj, 'last reply'),
+    replyAt: pick(obj, 'reply received'),
+    replyHandled: pick(obj, 'reply handled'),
+    threadId: pick(obj, 'gmail thread id'),
+    emailSubject: pick(obj, 'email subject'),
+    emailBody: pick(obj, 'email 1'),
   });
 }
 
@@ -427,6 +442,11 @@ export async function pullByIds(at, ids) {
   const have = new Set(found.map((f) => f.airtableId));
   return { found, missing: want.filter((id) => !have.has(id)) };
 }
+
+// Leads who answered an email: TL5b (Make) sets Status Replied and writes what they wrote into Last reply every time
+// one lands. Leads already handled here or by hand have Reply handled ticked, and Instagram leads have their own path.
+export const EMAIL_REPLY_FORMULA = "AND({Status}='Replied', {Email}!='', {Channel}!='Instagram', NOT({Reply handled}))";
+export const pullEmailReplies = (at) => pullAirtable({ ...at, max: 60 }, EMAIL_REPLY_FORMULA);
 
 // The leads Airtable already has down as sent by Instagram voice note, so the Sent list can be rebuilt from it.
 export const pullSentAirtable = (at) => pullAirtable(at, SENT_FORMULA);

@@ -31,7 +31,7 @@ const [outDir] = await packager({
   name: NAME,
   appBundleId: 'com.torreylabs.voicenotes',
   extendInfo: { NSMicrophoneUsageDescription: 'Records your personal line for each voice note.' },
-  // node_modules only keeps what the app needs at runtime: the Anthropic SDK (replies) and what it loads.
+  // node_modules only keeps what the app needs at runtime: the Anthropic SDK (replies), nodemailer (answering emails) and what they load.
   // Everything else in there is build tooling.
   ignore: (file) => /^\/dist($|\/)/.test(file) || /^\/build-mac\.mjs$/.test(file) || (/^\/node_modules\//.test(file) && !keepInBundle(file)),
 });

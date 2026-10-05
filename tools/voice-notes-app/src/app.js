@@ -101,6 +101,9 @@ const DEFAULT_SETTINGS = {
   // quick: look at the inbox for unread messages every minute; notify: a notification for each reply; background: keep
   // working when the window is closed (Mac) and keep the Mac awake.
   replies: { watch: true, everyMin: 10, from: 'Garrett', auto: true, delayMin: 4, quick: true, notify: true, background: true },
+  // Replies to emailed leads: answered from Garrett's mailbox with a Gmail app password. auto stays off until you've watched
+  // a few go out; with it off, every answer waits under Replies for you to press Send.
+  mail: { on: true, user: 'garrett@torreylabshq.com', pass: '', auto: false, from: 'Garrett' },
   // Finding accounts by hashtag: profiles read a day, and the hashtags (one per line).
   find: { perDay: discover.LIMITS.defaultPerDay, tags: discover.DEFAULT_TAGS.join('\n') },
   airtable: {
@@ -147,6 +150,8 @@ const S = {
   lens: {},
   said: {},
   replies: { checking: false, lastAt: 0, note: '', issue: '', scan: null },
+  // Replies to emailed leads, by Airtable record id (see emailCheck).
+  emails: { items: {}, checking: false, lastAt: 0, note: '', issue: '' },
   rec: null,
   busy: '',
   armed: null,
@@ -1463,7 +1468,7 @@ function notifyReply(title, body) {
 }
 let lastBadge = -1;
 function syncBadge() {
-  const n = pendingReplies().length;
+  const n = pendingAll();
   if (n === lastBadge) return;
   lastBadge = n;
   window.api.badge(n).catch(() => {});
@@ -1619,6 +1624,303 @@ function refreshQuietly() {
   render();
 }
 
+// ---------- Replies to emails ----------
+// Leads emailed from Garrett's mailbox who write back. Make (TL5b) reads that mailbox and writes each reply into the lead's
+// Airtable row (Status Replied, Last reply), so the app picks them up there, has Claude write the answer, and sends it from
+// the mailbox itself with the app password in Setup. Each one is kept by the lead's Airtable record id.
+const saveEmails = () => store.put('kv', 'emails', S.emails.items);
+const pendingEmails = () => Object.values(S.emails.items).filter((e) => e.pending);
+const pendingAll = () => pendingReplies().length + pendingEmails().length;
+const emailReady = () => {
+  const m = S.settings.mail;
+  return !!(m.on && m.user && m.pass && S.settings.airtable.token);
+};
+const emailWho = (e) => e.lead.name || e.lead.business || e.email;
+const OLD_REPLY_MS = 2 * 24 * 60 * 60 * 1000;
+
+async function airtableEmail(e, fields) {
+  const at = S.settings.airtable;
+  if (!at.writeBack || !at.token || !e.airtableId) return;
+  try {
+    await window.api.patchAirtable(at, e.airtableId, fields);
+  } catch (err) {
+    toast(`Airtable said: ${errText(err)}`, 8000);
+  }
+}
+
+function paintEmailLine() {
+  const el = document.getElementById('email-line');
+  if (el) {
+    el.textContent = emailLine();
+    el.className = `grow small ${S.emails.issue ? 'bad' : 'muted'}`;
+  }
+}
+function emailLine() {
+  const m = S.settings.mail;
+  if (!m.on) return 'Email replies are off (Setup > Auto-reply).';
+  if (!m.pass) return 'Email: add the Gmail app password in Setup > Auto-reply to answer emailed leads.';
+  if (S.emails.checking) return 'Email: checking Airtable for replies...';
+  if (S.emails.issue) return `Email: couldn't check (${S.emails.issue})`;
+  return S.emails.lastAt ? `Email: answering as ${m.user} · last check ${ago(S.emails.lastAt)}: ${S.emails.note}` : `Email: answering as ${m.user} · no check yet`;
+}
+
+// Looks in Airtable for emailed leads who wrote back and turns each new reply into something to answer.
+async function emailCheck({ manual = false } = {}) {
+  const st = S.settings;
+  if (S.emails.checking) return;
+  if (!emailReady()) {
+    if (manual) toast(st.airtable.token ? 'Add the Gmail app password in Setup > Auto-reply first.' : 'Add your Airtable token first (Setup > Airtable).');
+    return;
+  }
+  S.emails.checking = true;
+  paintEmailLine();
+  let fresh = 0;
+  try {
+    const rows = await window.api.pullEmailReplies(st.airtable);
+    for (const r of rows) {
+      if (fresh >= 10) break;
+      if (await takeEmailReply(r)) fresh++;
+    }
+    // Answered by hand (Reply handled ticked in Airtable) or no longer a reply there: it leaves the waiting list.
+    const open = new Set(rows.map((r) => r.airtableId));
+    for (const e of pendingEmails()) {
+      if (open.has(e.airtableId) || e.sending) continue;
+      Object.assign(e, { pending: false, auto: false, dismissed: true, note: 'Handled in Airtable, so nothing was sent.' });
+    }
+    await saveEmails();
+    S.emails.lastAt = Date.now();
+    S.emails.issue = '';
+    S.emails.note = `${rows.length} unanswered ${rows.length === 1 ? 'reply' : 'replies'}${fresh ? `, ${fresh} new` : ''}`;
+  } catch (err) {
+    S.emails.issue = errText(err);
+  }
+  S.emails.checking = false;
+  paintEmailLine();
+  syncBadge();
+  if (fresh || manual) refreshQuietly();
+}
+
+// One row from Airtable. Returns true when it is a reply the app hasn't seen.
+async function takeEmailReply(r) {
+  if (!r.email || wasRemoved(r)) return false;
+  const { subject, body } = replies.splitEmail(r.lastReply);
+  if (!body) return false;
+  const at = Date.parse(r.replyAt) || Date.now();
+  const ex = S.emails.items[r.airtableId];
+  if (ex && ex.key === body && !ex.dismissed) return false;
+  if (ex && ex.key === body && ex.dismissed && ex.at >= at) return false;
+  const lead = {
+    first: r.first,
+    name: r.name,
+    business: r.business,
+    role: r.role,
+    category: r.category,
+    hook: r.hook,
+    bio: r.bio,
+    note: r.note,
+    email: r.email,
+    handle: r.handle,
+  };
+  // The thread so far: what we emailed, what they wrote before (and our answer to it), for the model to read.
+  const history = [];
+  if (r.emailBody) history.push({ mine: true, text: r.emailBody });
+  if (ex?.key && ex.key !== body) {
+    history.push({ mine: false, text: ex.key });
+    if (ex.sent) history.push({ mine: true, text: ex.sent });
+  }
+  const again = !!(ex?.pending && ex.key !== body);
+  const e = Object.assign(ex || {}, { id: r.airtableId, airtableId: r.airtableId, lead, email: r.email, subject: subject || r.emailSubject, at, key: body, text: body, history: history.slice(-6), pending: true, dismissed: false, note: '', sent: ex?.sent && ex.key === body ? ex.sent : '' });
+  S.emails.items[r.airtableId] = e;
+  await handleEmail(e, { keepSendAt: again });
+  return true;
+}
+
+// What a reply gets: a yes or a question gets their code and how to set up, written for them; a no is marked and left alone;
+// anything unclear waits under Replies with a draft. Answers go out on their own only when Setup says so.
+async function handleEmail(e, { keepSendAt = false } = {}) {
+  const st = S.settings;
+  const from = st.mail.from || st.replies.from;
+  const prevSendAt = e.sendAt;
+  Object.assign(e, { intent: '', draft: '', why: '', issue: '', auto: false, sendAt: null });
+  let intent = 'unclear';
+  let draft = '';
+  let why = '';
+  try {
+    if (st.claude.key) {
+      const d = await window.api.replyDraft(st.claude.key, replies.replyPrompt(e.lead, { text: e.text, history: e.history, from, percent: st.torrey.percent, site: st.torrey.site, channel: 'email', subject: e.subject }));
+      ({ intent, why } = d);
+      draft = d.reply;
+    } else {
+      intent = replies.quickIntent(e.text);
+      if (intent === 'yes') draft = replies.fallbackMessage(e.lead, { ...replies.SLOTS, from, percent: st.torrey.percent, email: true });
+      why = 'Read without Claude (no API key in Setup), so only a plain yes or no is understood.';
+    }
+  } catch (err) {
+    e.issue = errText(err);
+  }
+  Object.assign(e, { intent, draft, why });
+  const name = emailWho(e);
+  if (intent === 'no') {
+    e.pending = false;
+    await airtableEmail(e, { [RF.status]: 'Not interested', [RF.intent]: 'No', [RF.handled]: true });
+    toast(`${name} said no thanks by email. Marked not interested.`);
+    notifyReply(`${name} isn't interested`, `"${e.text.slice(0, 90)}" · Marked not interested. Nothing was sent.`);
+    return saveEmails();
+  }
+  await airtableEmail(e, { [RF.intent]: INTENT_LABEL[intent] || 'Unclear', [RF.suggested]: draft, [RF.handled]: false });
+  const old = Date.now() - e.at > OLD_REPLY_MS;
+  if ((intent === 'yes' || intent === 'question') && draft && !e.issue && st.mail.auto && !old) {
+    const delay = Math.max(0, Number(st.replies.delayMin) || 0) * 60 * 1000;
+    let sendAt = Date.now() + delay + Math.round(delay * (Math.random() * 0.2 - 0.1));
+    if (keepSendAt && prevSendAt) sendAt = Math.max(prevSendAt, Date.now() + 30 * 1000);
+    Object.assign(e, { auto: true, sendAt });
+    const mins = Math.max(0, Math.round((sendAt - Date.now()) / 60000));
+    toast(`${name} ${intent === 'yes' ? 'said yes' : 'asked for more info'} by email. Their answer and code go out ${mins ? `in about ${mins} min` : 'shortly'} (Replies tab).`, 7000);
+    notifyReply(`${name} ${intent === 'yes' ? 'is interested' : 'wants more info'}`, `"${e.text.slice(0, 90)}" · Their emailed answer and code go out ${mins ? `in about ${mins} min` : 'shortly'}. Open Replies to edit it or send it now.`);
+  } else {
+    toast(`${name} replied by email. A draft is waiting under Replies.`, 6000);
+    notifyReply(`${name} replied by email`, `"${e.text.slice(0, 90)}" · ${draft ? 'A draft is waiting for you.' : 'Waiting for you to answer.'}`);
+  }
+  return saveEmails();
+}
+
+// Answers that are due go out one at a time.
+async function dueEmails() {
+  if (S.emails.sendingNow) return;
+  const e = pendingEmails().find((x) => x.auto && x.sendAt && x.sendAt <= Date.now() && !x.sending);
+  if (!e) return;
+  S.emails.sendingNow = true;
+  try {
+    await sendEmailNow(e, { text: e.draft, withCode: true, scheduled: true });
+  } finally {
+    S.emails.sendingNow = false;
+  }
+}
+
+// Reserves their code on torreylabs.store if needed, fills it into the message, and sends it from the mailbox.
+async function sendEmailNow(e, { text, withCode = false, scheduled = false }) {
+  const st = S.settings;
+  if (e.sending || (scheduled && !(e.pending && e.auto))) return;
+  e.sending = true;
+  let vals = null;
+  try {
+    if (!st.mail.pass) throw new Error('Add the Gmail app password in Setup > Auto-reply first.');
+    if (scheduled) {
+      // Right before an answer goes out on its own, look at their row again: handled by hand, or they wrote more.
+      const { found } = await window.api.pullAirtableByIds(st.airtable, [e.airtableId]);
+      const now = found[0];
+      if (!now || now.atStatus !== 'Replied' || now.replyHandled === 'true') {
+        Object.assign(e, { pending: false, auto: false, dismissed: true, note: now ? `Airtable has them as ${now.atStatus || 'handled'} now, so the answer was dropped.` : 'They were deleted from Airtable, so the answer was dropped.' });
+        toast(`${emailWho(e)}: handled elsewhere, so the emailed answer was dropped.`, 6000);
+        return;
+      }
+      const latest = replies.splitEmail(now.lastReply).body;
+      if (latest && latest !== e.key) {
+        Object.assign(e, { history: [...e.history, { mine: false, text: e.key }].slice(-6), key: latest, text: latest, at: Date.parse(now.replyAt) || Date.now() });
+        await handleEmail(e, { keepSendAt: true });
+        return;
+      }
+      text = e.draft;
+    }
+    if (withCode || replies.hasSlots(text)) {
+      if (!e.partner?.code) {
+        if (!st.torrey.key) throw new Error('Add the Torrey Labs invite key in Setup to issue partner codes.');
+        const { code, token } = await window.api.torreyInvite(st.torrey, {
+          candidates: replies.codeCandidates(e.lead),
+          label: `${emailWho(e)} (${e.email}), from an email reply`,
+          rate: Math.min(0.5, Math.max(0, (Number(st.torrey.percent) || 20) / 100)),
+        });
+        e.partner = { code, invite: replies.inviteLink(st.torrey.site, token), link: replies.partnerLink(st.torrey.site, code), at: Date.now() };
+        await saveEmails();
+      }
+      vals = e.partner;
+      text = replies.hasSlots(text) ? replies.fillSlots(text, vals) : `${text.trim()}\n\n${replies.codeLines(vals)}`;
+    }
+    await window.api.mailSend(st.mail, { to: e.email, subject: replies.reSubject(e.subject), text, name: st.mail.from || st.replies.from });
+    Object.assign(e, { pending: false, auto: false, sent: text, sentAt: Date.now(), issue: '' });
+    await airtableEmail(e, {
+      [RF.suggested]: text,
+      [RF.handled]: true,
+      [RF.intent]: INTENT_LABEL[e.intent] || (vals ? 'Yes' : 'Unclear'),
+      ...(vals ? { [RF.status]: 'Code sent', [RF.code]: vals.code, [RF.link]: vals.link, [RF.invite]: vals.invite, [RF.codeSentAt]: new Date().toISOString() } : {}),
+    });
+    toast(`Emailed ${emailWho(e)}${vals ? ` with their code ${vals.code}` : ''} ✓`);
+    notifyReply(`Answered ${emailWho(e)}`, vals ? `Emailed their code ${vals.code} and how to set up.` : 'Your email went out.');
+  } catch (err) {
+    // A failed answer turns into a draft for you, so it can't keep retrying on its own.
+    Object.assign(e, { pending: true, auto: false, draft: text, issue: errText(err) });
+    await airtableEmail(e, { [RF.suggested]: text, [RF.handled]: false });
+    toast(`Couldn't email ${emailWho(e)}: ${errText(err)}. It's waiting under Replies.`, 8000);
+    notifyReply(`Couldn't answer ${emailWho(e)}`, `${errText(err)} It's waiting under Replies.`);
+  } finally {
+    e.sending = false;
+    await saveEmails();
+    syncBadge();
+    refreshQuietly();
+  }
+}
+
+function emailCard(e) {
+  const st = S.settings;
+  const box = h('textarea', { 'aria-label': `Email reply to ${emailWho(e)}`, oninput: (ev) => ((e.draft = ev.target.value), saveEmails()) }, e.draft || '');
+  const go = (withCode) => {
+    const text = box.value.trim();
+    if (!text) return toast('Write the reply first.');
+    e.draft = text;
+    sendEmailNow(e, { text, withCode });
+    render();
+  };
+  return h(
+    'div',
+    { class: 'card reply email', 'data-email': e.email },
+    h(
+      'div',
+      { class: 'row-flex' },
+      h('b', { class: 'grow' }, emailWho(e), ' ', h('span', { class: 'muted small' }, `${e.email}${e.lead.business && e.lead.business !== emailWho(e) ? ` · ${e.lead.business}` : ''}`)),
+      h('span', { class: 'tag' }, 'email'),
+      e.intent ? h('span', { class: `tag ${e.intent === 'yes' ? 'ok' : e.intent === 'no' ? 'bad' : 'warn'}` }, INTENT_LABEL[e.intent] || e.intent) : null,
+      h('span', { class: 'muted small' }, ago(e.at)),
+    ),
+    e.subject ? h('p', { class: 'muted small' }, `Subject: ${e.subject}`) : null,
+    h('div', { class: 'msg theirs' }, e.text),
+    e.why ? h('p', { class: 'muted small why' }, e.why) : null,
+    e.issue ? h('p', { class: 'status error' }, e.issue) : null,
+    e.auto && e.sendAt
+      ? h(
+          'p',
+          { class: 'status armed row-flex', 'data-auto': '' },
+          h('span', { class: 'grow' }, `Goes out on its own ${e.sendAt > Date.now() ? `in ${countdown(e.sendAt - Date.now())}` : 'now'}, with ${e.partner ? `their code ${e.partner.code}` : 'their own code'}. Edit it below if you like.`),
+          h('button', { class: 'link', onclick: () => ((e.sendAt = Date.now()), saveEmails(), dueEmails(), render()) }, 'Send now'),
+          h('button', { class: 'link', onclick: () => ((e.auto = false), saveEmails(), render()) }, 'Hold for me'),
+        )
+      : null,
+    box,
+    h(
+      'div',
+      { class: 'row-flex' },
+      h('button', { class: 'enter', onclick: () => go(false), disabled: !!e.sending }, 'Send'),
+      h('button', { onclick: () => go(true), disabled: !!e.sending, title: e.partner ? `Their code is ${e.partner.code}` : 'Reserves their code on torreylabs.store and adds the invite to the email' }, e.partner ? 'Send + their code' : 'Send + a code'),
+      e.issue && st.claude.key && !e.draft ? h('button', { class: 'link', id: 'email-retry', onclick: async () => (toast('Asking Claude again...'), await handleEmail(e), render()) }, 'Write it again') : null,
+      h('span', { class: 'grow' }),
+      h(
+        'button',
+        {
+          class: 'link',
+          onclick: async () => {
+            Object.assign(e, { pending: false, auto: false, dismissed: true });
+            await airtableEmail(e, { [RF.handled]: true });
+            await saveEmails();
+            syncBadge();
+            render();
+          },
+        },
+        'Mark handled',
+      ),
+    ),
+    !st.mail.pass ? h('p', { class: 'muted small' }, 'Add the Gmail app password in Setup > Auto-reply to send from here.') : null,
+  );
+}
+
 // Where every lead is on the way from "found" to "replied", one line, each stage a tap to its screen.
 function pipelineCounts() {
   const todo = S.prospects.filter((p) => p.status === 'todo' && p.handle);
@@ -1633,7 +1935,7 @@ function pipelineCounts() {
     day: gate ? todo.filter((p) => p.airtableId && p.followedAt && !followedLongEnough(p)).length : 0,
     ready: todoList().length,
     sent: S.prospects.filter((p) => p.status === 'sent' && p.handle).length,
-    replies: pendingReplies().length,
+    replies: pendingAll(),
   };
 }
 function pipelineStrip() {
@@ -2277,7 +2579,7 @@ function header() {
         'button',
         { class: `tab ${S.view === 'replies' ? 'on' : ''}`, onclick: () => ((S.view = 'replies'), render()) },
         'Replies',
-        h('span', { id: 'reply-badge', class: 'badge', hidden: !pendingReplies().length }, pendingReplies().length),
+        h('span', { id: 'reply-badge', class: 'badge', hidden: !pendingAll() }, pendingAll()),
       ),
       h('button', { class: `tab ${S.view === 'setup' ? 'on' : ''}`, onclick: goSetup }, 'Setup'),
     ),
@@ -3041,11 +3343,14 @@ async function testKey(which) {
     const el = document.getElementById(`${which}-test`);
     if (el) (el.textContent = text), (el.className = `small ${cls}`);
   };
-  const key = which === 'claude' ? st.claude.key : st.torrey.key;
-  if (!key) return say(which === 'claude' ? 'Paste your Claude API key above first.' : 'Add the invite key above first (Make a new key).', 'bad');
+  const key = which === 'claude' ? st.claude.key : which === 'mail' ? st.mail.pass : st.torrey.key;
+  if (!key) return say(which === 'claude' ? 'Paste your Claude API key above first.' : which === 'mail' ? 'Paste the Gmail app password above first.' : 'Add the invite key above first (Make a new key).', 'bad');
   say('Checking...', 'muted');
   try {
-    if (which === 'claude') {
+    if (which === 'mail') {
+      const r = await window.api.mailTest(st.mail);
+      say(`Connected: Gmail accepted ${r.user}.`, 'ok');
+    } else if (which === 'claude') {
       const r = await window.api.replyTest(st.claude.key);
       say(`Connected (${r.model}).`, 'ok');
     } else {
@@ -3176,6 +3481,9 @@ function replyCard(p) {
 function repliesView() {
   const st = S.settings;
   const pending = pendingReplies().sort((a, b) => b.reply.at - a.reply.at);
+  const pendingMail = pendingEmails();
+  const pendingTotal = pending.length + pendingMail.length;
+  const doneMail = Object.values(S.emails.items).filter((e) => !e.pending && (e.sentAt || e.dismissed || e.intent === 'no'));
   const done = S.prospects.filter((p) => p.reply && !p.reply.pending).sort((a, b) => (b.reply.sentAt || b.reply.at) - (a.reply.sentAt || a.reply.at));
   const sent = S.prospects.filter((p) => p.status === 'sent').length;
   return h(
@@ -3240,9 +3548,19 @@ function repliesView() {
           h('button', { class: 'link', onclick: goSetup }, 'Open Setup'),
         )
       : null,
-    h('h2', {}, pending.length ? `Waiting on you (${pending.length})` : 'Nothing waiting on you'),
-    pending.length
-      ? pending.map(replyCard)
+    h(
+      'div',
+      { class: 'card sync' },
+      h(
+        'div',
+        { class: 'row-flex' },
+        h('span', { id: 'email-line', class: `grow small ${S.emails.issue ? 'bad' : 'muted'}` }, emailLine()),
+        h('button', { id: 'email-check', onclick: () => emailCheck({ manual: true }), disabled: !!S.emails.checking }, 'Check email now'),
+      ),
+    ),
+    h('h2', {}, pendingTotal ? `Waiting on you (${pendingTotal})` : 'Nothing waiting on you'),
+    pendingTotal
+      ? [...pending.map((p) => [p.reply.at, replyCard(p)]), ...pendingMail.map((e) => [e.at, emailCard(e)])].sort((a, b) => b[0] - a[0]).map(([, card]) => card)
       : h(
           'p',
           { class: 'muted small' },
@@ -3250,7 +3568,21 @@ function repliesView() {
             ? `A yes or a question for more info gets an answer written for them with their own partner code and how to set up, sent on its own after about ${st.replies.delayMin} min. A no is marked not interested. Anything unclear, or a voice message back, waits here for you.`
             : 'Every reply waits here with a draft for you to approve (automatic answers are off in Setup). A no is marked not interested.',
         ),
-    done.length ? h('h2', {}, 'Answered') : null,
+    done.length || doneMail.length ? h('h2', {}, 'Answered') : null,
+    doneMail
+      .sort((a, b) => (b.sentAt || b.at) - (a.sentAt || a.at))
+      .slice(0, 40)
+      .map((e) =>
+        h(
+          'div',
+          { class: 'log-row reply-done', 'data-email-done': e.email },
+          h('span', { class: 'muted small' }, ago(e.sentAt || e.at)),
+          h('b', { class: 'small' }, emailWho(e)),
+          h('span', { class: 'tag' }, 'email'),
+          h('span', { class: `small ${e.intent === 'no' ? 'muted' : 'ok'}` }, e.intent === 'no' ? 'said no' : e.note ? e.note : e.sentAt ? (e.partner ? `emailed their code ${e.partner.code}` : 'emailed') : 'handled by hand'),
+          e.sent ? h('span', { class: 'muted small', title: e.sent }, `“${clipText(e.sent, 70)}${e.sent.length > 70 ? '…' : ''}”`) : null,
+        ),
+      ),
     done.slice(0, 40).map((p) =>
       h(
         'div',
@@ -3287,6 +3619,7 @@ function setupChecklist() {
     ['Airtable connected', !!st.airtable.token, 'leads'],
     ['Claude key', !!st.claude.key, 'replies'],
     ['Invite key (partner codes)', !!st.torrey.key, 'replies'],
+    ['Email app password', !!st.mail.pass, 'replies'],
     ['Auto-voice (optional)', !!(st.eleven.key && st.eleven.voiceId), 'autovoice'],
   ];
   return h(
@@ -3408,6 +3741,17 @@ function setupView() {
         box(st.replies, 'auto', 'Answer a yes or a question for more info on its own, with their own partner code and how to set up'),
         h('label', { class: 'field' }, 'Wait before answering (minutes)', h('input', { type: 'number', min: 0, max: 240, step: 'any', value: st.replies.delayMin, oninput: (e) => ((st.replies.delayMin = Math.min(240, Math.max(0, parseFloat(e.target.value) || 0))), saveSettings().then(flashSaved)) })),
         h('p', { class: 'muted small' }, "If you answer them yourself first, the app drops its answer. A no is marked not interested; anything unclear waits under Replies for you."),
+      ),
+      h('h2', {}, 'Email'),
+      h(
+        'div',
+        { class: 'card' },
+        box(st.mail, 'on', 'Answer leads who reply to an email (they appear under Replies, from the replies Make saves in Airtable)'),
+        h('label', { class: 'field' }, 'Send from (the mailbox the emails came from)', h('input', { id: 'mail-user', value: st.mail.user, oninput: txt(st.mail, 'user'), placeholder: 'garrett@torreylabshq.com' })),
+        h('label', { class: 'field' }, 'Gmail app password', h('input', { id: 'mail-pass', type: 'password', value: st.mail.pass, oninput: txt(st.mail, 'pass'), placeholder: '16 letters' })),
+        h('div', { class: 'row-flex' }, h('button', { id: 'mail-test-btn', onclick: () => testKey('mail'), disabled: !!S.busy }, 'Test email'), h('span', { id: 'mail-test', class: 'small muted' })),
+        h('p', { class: 'muted small' }, 'Sign in to that Gmail as garrett@torreylabshq.com, open ', h('a', { href: 'https://myaccount.google.com/apppasswords', target: '_blank' }, 'myaccount.google.com/apppasswords'), ' (2-Step Verification has to be on), make one named Torrey Voice Notes, and paste the 16 letters here. It is not your normal password. The app only uses it to send answers from that address, it stays in this app, and you can revoke it any time on that same page.'),
+        box(st.mail, 'auto', 'Send a yes or a question\'s answer by email on its own, after the wait above. Leave off at first: every email answer then waits under Replies for you to press Send.'),
       ),
       h('h2', {}, 'Keys'),
       h(
@@ -3994,6 +4338,7 @@ document.addEventListener('keydown', (e) => {
     claude: { ...DEFAULT_SETTINGS.claude, ...saved.claude },
     torrey: { ...DEFAULT_SETTINGS.torrey, ...saved.torrey },
     replies: { ...DEFAULT_SETTINGS.replies, ...saved.replies },
+    mail: { ...DEFAULT_SETTINGS.mail, ...saved.mail },
     find: { ...DEFAULT_SETTINGS.find, ...saved.find },
     limits: { ...DEFAULT_SETTINGS.limits, ...saved.limits, window: { ...DEFAULT_SETTINGS.limits.window, ...saved.limits?.window }, custom: { ...DEFAULT_SETTINGS.limits.custom, ...saved.limits?.custom } },
   };
@@ -4005,6 +4350,9 @@ document.addEventListener('keydown', (e) => {
   if (saved.replies && saved.replies.quick === undefined && S.settings.replies.delayMin === 15) S.settings.replies.delayMin = 4;
   S.prospects = (await store.get('kv', 'prospects')) || [];
   S.removed = { ids: [], handles: [], ...((await store.get('kv', 'removed')) || {}) };
+  S.emails.items = (await store.get('kv', 'emails')) || {};
+  // One that was being sent when the app closed goes back to waiting; it is not sent again unless you press Send.
+  for (const e of Object.values(S.emails.items)) delete e.sending;
   for (const p of S.prospects.filter((x) => x.status === 'sending')) {
     p.status = 'todo';
     // One that was only waiting on a safety limit goes back to To do as it was, to send again.
@@ -4039,5 +4387,9 @@ document.addEventListener('keydown', (e) => {
   applyBackground();
   // Auto-replies whose time has come, and the countdowns on the Replies tab.
   setInterval(dueReplies, 15 * 1000);
-  setInterval(() => S.view === 'replies' && pendingReplies().some((p) => p.reply.auto) && refreshQuietly(), 20 * 1000);
+  // Emailed leads who wrote back: Airtable is checked every 5 minutes (Make writes each reply there every 15), answers that are due go out.
+  setTimeout(() => emailCheck(), 60 * 1000);
+  setInterval(() => emailCheck(), 5 * 60 * 1000);
+  setInterval(dueEmails, 15 * 1000);
+  setInterval(() => S.view === 'replies' && (pendingReplies().some((p) => p.reply.auto) || pendingEmails().some((e) => e.auto)) && refreshQuietly(), 20 * 1000);
 })();
