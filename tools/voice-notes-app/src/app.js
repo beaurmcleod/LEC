@@ -158,7 +158,7 @@ const S = {
   sending: null,
   send: { pid: null, state: '', text: '' },
   // Sends running in the hidden Instagram tab while you move on: the one in progress and the ones waiting.
-  bg: { current: null, jobs: [] },
+  bg: { current: null, jobs: [], log: [], fails: 0 },
   watchSend: false,
   sync: { at: 0, error: '', running: false, pulled: null },
   follow: null,
@@ -904,7 +904,111 @@ const BG_FAIL = {
   unposted: "Instagram never received the send (no send reached its servers after Send was clicked)",
   unverified: "couldn't confirm with Instagram that the note went out",
   stillsending: 'the voice message was still "Sending" in their chat after 30 seconds',
+  yours: "auto-send is off, so the note was only loaded for you to send by hand",
 };
+
+// A short record of what the send queue did (queued, started, sent, held, put back after a restart, ignored), kept across
+// restarts, so a voice note that didn't go out can be explained from the report instead of guessed at.
+let qlogTimer = null;
+function qlog(kind, text) {
+  S.bg.log.push({ t: Date.now(), kind, text });
+  if (S.bg.log.length > 400) S.bg.log.splice(0, S.bg.log.length - 400);
+  clearTimeout(qlogTimer);
+  qlogTimer = setTimeout(() => store.put('kv', 'sendEvents', S.bg.log).catch(() => {}), 1500);
+}
+
+const pacificTime = (t) => new Date(t).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' });
+
+// Everything that decides whether a voice note goes out, in one text to copy.
+function sendReport() {
+  const st = S.settings;
+  const c = capsNow();
+  const g = voiceGate();
+  const f = S.follow || {};
+  const queued = S.bg.jobs.filter(isVoiceJob).map((j) => S.prospects.find((x) => x.id === j.pid)?.handle).filter(Boolean);
+  const count = (k) => S.prospects.filter((x) => x.status === k).length;
+  const recorded = S.prospects.filter((x) => x.status === 'todo' && shown(x) && ['recorded', 'auto'].includes(introState(x))).length;
+  const lines = [
+    'Torrey Voice Notes: send report',
+    `Now: ${pacificTime(Date.now())} Pacific · build ${S.build?.commit || 'dev'}`,
+    `Sending: ${st.autoSend ? 'in the background' : 'WATCHING (auto-send is off, every note needs a click in Instagram)'} · recording now: ${!!S.rec} · send in the Instagram pane running: ${!!S.sending}`,
+    `Window: ${c.window?.on ? `${c.window.from}:00 to ${c.window.to}:00 Pacific` : 'any time'} · gap between notes: ${Math.round(c.dmGapMs / 60000)} min · per hour: ${c.dmHour} · per day: ${c.dm} (warm-up day ${c.days}, ${Math.round(c.ramp * 100)}% of full caps) · combined per day: ${c.total}`,
+    `Today: ${sentToday()} voice notes · ${f.today || 0} follows · ${f.likesToday || 0} likes`,
+    `Gate right now: ${g.ok ? 'open' : `closed (${limits.reasonText(g, 'dm')}, until ${pacificTime(g.until)})`}`,
+    `Queue: ${S.bg.current ? `running ${S.bg.current.handle ? `@${S.bg.current.handle}` : 'a background job'} · ` : ''}${queued.length} waiting${queued.length ? `: ${queued.slice(0, 40).map((h) => `@${h}`).join(' ')}${queued.length > 40 ? ' ...' : ''}` : ''}`,
+    `Leads: ${count('todo')} to do (${recorded} with their intro recorded) · ${count('sending')} marked sending · ${count('sent')} sent · ${S.prospects.filter((x) => x.status === 'todo' && x.sendIssue).length} say send failed`,
+    '',
+    'Recent queue events (Pacific time):',
+    ...S.bg.log.slice(-60).map((e) => `${pacificTime(e.t)}  ${e.kind}  ${e.text}`),
+  ];
+  return lines.join('\n');
+}
+async function copySendReport() {
+  const copied = await window.api.copyText(sendReport()).catch(() => false);
+  toast(copied ? 'Send report copied. Paste it into the chat.' : "Couldn't copy the report.", 6000);
+}
+
+// Notes still marked "sending" with nothing queued for them: the app was closed or restarted while they waited (an update
+// does that), or a job was lost. They go back in the queue, in the order they were pressed. A note that was being sent at the
+// moment of the restart is safe to queue again: before anything is sent, its chat is read, and one that already holds our voice
+// message is marked sent instead of sent twice.
+let healing = false;
+async function healQueue({ boot = false } = {}) {
+  if (healing || !S.template || S.rec) return;
+  healing = true;
+  try {
+    const queued = new Set(S.bg.jobs.filter(isVoiceJob).map((j) => j.pid));
+    const orphans = S.prospects
+      .filter((p) => p.status === 'sending' && !queued.has(p.id) && S.bg.current?.pid !== p.id && S.sending !== p.id)
+      .sort((a, b) => (a.queuedAt || 0) - (b.queuedAt || 0));
+    if (!orphans.length) return;
+    // With auto-send off nothing goes out from the background: every note needs a click in Instagram, so these go back to To do.
+    if (!S.settings.autoSend) {
+      for (const p of orphans) {
+        delete p.waitingLimit;
+        p.status = 'todo';
+        qlog('dropped', `@${p.handle || p.name} went back to To do: auto-send is off, so it can't send in the background`);
+      }
+      await saveProspects();
+      toast(`${orphans.length} queued voice note${orphans.length === 1 ? '' : 's'} went back to To do, because auto-send is off in Setup.`, 8000);
+      refreshQuietly();
+      return;
+    }
+    let back = 0;
+    for (const p of orphans) {
+      delete p.waitingLimit;
+      if (missingParts(p).length || !p.handle) {
+        Object.assign(p, { status: 'todo', sendIssue: `This voice note can't be sent: it still needs ${missingParts(p).map((x) => x.label).join(', ') || 'an Instagram handle'}.` });
+        qlog('dropped', `@${p.handle || p.name} went back to To do: ${p.sendIssue}`);
+      } else {
+        S.bg.jobs.push({ pid: p.id });
+        back++;
+      }
+    }
+    await saveProspects();
+    if (back) {
+      qlog('resumed', boot ? `The app was reopened with ${back} voice note${back === 1 ? '' : 's'} still queued: queued again` : `${back} voice note${back === 1 ? '' : 's'} were marked sending with nothing queued: queued again`);
+      toast(`${back} voice note${back === 1 ? '' : 's'} that ${back === 1 ? 'was' : 'were'} waiting to send ${boot ? 'when the app closed are queued again' : 'had dropped out of the queue are queued again'}.`, 8000);
+    }
+    refreshQuietly();
+    runQueue();
+  } finally {
+    healing = false;
+  }
+}
+
+// What is queued, in plain words, and how long it will take at the safe pace.
+function queueSummary(n) {
+  const c = capsNow();
+  const left = Math.max(0, c.dm - sentToday());
+  // The gap between notes (plus the random extra) or the hourly limit, whichever is slower.
+  const mins = Math.max(1, Math.round(Math.max((c.dmGapMs || 0) * 1.2, 3600000 / Math.max(1, c.dmHour || 6)) / 60000));
+  const hours = Math.max(1, Math.ceil((n * mins) / 60));
+  const days = n <= left ? 0 : Math.max(1, Math.ceil((n - left) / Math.max(1, c.dm))) + (left > 0 ? 1 : 0);
+  const eta = days ? `about ${days} day${days === 1 ? '' : 's'}` : `about ${hours} hour${hours === 1 ? '' : 's'} of sending`;
+  const win = c.window?.on ? `, between ${hourText(c.window.from)} and ${hourText(c.window.to)} Pacific` : '';
+  return `They go out one at a time, about ${mins} minute${mins === 1 ? '' : 's'} apart${win}, up to ${c.dm} a day (${sentToday()} so far today), and only while the app is open and the Mac is awake. At that pace this takes ${eta}.`;
+}
 
 async function clipFor(p) {
   if (!p.handle) return toast('Add their Instagram handle first (Edit details).'), null;
@@ -913,26 +1017,50 @@ async function clipFor(p) {
     if (samples.length / audio.SR > MAX_SECONDS) toast('Heads up: this clip is over 60 seconds. Instagram may cut it off.', 7000);
     return samples;
   } catch (e) {
-    return toast(e.message), null;
+    p.sendIssue = `Couldn't build the voice note: ${e.message}`;
+    saveProspects();
+    qlog('ignored', `@${p.handle}: ${p.sendIssue}`);
+    return toast(`${p.sendIssue}`, 8000), null;
   }
 }
 
 // Send: runs in the background so you can go straight to the next lead. Needs auto-send, since nobody is
 // watching the background tab to hit send by hand.
 function sendLead(p) {
-  if (S.rec || S.sending || p.status === 'sending') return;
+  const why = p.status === 'sending' ? `@${p.handle} is already queued.` : S.rec ? 'Finish the recording first, then press Send.' : S.sending ? 'A send in the Instagram pane is still going. Wait for it, then press Send.' : '';
+  if (why) {
+    qlog('ignored', `Send on @${p.handle} did nothing: ${why}`);
+    return toast(why, 5000);
+  }
   return S.settings.autoSend ? queueSend(p) : sendNow(p);
 }
 
-async function queueSend(p) {
-  const samples = await clipFor(p);
-  if (!samples) return;
+// Puts one lead in the send queue. The clip is built when its turn comes, so a long queue doesn't hold every clip in memory.
+// `check` builds it once up front, so a problem (a missing recording) shows now rather than hours from now.
+async function enqueue(p, { check = true } = {}) {
+  if (check ? !(await clipFor(p)) : !!missingParts(p).length || !p.handle) return false;
   stopPlay();
   p.status = 'sending';
+  p.queuedAt = Date.now();
   delete p.sendIssue;
+  S.bg.jobs.push({ pid: p.id });
+  qlog('queued', `@${p.handle} queued (${S.bg.jobs.filter(isVoiceJob).length} waiting)`);
+  return true;
+}
+
+// Pressing Send or Queue all after a pause for failures is a fresh try, so the pause ends.
+function endFailPause() {
+  if (S.bg.failPause > Date.now()) qlog('resumed', 'Pause after failed sends ended: you queued a voice note');
+  S.bg.failPause = 0;
+  S.bg.fails = 0;
+  if (S.bg.hold?.g.reason === 'fails') S.bg.hold = null;
+}
+
+async function queueSend(p) {
+  if (!(await enqueue(p))) return;
+  endFailPause();
   await saveProspects();
-  S.bg.jobs.push({ pid: p.id, samples });
-  toast(`Sending to @${p.handle} in the background.`);
+  toast(`@${p.handle} is in the send queue.`);
   if (S.currentId === p.id) {
     const next = nextTodo(p.id);
     if (next) openLead(next.id);
@@ -944,8 +1072,46 @@ async function queueSend(p) {
   runQueue();
 }
 
+// Every lead on the To do list whose intro is recorded goes in the queue, in one go. A lead tagged "send failed" is left out, since
+// pressing Send again would likely fail the same way, except one whose send was only cut off by the app closing (the app checked its
+// chat afterwards, and the note had not gone out).
+const restartIssue = (p) => /^the app closed before it sent/.test(p.sendIssue || '');
+const queueable = (p) => !!p.handle && ['recorded', 'auto'].includes(introState(p)) && !missingParts(p).length && (!p.sendIssue || restartIssue(p));
+async function queueAllRecorded() {
+  if (!S.settings.autoSend) return toast("Auto-send is off in Setup, so each note needs a click in Instagram. Turn it on to queue them all.", 8000);
+  const list = todoList().filter(queueable);
+  if (!list.length) return toast('No lead has its intro recorded and is ready to send.');
+  const failed = todoList().filter((p) => !queueable(p) && p.sendIssue && p.handle && ['recorded', 'auto'].includes(introState(p))).length;
+  const note = failed ? `\n\n${failed} more ${failed === 1 ? 'has' : 'have'} a recorded intro but ${failed === 1 ? 'is' : 'are'} tagged "send failed" for another reason. ${failed === 1 ? 'It stays' : 'They stay'} in To do: open ${failed === 1 ? 'it' : 'one'} and press Send to try again.` : '';
+  if (!confirm(`Queue ${list.length} voice note${list.length === 1 ? '' : 's'} for sending?\n\n${queueSummary(list.length)}${note}`)) return;
+  for (const p of list) await enqueue(p, { check: false });
+  endFailPause();
+  await saveProspects();
+  qlog('queued', `${list.length} leads queued together`);
+  toast(`${list.length} voice note${list.length === 1 ? '' : 's'} queued. See the Sending tab.`, 6000);
+  S.currentId = null;
+  render();
+  runQueue();
+}
+
 // One send at a time in the hidden tab, silently.
 const isVoiceJob = (j) => !j.engage && !j.reply && !j.audit && !j.replycheck && !j.talkcheck;
+
+// Everything in the queue besides the voice notes themselves.
+async function runOtherJob(job, p) {
+  if (job.engage) {
+    if (p) await engage(p, job);
+  } else if (job.reply) {
+    if (p) await sendReplyNow(p, job.reply);
+  } else if (job.audit) {
+    if (p && p.status === 'todo' && p.sendIssue) await auditOne(p);
+  } else if (job.talkcheck) {
+    if (p && p.status === 'todo') await talkCheckOne(p);
+  } else if (job.replycheck) {
+    if (p && p.status === 'sent') await replyCheckOne(p, job);
+    else if (!job.urgent) replyBatchStep(false);
+  }
+}
 
 async function runQueue() {
   if (S.bg.current) return;
@@ -956,6 +1122,8 @@ async function runQueue() {
       g = voiceGate();
       // A wait already under way keeps its spread-out end time.
       if (g.ok && S.bg.hold && S.bg.hold.until > Date.now()) g = { ...S.bg.hold.g, ok: false, until: S.bg.hold.until };
+      // Several sends in a row failing (Instagram logged out, a checkpoint page) pauses the voice notes instead of working through the whole queue.
+      if (g.ok && S.bg.failPause > Date.now()) g = { ok: false, reason: 'fails', until: S.bg.failPause };
     }
     const ready = S.bg.jobs.filter((j) => !isVoiceJob(j) || j.force || g.ok);
     if (!ready.length) return holdQueue(g);
@@ -965,35 +1133,27 @@ async function runQueue() {
     const job = ready.reduce((best, j) => (rank(j) < rank(best) ? j : best), ready[0]);
     S.bg.jobs.splice(S.bg.jobs.indexOf(job), 1);
     const p = S.prospects.find((x) => x.id === job.pid);
-    if (job.engage) {
-      if (p) await engage(p, job);
-      continue;
-    }
-    if (job.reply) {
-      if (p) await sendReplyNow(p, job.reply);
-      continue;
-    }
-    if (job.audit) {
-      if (p && p.status === 'todo' && p.sendIssue) await auditOne(p);
-      continue;
-    }
-    if (job.talkcheck) {
-      if (p && p.status === 'todo') await talkCheckOne(p);
-      continue;
-    }
-    if (job.replycheck) {
-      if (p && p.status === 'sent') await replyCheckOne(p, job);
-      else if (!job.urgent) replyBatchStep(false);
+    if (!isVoiceJob(job)) {
+      try {
+        await runOtherJob(job, p);
+      } catch (e) {
+        qlog('failed', `A background job (${job.engage ? 'follow' : job.reply ? 'reply' : job.audit ? 'check' : 'chat check'}${p ? ` for @${p.handle}` : ''}) crashed: ${errText(e)}`);
+      } finally {
+        S.bg.current = null;
+        paintQueue();
+      }
       continue;
     }
     if (!p || p.status !== 'sending') continue;
     delete p.waitingLimit;
     const cur = (S.bg.current = { pid: p.id, handle: p.handle, text: 'Starting...', until: 0 });
+    qlog('start', `Sending to @${p.handle}`);
     paintQueue();
     let issue = '';
     let already = false;
     try {
-      const left = await deliver(p, job.samples, {
+      const samples = job.samples || (await buildClip(p));
+      const left = await deliver(p, samples, {
         target: 'send',
         monitor: false,
         say: (text) => ((cur.text = text), paintQueue()),
@@ -1004,23 +1164,39 @@ async function runQueue() {
     } catch (e) {
       issue = errText(e);
     }
-    if (already) {
-      toast(`@${p.handle} already had our voice note, so it wasn't sent again. Marked sent ✓`, 6000);
-      await markSent(p);
-    } else if (issue) {
-      window.api.disarm('send');
-      p.status = 'todo';
-      p.sendIssue = issue;
-      delete p.auditedAt;
-      await saveProspects();
-      toast(`Didn't send to @${p.handle}: ${issue}. It's back in To do.`, 8000);
-    } else {
-      toast(`Sent to @${p.handle} ✓`);
-      await markSent(p);
+    try {
+      if (already) {
+        S.bg.fails = 0;
+        qlog('sent', `@${p.handle} already had our voice note: marked sent, not sent again`);
+        toast(`@${p.handle} already had our voice note, so it wasn't sent again. Marked sent ✓`, 6000);
+        await markSent(p);
+      } else if (issue) {
+        qlog('failed', `@${p.handle}: ${issue}`);
+        window.api.disarm('send');
+        p.status = 'todo';
+        p.sendIssue = issue;
+        delete p.auditedAt;
+        await saveProspects();
+        toast(`Didn't send to @${p.handle}: ${issue}. It's back in To do.`, 8000);
+        if (++S.bg.fails >= 3 && S.bg.jobs.some(isVoiceJob)) {
+          S.bg.fails = 0;
+          S.bg.failPause = Date.now() + 30 * 60 * 1000;
+          qlog('held', `3 voice notes in a row failed: paused for 30 minutes (${S.bg.jobs.filter(isVoiceJob).length} still queued). Check that Instagram is logged in.`);
+          toast('3 voice notes in a row failed, so the rest are paused for 30 minutes. Check that Instagram is logged in (Watch shows the tab), then use "Send one now" to try again.', 12000);
+        }
+      } else {
+        S.bg.fails = 0;
+        qlog('sent', `@${p.handle} sent`);
+        toast(`Sent to @${p.handle} ✓`);
+        await markSent(p);
+      }
+    } catch (e) {
+      qlog('failed', `@${p.handle}: couldn't save the result: ${errText(e)}`);
+    } finally {
+      S.bg.current = null;
+      paintQueue();
+      refreshQuietly();
     }
-    S.bg.current = null;
-    paintQueue();
-    refreshQuietly();
   }
   if (S.watchSend) {
     S.watchSend = false;
@@ -1040,6 +1216,7 @@ function holdQueue(g) {
     // A day's limit opens at midnight, but voice notes wait for the morning.
     if ((g.reason === 'day' || g.reason === 'total') && c.window?.on) until = limits.nextWindow(until - 60 * 1000, c.window);
     S.bg.hold = { g, until };
+    qlog('held', `${S.bg.jobs.filter(isVoiceJob).length} waiting: ${limits.reasonText(g, 'dm')}; next at ${pacificTime(until)}`);
   }
   for (const j of S.bg.jobs.filter(isVoiceJob)) {
     const p = S.prospects.find((x) => x.id === j.pid);
@@ -2136,7 +2313,7 @@ function paintQueue() {
   if (hold) {
     const when = hold.until - Date.now() > 12 * 3600e3 || hold.g.reason === 'day' || hold.g.reason === 'total' || hold.g.reason === 'window' ? `at ${clock(hold.until)}` : `in ${countdown(hold.until - Date.now())}`;
     return el.replaceChildren(
-      h('span', { class: 'grow' }, h('b', {}, `Next voice note ${when}`), `: ${limits.reasonText(hold.g, 'dm')} · ${waiting} waiting`),
+      h('span', { class: 'grow' }, h('b', {}, `Next voice note ${when}`), `: ${limits.reasonText(hold.g, 'dm')} · ${waiting} waiting · ${sentToday()} of ${capsNow().dm} sent today`),
       h('button', { class: 'link', onclick: sendOneAnyway }, 'Send one now'),
     );
   }
@@ -2278,7 +2455,7 @@ const AT_DONE = ['Skip', 'Error', 'Research failed', 'Bounced'];
 // The pull only returns New / Researched / Ready leads. A lead Airtable has since skipped, emailed, errored or deleted
 // never comes back, so this Mac's old copy would sit under Waiting for good. Look those up by id and move them to Skipped.
 async function refreshStale(at, seen) {
-  const stale = S.prospects.filter((p) => p.status === 'todo' && p.airtableId && !seen.has(p.airtableId));
+  const stale = S.prospects.filter((p) => (p.status === 'todo' || (p.status === 'sending' && S.bg.current?.pid !== p.id)) && p.airtableId && !seen.has(p.airtableId));
   if (!stale.length) return 0;
   const { found, missing } = await window.api.pullAirtableByIds(at, stale.map((p) => p.airtableId));
   let moved = 0;
@@ -2563,6 +2740,7 @@ function limitsCard() {
     ),
     h('p', { class: 'small' }, 'Lower a daily cap (blank keeps the one for the account age):'),
     h('div', { class: 'grid2' }, customField('dm', 'Voice notes a day'), customField('like', 'Likes a day')),
+    h('div', { class: 'row-flex' }, h('button', { id: 'copy-send-report-setup', onclick: copySendReport }, 'Copy send report'), h('span', { class: 'muted small' }, 'Everything that decides whether a voice note goes out, and what the queue did. Paste it here if one does not go out.')),
     more('Good to know', h('p', { class: 'muted small' }, "Voice notes, follows and likes each have a daily and an hourly cap, the three share a combined daily cap, and a new setup warms up over its first 10 days. Follows a day is also set on the Follow screen; the lower of the two applies. Replies to people who wrote back aren't counted: they're conversations, not outreach. If Instagram ever shows \"action blocked\" or \"try again later\", following and liking stop for 48 hours on their own; pause the voice notes too and start again at about half.")),
   );
 }
@@ -2752,12 +2930,19 @@ function introCount() {
   const todo = todoList();
   if (!todo.length) return null;
   const done = todo.filter((p) => ['recorded', 'auto'].includes(introState(p))).length;
-  return h('p', { id: 'intro-count', class: 'muted small' }, `Intros in: ${done} of ${todo.length} ready to send${done < todo.length ? ` · ${todo.length - done} still need one` : ''}`);
+  const ready = todo.filter(queueable).length;
+  return h(
+    'div',
+    { class: 'row-flex' },
+    h('span', { id: 'intro-count', class: 'grow muted small' }, `Intros in: ${done} of ${todo.length} ready to send${done < todo.length ? ` · ${todo.length - done} still need one` : ''}`),
+    ready && S.settings.autoSend ? h('button', { id: 'queue-all', onclick: queueAllRecorded, disabled: !!S.rec || !!S.sending, title: 'Puts every lead whose intro is recorded in the send queue' }, `Queue all ${ready} with intros`) : null,
+  );
 }
 
 function leadsView() {
   const all = S.prospects.filter(shown);
   const count = (st) => all.filter((p) => p.status === st).length;
+  if (S.filter === 'sending' && !count('sending')) S.filter = 'todo';
   const chip = (id, label) =>
     h('button', { class: `tab ${S.filter === id ? 'on' : ''}`, onclick: () => ((S.filter = id), render()) }, label);
   const file = h('input', { type: 'file', accept: '.csv,text/csv', hidden: true, onchange: (e) => e.target.files[0] && importCSV(e.target.files[0]) });
@@ -2776,6 +2961,7 @@ function leadsView() {
   const stale = ttsReady() ? staleVoiced() : [];
   const unsure = readyButSent();
   const failedSends = S.prospects.filter((p) => p.status === 'todo' && p.sendIssue && p.handle);
+  const queuedNow = S.prospects.filter((p) => p.status === 'sending').length;
 
   return h(
     'main',
@@ -2791,6 +2977,14 @@ function leadsView() {
         connected ? h('button', { onclick: () => sync(), disabled: S.sync.running }, 'Sync now') : h('button', { onclick: goSetup }, 'Connect Airtable'),
       ),
     ),
+    queuedNow
+      ? h(
+          'div',
+          { class: 'card', id: 'queue-card' },
+          h('div', { class: 'row-flex' }, h('b', { class: 'grow' }, `${queuedNow} voice note${queuedNow === 1 ? ' is' : 's are'} queued to send`), h('button', { class: 'link', id: 'copy-send-report', onclick: copySendReport }, 'Copy send report')),
+          h('p', { class: 'muted small' }, queueSummary(queuedNow), ' They stay queued if the app is closed or updated, and carry on when it is open again.'),
+        )
+      : null,
     failedSends.length
       ? h(
           'div',
@@ -2825,6 +3019,7 @@ function leadsView() {
       'div',
       { class: 'row-flex' },
       chip('todo', `To do (${count('todo')})`),
+      count('sending') ? chip('sending', `Sending (${count('sending')})`) : null,
       chip('sent', `Sent (${count('sent')})`),
       chip('skipped', `Skipped (${count('skipped')})`),
       chip('all', 'All'),
@@ -4523,12 +4718,9 @@ document.addEventListener('keydown', (e) => {
   }
   S.emails.cursor = (await store.get('kv', 'emailCursor')) || null;
   S.emails.seen = (await store.get('kv', 'emailSeen')) || [];
-  for (const p of S.prospects.filter((x) => x.status === 'sending')) {
-    p.status = 'todo';
-    // One that was only waiting on a safety limit goes back to To do as it was, to send again.
-    if (!p.waitingLimit) p.sendIssue = 'the app closed before it sent';
-    delete p.waitingLimit;
-  }
+  // Notes that were queued when the app closed stay queued: healQueue() puts them back once the app is up.
+  S.bg.log = (await store.get('kv', 'sendEvents')) || [];
+  qlog('app', `App opened (build ${S.build?.commit || 'dev'}); ${S.prospects.filter((x) => x.status === 'sending').length} voice notes were still queued`);
   S.fast = await window.api.testFast().catch(() => false);
   S.away = await window.api.userAway().catch(() => true);
   const fixedSegs = S.template.filter((s) => s.kind === 'fixed');
@@ -4538,6 +4730,9 @@ document.addEventListener('keydown', (e) => {
   pushVoiceTimes();
   S.find = await window.api.findState();
   render();
+  healQueue({ boot: true });
+  // The queue looks again every minute: notes that dropped out of it come back, and a loop that stopped is started.
+  setInterval(() => (healQueue(), !S.bg.current && S.bg.jobs.length && runQueue()), 60 * 1000);
   if (S.settings.autoSync) sync({ quiet: true });
   setInterval(() => S.settings.autoSync && sync({ quiet: true }), SYNC_MS);
   setInterval(() => (paintSync(), paintSentToday()), 60 * 1000);

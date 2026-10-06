@@ -118,5 +118,6 @@ export const reasonText = (g, kind) => {
   if (g.reason === 'hour') return `${g.cap} ${what} an hour is the most to stay safe`;
   if (g.reason === 'gap') return 'a few minutes between voice notes keeps it natural';
   if (g.reason === 'window') return 'voice notes only go out during the day';
+  if (g.reason === 'fails') return 'the last 3 sends failed, so the rest are paused (check that Instagram is logged in)';
   return '';
 };
