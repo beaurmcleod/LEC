@@ -260,6 +260,7 @@ export function makeProspect(f) {
     // What an emailed lead wrote back, and what we emailed them (see pullEmailReplies).
     email: f.email || '',
     lastReply: f.lastReply || '',
+    outbox: f.outbox || '',
     replyAt: f.replyAt || '',
     replyHandled: f.replyHandled || '',
     threadId: f.threadId || '',
@@ -313,6 +314,7 @@ export function fromFields(obj, extra = {}) {
     skipReason: pick(obj, 'skip reason'),
     email: pick(obj, 'email'),
     lastReply: pick(obj, 'last reply'),
+    outbox: pick(obj, 'outbox'),
     replyAt: pick(obj, 'reply received'),
     replyHandled: pick(obj, 'reply handled'),
     threadId: pick(obj, 'gmail thread id'),
@@ -453,6 +455,11 @@ export async function pullByIds(at, ids) {
 // one lands. Leads already handled here or by hand have Reply handled ticked, and Instagram leads have their own path.
 export const EMAIL_REPLY_FORMULA = "AND({Status}='Replied', {Email}!='', {Channel}!='Instagram', NOT({Reply handled}))";
 export const pullEmailReplies = (at) => pullAirtable({ ...at, max: 60 }, EMAIL_REPLY_FORMULA);
+
+// Replies Claude wrote into Airtable for Instagram leads (Outbox + Outbox via = Instagram + Outbox status = Ready to send).
+// The app shows each as a draft under Replies; the person sends it. Email ones are sent by Make instead.
+export const OUTBOX_FORMULA = "AND({Outbox status}='Ready to send', {Outbox via}='Instagram', {Outbox}!='')";
+export const pullOutbox = (at) => pullAirtable({ ...at, max: 30 }, OUTBOX_FORMULA);
 
 // Leads whose email address is this one (a reply read from the mailbox, matched to the lead it answers).
 export async function findByEmail(at, email) {

@@ -1770,6 +1770,7 @@ async function sendReplyNow(p, { text, withCode = false, scheduled = false }) {
     p.reply = { ...p.reply, pending: false, auto: false, sent: text, sentAt: Date.now(), issue: r?.state === 'sent' ? '' : "Sent, but the app couldn't confirm it landed. Check the thread." };
     p.dm = { ...p.dm, preview: `You: ${text.slice(0, 60)}` };
     await airtableReply(p, {
+      ...(p.reply.outboxKey ? { 'Outbox status': 'Sent', 'Outbox sent at': new Date().toISOString() } : {}),
       [RF.suggested]: text,
       [RF.handled]: true,
       [RF.intent]: INTENT_LABEL[p.reply.intent] || (vals ? 'Yes' : 'Unclear'),
@@ -1791,6 +1792,62 @@ function queueReply(p, reply) {
   S.bg.jobs.push({ pid: p.id, reply });
   toast(`Replying to @${p.handle}...`);
   runQueue();
+}
+
+// Replies Claude wrote into Airtable (the Outbox column on a lead, via = Instagram, status = Ready to send) become a draft under
+// Replies. Nothing is sent without a click: the person reads it, edits it if they like and presses Send. The row is marked
+// "In app" when it lands here, "Sent" once it goes out, "Dismissed" if it is marked handled instead.
+let outboxBusy = false;
+async function outboxPoll() {
+  const at = S.settings.airtable;
+  if (outboxBusy || !at.token || !at.writeBack) return;
+  outboxBusy = true;
+  try {
+    const rows = await window.api.pullOutbox(at);
+    let added = 0;
+    let missing = 0;
+    for (const row of rows) {
+      const p = S.prospects.find((x) => x.airtableId === row.airtableId);
+      if (!p || !p.handle) {
+        missing++;
+        continue;
+      }
+      const key = `outbox:${row.outbox}`;
+      if (p.outboxSeen === key) continue;
+      if (p.reply?.pending && p.reply.auto) continue; // an answer already goes out on its own: don't change it underneath
+      p.outboxSeen = key;
+      const prev = p.reply;
+      p.reply = {
+        key,
+        text: prev?.text || row.lastReply || '(No new message from them: this reply was written from Airtable.)',
+        at: Date.now(),
+        history: prev?.history || [],
+        pending: true,
+        intent: '',
+        draft: row.outbox,
+        why: 'Written by Claude from Airtable. Read it, edit it if you like, and press Send.',
+        issue: '',
+        auto: false,
+        outboxKey: key,
+      };
+      await airtableReply(p, { 'Outbox status': 'In app' });
+      added++;
+    }
+    if (added) {
+      await saveProspects();
+      toast(`${added} reply draft${added === 1 ? '' : 's'} from Claude ${added === 1 ? 'is' : 'are'} waiting under Replies.`, 7000);
+      notifyReply('Reply draft from Claude', `${added} draft${added === 1 ? '' : 's'} waiting under Replies.`);
+      refreshQuietly();
+    }
+    if (missing && !S.outboxMissingTold) {
+      S.outboxMissingTold = true;
+      toast(`${missing} Instagram reply${missing === 1 ? '' : ' drafts'} in Airtable ${missing === 1 ? 'is' : 'are'} for leads this app doesn't have. Sync from Airtable first.`, 9000);
+    }
+  } catch (e) {
+    console.warn('outbox', e);
+  } finally {
+    outboxBusy = false;
+  }
 }
 
 const pendingReplies = () => S.prospects.filter((p) => p.reply?.pending);
@@ -3822,7 +3879,7 @@ function replyCard(p) {
           onclick: async () => {
             r.pending = false;
             r.dismissed = true;
-            await airtableReply(p, { [RF.handled]: true });
+            await airtableReply(p, { [RF.handled]: true, ...(r.outboxKey ? { 'Outbox status': 'Dismissed' } : {}) });
             await saveProspects();
             render();
           },
@@ -4759,5 +4816,8 @@ document.addEventListener('keydown', (e) => {
   setTimeout(() => emailPoll(), S.fast ? 2000 : 25 * 1000);
   setInterval(() => emailPoll(), S.fast ? 2000 : 60 * 1000);
   setInterval(dueEmails, 15 * 1000);
+  // Drafts Claude wrote into Airtable for Instagram leads.
+  setTimeout(() => outboxPoll(), S.fast ? 2500 : 40 * 1000);
+  setInterval(() => outboxPoll(), S.fast ? 2500 : 60 * 1000);
   setInterval(() => S.view === 'replies' && (pendingReplies().some((p) => p.reply.auto) || pendingEmails().some((e) => e.auto)) && refreshQuietly(), 20 * 1000);
 })();

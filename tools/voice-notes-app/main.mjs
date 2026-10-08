@@ -892,6 +892,7 @@ ipcMain.handle('airtable:pull', (_e, at) => leads.pullAirtable(at));
 ipcMain.handle('airtable:pullSent', (_e, at) => leads.pullSentAirtable(at));
 ipcMain.handle('airtable:pullByIds', (_e, at, ids) => leads.pullByIds(at, ids));
 ipcMain.handle('airtable:pullEmailReplies', (_e, at) => leads.pullEmailReplies(at));
+ipcMain.handle('airtable:pullOutbox', (_e, at) => leads.pullOutbox(at));
 ipcMain.handle('airtable:findByEmail', (_e, at, email) => leads.findByEmail(at, email));
 ipcMain.handle('airtable:sent', (_e, at, id) => leads.markSentAirtable(at, id));
 ipcMain.handle('tts', (_e, text, settings) => speak(text, settings));
