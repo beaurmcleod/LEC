@@ -461,6 +461,20 @@ export const pullEmailReplies = (at) => pullAirtable({ ...at, max: 60 }, EMAIL_R
 export const OUTBOX_FORMULA = "AND({Outbox status}='Ready to send', {Outbox via}='Instagram', {Outbox}!='')";
 export const pullOutbox = (at) => pullAirtable({ ...at, max: 30 }, OUTBOX_FORMULA);
 
+// A one-row "App status" table, so Claude (and you) can see from Airtable whether the app is alive and what it is doing:
+// build, last seen, last reply check, replies waiting, sent today, queued, and any problem it reported.
+export async function heartbeat(at, fields) {
+  const t = { ...at, table: 'App status' };
+  const find = new URL(tableUrl(t));
+  find.searchParams.set('maxRecords', '1');
+  find.searchParams.set('filterByFormula', "{Name}='Torrey Voice Notes'");
+  const got = await call(find, {}, t, 'App status');
+  const row = got.records?.[0];
+  const payload = safeJson({ fields: { Name: 'Torrey Voice Notes', ...fields }, typecast: true });
+  const init = { method: row ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: payload };
+  await call(row ? `${tableUrl(t)}/${encodeURIComponent(row.id)}` : tableUrl(t), init, t, 'App status');
+}
+
 // Leads whose email address is this one (a reply read from the mailbox, matched to the lead it answers).
 export async function findByEmail(at, email) {
   const e = String(email || '').trim().toLowerCase();

@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('api', {
   pullAirtableByIds: (at, ids) => ipcRenderer.invoke('airtable:pullByIds', at, ids),
   pullEmailReplies: (at) => ipcRenderer.invoke('airtable:pullEmailReplies', at),
   pullOutbox: (at) => ipcRenderer.invoke('airtable:pullOutbox', at),
+  heartbeat: (at, fields) => ipcRenderer.invoke('airtable:heartbeat', at, fields),
   findLeadsByEmail: (at, email) => ipcRenderer.invoke('airtable:findByEmail', at, email),
   markSent: (at, id) => ipcRenderer.invoke('airtable:sent', at, id),
   speak: (text, settings) => ipcRenderer.invoke('tts', text, settings),

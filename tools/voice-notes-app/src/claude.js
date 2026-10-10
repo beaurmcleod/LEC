@@ -16,7 +16,7 @@ function plainError(e) {
   return e.message;
 }
 
-// One structured answer: { intent, reply, why }. Uses the server-side fallback so a safety decline on the
+// One structured answer: { intent, reply, why, needsYou }. Uses the server-side fallback so a safety decline on the
 // main model is answered by another model instead of failing the reply.
 export async function draftReply(key, rawPrompt) {
   const c = client(key);
@@ -50,7 +50,8 @@ export async function draftReply(key, rawPrompt) {
     throw new Error("Claude's answer wasn't in the expected shape. Try again.");
   }
   if (!['yes', 'no', 'question', 'unclear'].includes(out.intent) || typeof out.reply !== 'string') throw new Error("Claude's answer wasn't in the expected shape. Try again.");
-  return { intent: out.intent, reply: out.reply.trim(), why: String(out.why || ''), model: res.model };
+  // An answer that doesn't say whether a person should read it is treated as one they should.
+  return { intent: out.intent, reply: out.reply.trim(), why: String(out.why || ''), needsYou: out.needs_you !== false, model: res.model };
 }
 
 // Setup's Test button: a tiny request that proves the key works.

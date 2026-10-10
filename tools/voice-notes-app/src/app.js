@@ -100,7 +100,7 @@ const DEFAULT_SETTINGS = {
   torrey: { key: '', site: 'https://torreylabs.store', percent: 20 },
   // quick: look at the inbox for unread messages every minute; notify: a notification for each reply; background: keep
   // working when the window is closed (Mac) and keep the Mac awake.
-  replies: { watch: true, everyMin: 10, from: 'Garrett', auto: true, delayMin: 4, quick: true, notify: true, background: true },
+  replies: { watch: true, everyMin: 10, from: 'Garrett', auto: true, delayMin: 4, quick: true, notify: true, background: true, facts: '' },
   // Replies to emailed leads: answered from Garrett's mailbox with a Gmail app password. auto stays off until you've watched
   // a few go out; with it off, every answer waits under Replies for you to press Send.
   mail: { on: true, read: true, user: 'garrett@torreylabshq.com', pass: '', auto: false, from: 'Garrett' },
@@ -1362,6 +1362,27 @@ async function engage(p, job = {}) {
 const RF = replies.REPLY_FIELDS;
 const INTENT_LABEL = { yes: 'Yes', no: 'No', question: 'Question', unclear: 'Unclear' };
 
+// The whole thread as text, for Airtable's Conversation column (so Claude outside the app can read it).
+function convoText(history = [], text = '', sent = '') {
+  const line = (who, t) => `${who}: ${String(t || '').replace(/\s+/g, ' ').trim().slice(0, 600)}`;
+  const rows = (history || []).slice(-10).map((m) => line(m.mine ? 'Us' : 'Them', m.text || (m.voice ? '[voice message]' : '')));
+  if (text) rows.push(line('Them', text));
+  if (sent) rows.push(line('Us', sent));
+  return `${rows.join('\n')}\n(updated ${new Date().toISOString()})`.slice(0, 9000);
+}
+
+// Columns an older base may not have: a failure here must never hold up the main write.
+async function airtableExtra(p, fields) {
+  const at = S.settings.airtable;
+  if (!at.writeBack || !at.token || !p.airtableId) return;
+  try {
+    await window.api.patchAirtable(at, p.airtableId, fields);
+  } catch (e) {
+    console.warn('airtable extra', e.message);
+    if (!S.extraWarned) ((S.extraWarned = true), toast(`Airtable wouldn't take an extra column (${errText(e)}). Check that Conversation and the Outbox columns exist.`, 9000));
+  }
+}
+
 async function airtableReply(p, fields) {
   const at = S.settings.airtable;
   if (!at.writeBack || !at.token || !p.airtableId) return;
@@ -1665,15 +1686,18 @@ async function handleReply(p, text, history, { key = text, voiceOnly = false, ke
   const at = keepSendAt && prev?.pending ? prev.at : Date.now();
   p.reply = { key, text, at, history: history.slice(-8).map(({ mine, text: t, voice }) => ({ mine, text: t || (voice ? '[voice message]' : ''), voice })), pending: true, intent: '', draft: '', why: '', issue: '', auto: false, sendAt: null };
   await airtableReply(p, { [RF.status]: 'Replied', [RF.lastReply]: text, [RF.received]: new Date(at).toISOString(), [RF.handled]: false });
+  await airtableExtra(p, { [RF.conversation]: convoText(p.reply.history, text) });
   let intent = 'unclear';
   let draft = '';
   let why = '';
+  let needsYou = false;
   try {
     if (voiceOnly) why = 'They answered with a voice message. Listen to it in the chat and reply here.';
     else if (st.claude.key) {
-      const d = await window.api.replyDraft(st.claude.key, replies.replyPrompt(p, { text, history: p.reply.history, from: st.replies.from, percent: st.torrey.percent, site: st.torrey.site }));
+      const d = await window.api.replyDraft(st.claude.key, replies.replyPrompt(p, { text, history: p.reply.history, from: st.replies.from, percent: st.torrey.percent, site: st.torrey.site, extraFacts: st.replies.facts }));
       ({ intent, why } = d);
       draft = d.reply;
+      needsYou = !!d.needsYou;
     } else {
       intent = replies.quickIntent(text);
       if (intent === 'yes') draft = replies.fallbackMessage(p, { ...replies.SLOTS, from: st.replies.from, percent: st.torrey.percent });
@@ -1682,7 +1706,17 @@ async function handleReply(p, text, history, { key = text, voiceOnly = false, ke
   } catch (e) {
     p.reply.issue = errText(e);
   }
-  Object.assign(p.reply, { intent, draft, why });
+  // Whatever Claude wrote must be safe to send unseen: only our own links, no leftover placeholders in a reply that carries no
+  // code, a sane length, and for the loosest kind (unclear) a message with real words in it, not just an emoji or a voice message.
+  if (draft && !needsYou) {
+    const siteHost = (() => { try { return new URL(st.torrey.site).host.replace(/^www\./, ''); } catch { return ''; } })();
+    const foreign = (draft.match(/https?:\/\/[^\s)>\]]+/gi) || []).some((u) => { try { return new URL(u).host.replace(/^www\./, '') !== siteHost; } catch { return true; } });
+    if (foreign) (needsYou = true), (why = `${why ? `${why} ` : ''}The draft has a link that isn't ours.`);
+    else if (draft.length > 1200) (needsYou = true), (why = `${why ? `${why} ` : ''}The draft is unusually long.`);
+    else if (intent === 'unclear' && replies.hasSlots(draft)) (needsYou = true), (why = `${why ? `${why} ` : ''}The draft still has a code placeholder.`);
+    else if (intent === 'unclear' && (!/[a-z]{3,}/i.test(text) || /\[voice message\]/.test(text))) (needsYou = true), (why = `${why ? `${why} ` : ''}Not a written message Claude can be sure of (an emoji, a short word or a voice message).`);
+  }
+  Object.assign(p.reply, { intent, draft, why, needsYou });
   if (intent === 'no') {
     p.reply.pending = false;
     await airtableReply(p, { [RF.status]: 'Not interested', [RF.intent]: 'No', [RF.handled]: true });
@@ -1691,19 +1725,21 @@ async function handleReply(p, text, history, { key = text, voiceOnly = false, ke
     return;
   }
   await airtableReply(p, { [RF.intent]: INTENT_LABEL[intent] || 'Unclear', [RF.suggested]: draft, [RF.handled]: false });
-  if ((intent === 'yes' || intent === 'question') && draft && !p.reply.issue && st.replies.auto) {
+  // Claude answers on its own whenever it is sure of the answer; anything it flags (needs_you) waits for a person.
+  if (['yes', 'question', 'unclear'].includes(intent) && draft && !p.reply.issue && st.replies.auto && !needsYou) {
     // A human pace: the delay in Setup, give or take a tenth. A reply that grew (they wrote again) keeps its turn.
     const delay = Math.max(0, Number(st.replies.delayMin) || 0) * 60 * 1000;
     let sendAt = at + delay + Math.round(delay * (Math.random() * 0.2 - 0.1));
     if (keepSendAt && prev?.sendAt) sendAt = Math.max(prev.sendAt, Date.now() + 30 * 1000);
     Object.assign(p.reply, { auto: true, sendAt });
     const mins = Math.max(0, Math.round((sendAt - Date.now()) / 60000));
-    toast(`@${p.handle} ${intent === 'yes' ? 'said yes' : 'asked for more info'}. Their answer and code go out ${mins ? `in about ${mins} min` : 'shortly'} (Replies tab).`, 7000);
-    notifyReply(`${who(p)} ${intent === 'yes' ? 'is interested' : 'wants more info'}`, `"${text.slice(0, 90)}" · Their answer and code go out ${mins ? `in about ${mins} min` : 'shortly'}. Open Replies to edit it or send it now.`);
+    const mood = intent === 'yes' ? 'said yes' : intent === 'question' ? 'asked for more info' : 'replied';
+    toast(`@${p.handle} ${mood}. Your answer${intent === 'unclear' ? '' : ' and their code'} goes out ${mins ? `in about ${mins} min` : 'shortly'} (Replies tab).`, 7000);
+    notifyReply(`${who(p)} ${intent === 'yes' ? 'is interested' : intent === 'question' ? 'wants more info' : 'replied'}`, `"${text.slice(0, 90)}" · Your answer goes out ${mins ? `in about ${mins} min` : 'shortly'}. Open Replies to edit it or send it now.`);
     return;
   }
-  toast(`@${p.handle} replied. A draft is waiting under Replies.`, 6000);
-  notifyReply(`${who(p)} replied`, `"${text.slice(0, 90)}" · ${draft ? 'A draft is waiting for you.' : 'Waiting for you to answer.'}`);
+  toast(needsYou ? `@${p.handle} replied and needs you: ${why || 'read the draft first'}. It's waiting under Replies.` : `@${p.handle} replied. A draft is waiting under Replies.`, needsYou ? 9000 : 6000);
+  notifyReply(`${who(p)} ${needsYou ? 'needs you' : 'replied'}`, `"${text.slice(0, 90)}" · ${needsYou ? (why || 'Read the draft before it goes out.') : draft ? 'A draft is waiting for you.' : 'Waiting for you to answer.'}`);
 }
 
 const who = (p) => p.name || `@${p.handle}`;
@@ -1714,7 +1750,7 @@ function dueReplies() {
     const r = p.reply;
     if (!r?.pending || !r.auto || !r.sendAt || r.sendAt > Date.now()) continue;
     if (S.bg.jobs.some((j) => j.reply && j.pid === p.id) || S.bg.current?.pid === p.id) continue;
-    S.bg.jobs.push({ pid: p.id, reply: { withCode: true, scheduled: true } });
+    S.bg.jobs.push({ pid: p.id, reply: { withCode: ['yes', 'question'].includes(r.intent), scheduled: true } });
   }
   runQueue();
 }
@@ -1749,9 +1785,20 @@ async function sendReplyNow(p, { text, withCode = false, scheduled = false }) {
         return done();
       }
     }
+    // Held for you while the chat was being read, or too old to send unseen, or an unclear answer that couldn't be checked against the chat.
+    if (!(p.reply?.pending && p.reply.auto)) return done();
+    const stale = Date.now() - (p.reply.at || 0) > 12 * 3600 * 1000;
+    const unchecked = p.reply.intent === 'unclear' && !(chat?.state === 'ok' && chat.anchored);
+    if (stale || unchecked) {
+      p.reply = { ...p.reply, auto: false, issue: stale ? 'This answer waited more than 12 hours, so it is a draft for you now.' : "The chat couldn't be checked just before sending, so this answer is a draft for you." };
+      await airtableReply(p, { [RF.handled]: false });
+      toast(`@${p.handle}: ${p.reply.issue}`, 8000);
+      return done();
+    }
     text = p.reply.draft;
   }
   try {
+    if (!withCode && replies.hasSlots(text)) throw new Error('The reply still has a code placeholder. Open it under Replies.');
     if (withCode) {
       if (!p.partner?.code) {
         if (!st.torrey.key) throw new Error('Add the Torrey Labs invite key in Setup to issue partner codes.');
@@ -1770,12 +1817,12 @@ async function sendReplyNow(p, { text, withCode = false, scheduled = false }) {
     p.reply = { ...p.reply, pending: false, auto: false, sent: text, sentAt: Date.now(), issue: r?.state === 'sent' ? '' : "Sent, but the app couldn't confirm it landed. Check the thread." };
     p.dm = { ...p.dm, preview: `You: ${text.slice(0, 60)}` };
     await airtableReply(p, {
-      ...(p.reply.outboxKey ? { 'Outbox status': 'Sent', 'Outbox sent at': new Date().toISOString() } : {}),
       [RF.suggested]: text,
       [RF.handled]: true,
       [RF.intent]: INTENT_LABEL[p.reply.intent] || (vals ? 'Yes' : 'Unclear'),
       ...(vals ? { [RF.status]: 'Code sent', [RF.code]: vals.code, [RF.link]: vals.link, [RF.invite]: vals.invite, [RF.codeSentAt]: new Date().toISOString() } : {}),
     });
+    await airtableExtra(p, { [RF.conversation]: convoText(p.reply.history, p.reply.outboxKey && /^\(No new message/.test(p.reply.text || '') ? '' : p.reply.text, text), ...(p.reply.outboxKey ? { 'Outbox status': 'Sent', 'Outbox sent at': new Date().toISOString() } : {}) });
     toast(`Replied to @${p.handle}${vals ? ` with their code ${vals.code}` : ''} ✓`);
     notifyReply(`Answered ${who(p)}`, vals ? `Sent their code ${vals.code} and how to set up.` : 'Your reply went out.');
   } catch (e) {
@@ -1792,6 +1839,26 @@ function queueReply(p, reply) {
   S.bg.jobs.push({ pid: p.id, reply });
   toast(`Replying to @${p.handle}...`);
   runQueue();
+}
+
+// Tells Airtable (App status table) the app is alive and what it is doing, so it can be checked from outside.
+async function heartbeat() {
+  const at = S.settings.airtable;
+  if (!at.token || !at.writeBack) return;
+  try {
+    await window.api.heartbeat(at, {
+      Build: S.build?.commit || 'dev',
+      'Last seen': new Date().toISOString(),
+      'Last reply check': S.replies.lastAt ? new Date(S.replies.lastAt).toISOString() : null,
+      'Replies waiting': pendingAll(),
+      'Sent today': sentToday(),
+      Queued: S.bg.jobs.filter(isVoiceJob).length,
+      'Auto-reply': S.settings.replies.auto ? 'On' : 'Off',
+      Note: String(S.replies.issue || S.replies.note || '').slice(0, 500),
+    });
+  } catch (e) {
+    console.warn('heartbeat', e.message);
+  }
 }
 
 // Replies Claude wrote into Airtable (the Outbox column on a lead, via = Instagram, status = Ready to send) become a draft under
@@ -1830,7 +1897,7 @@ async function outboxPoll() {
         auto: false,
         outboxKey: key,
       };
-      await airtableReply(p, { 'Outbox status': 'In app' });
+      await airtableExtra(p, { 'Outbox status': 'In app' });
       added++;
     }
     if (added) {
@@ -2108,11 +2175,13 @@ async function handleEmail(e, { keepSendAt = false } = {}) {
   let intent = 'unclear';
   let draft = '';
   let why = '';
+  let needsYou = false;
   try {
     if (st.claude.key) {
-      const d = await window.api.replyDraft(st.claude.key, replies.replyPrompt(e.lead, { text: e.text, history: e.history, from, percent: st.torrey.percent, site: st.torrey.site, channel: 'email', subject: e.subject }));
+      const d = await window.api.replyDraft(st.claude.key, replies.replyPrompt(e.lead, { text: e.text, history: e.history, from, percent: st.torrey.percent, site: st.torrey.site, channel: 'email', subject: e.subject, extraFacts: st.replies.facts }));
       ({ intent, why } = d);
       draft = d.reply;
+      needsYou = !!d.needsYou;
     } else {
       intent = replies.quickIntent(e.text);
       if (intent === 'yes') draft = replies.fallbackMessage(e.lead, { ...replies.SLOTS, from, percent: st.torrey.percent, email: true });
@@ -2123,7 +2192,7 @@ async function handleEmail(e, { keepSendAt = false } = {}) {
   }
   const old = Date.now() - e.at > OLD_REPLY_MS;
   if (e.ambiguous) why = `${why ? `${why} ` : ''}Several leads share this email address, so check it is the right one before sending.`;
-  Object.assign(e, { intent, draft, why });
+  Object.assign(e, { intent, draft, why, needsYou });
   const name = emailWho(e);
   // A no from a message days old (read on a first look, say) is shown for you to decide, not filed on its own.
   if (intent === 'no' && !old) {
@@ -2134,7 +2203,7 @@ async function handleEmail(e, { keepSendAt = false } = {}) {
     return saveEmails();
   }
   await airtableEmail(e, { [RF.intent]: INTENT_LABEL[intent] || 'Unclear', [RF.suggested]: draft, [RF.handled]: false });
-  if ((intent === 'yes' || intent === 'question') && draft && !e.issue && st.mail.auto && !old && !e.ambiguous) {
+  if ((intent === 'yes' || intent === 'question') && draft && !e.issue && st.mail.auto && !old && !e.ambiguous && !needsYou) {
     const delay = Math.max(0, Number(st.replies.delayMin) || 0) * 60 * 1000;
     let sendAt = Date.now() + delay + Math.round(delay * (Math.random() * 0.2 - 0.1));
     if (keepSendAt && prevSendAt) sendAt = Math.max(prevSendAt, Date.now() + 30 * 1000);
@@ -3845,6 +3914,7 @@ function replyCard(p) {
       { class: 'row-flex' },
       h('b', { class: 'grow' }, p.name || `@${p.handle}`, ' ', h('span', { class: 'muted small' }, `@${p.handle}${p.business && p.business !== p.name ? ` · ${p.business}` : ''}`)),
       r.intent ? h('span', { class: `tag ${r.intent === 'yes' ? 'ok' : r.intent === 'no' ? 'bad' : 'warn'}` }, INTENT_LABEL[r.intent] || r.intent) : null,
+      r.needsYou ? h('span', { class: 'tag bad', title: 'Claude wants a person to read this before it goes out' }, 'Needs you') : null,
       h('span', { class: 'muted small' }, ago(r.at)),
     ),
     (r.history || []).slice(-3).map((m) => h('div', { class: `msg ${m.mine ? 'mine' : 'theirs'} muted small` }, m.text)),
@@ -3855,7 +3925,7 @@ function replyCard(p) {
       ? h(
           'p',
           { class: 'status armed row-flex', 'data-auto': '' },
-          h('span', { class: 'grow' }, `Goes out on its own ${r.sendAt > Date.now() ? `in ${countdown(r.sendAt - Date.now())}` : 'now'}, with ${p.partner ? `their code ${p.partner.code}` : 'their own code'}. Edit it below if you like; if you answer them in the chat first, it's dropped.`),
+          h('span', { class: 'grow' }, `Goes out on its own ${r.sendAt > Date.now() ? `in ${countdown(r.sendAt - Date.now())}` : 'now'}${r.intent === 'unclear' ? ', as it is (no code in this one).' : `, with ${p.partner ? `their code ${p.partner.code}` : 'their own code'}.`} Edit it below if you like; if you answer them in the chat first, it's dropped.`),
           h('button', { class: 'link', onclick: () => ((r.sendAt = Date.now()), saveProspects(), dueReplies(), render()) }, 'Send now'),
           h('button', { class: 'link', onclick: () => ((r.auto = false), saveProspects(), render()) }, 'Hold for me'),
         )
@@ -3879,7 +3949,8 @@ function replyCard(p) {
           onclick: async () => {
             r.pending = false;
             r.dismissed = true;
-            await airtableReply(p, { [RF.handled]: true, ...(r.outboxKey ? { 'Outbox status': 'Dismissed' } : {}) });
+            await airtableReply(p, { [RF.handled]: true });
+            if (r.outboxKey) await airtableExtra(p, { 'Outbox status': 'Dismissed' });
             await saveProspects();
             render();
           },
@@ -4151,9 +4222,15 @@ function setupView() {
         'div',
         { class: 'card' },
         box(st.replies, 'watch', "Watch sent leads' chats for replies", applyBackground),
-        box(st.replies, 'auto', 'Answer a yes or a question for more info on its own, with their own partner code and how to set up'),
+        box(st.replies, 'auto', 'Answer on its own when Claude is sure: a yes or a question gets their partner code and how to set up; a short "who is this?" gets a plain answer. Email answers stay manual unless turned on below'),
         h('label', { class: 'field' }, 'Wait before answering (minutes)', h('input', { type: 'number', min: 0, max: 240, step: 'any', value: st.replies.delayMin, oninput: (e) => ((st.replies.delayMin = Math.min(240, Math.max(0, parseFloat(e.target.value) || 0))), saveSettings().then(flashSaved)) })),
-        h('p', { class: 'muted small' }, "If you answer them yourself first, the app drops its answer. A no is marked not interested; anything unclear waits under Replies for you."),
+        h(
+          'label',
+          { class: 'field' },
+          'Facts Claude can use when answering (prices, minimums, shipping, anything it should know)',
+          h('textarea', { id: 'reply-facts', rows: 6, value: st.replies.facts || '', placeholder: 'For example:\nThe starter order is $X. Free pickup in Oceanside. Orders ship in 1 to 2 days.\nWe do not discuss dosing.', oninput: (e) => ((st.replies.facts = e.target.value), saveSettings().then(flashSaved)) }),
+        ),
+        h('p', { class: 'muted small' }, "Claude answers on its own whenever the answer is in its facts. If it would have to guess, or the message is about dosing or health, is upset, or asks for a custom deal, it marks the draft \"Needs you\" and waits. If you answer them yourself first, the app drops its answer. A no is marked not interested."),
       ),
       h('h2', {}, 'Email'),
       h(
@@ -4816,6 +4893,9 @@ document.addEventListener('keydown', (e) => {
   setTimeout(() => emailPoll(), S.fast ? 2000 : 25 * 1000);
   setInterval(() => emailPoll(), S.fast ? 2000 : 60 * 1000);
   setInterval(dueEmails, 15 * 1000);
+  // Alive signal for Airtable, every 5 minutes.
+  setTimeout(() => heartbeat(), S.fast ? 3000 : 30 * 1000);
+  setInterval(() => heartbeat(), S.fast ? 3000 : 5 * 60 * 1000);
   // Drafts Claude wrote into Airtable for Instagram leads.
   setTimeout(() => outboxPoll(), S.fast ? 2500 : 40 * 1000);
   setInterval(() => outboxPoll(), S.fast ? 2500 : 60 * 1000);

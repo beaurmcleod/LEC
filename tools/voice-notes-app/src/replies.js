@@ -151,7 +151,7 @@ export function splitEmail(lastReply) {
 export const reSubject = (s) => (/^re:/i.test(String(s || '').trim()) ? String(s).trim() : `Re: ${String(s || '').trim() || 'your reply'}`);
 
 // What the model is asked to do with a reply. Returns { system, user, schema } for a structured answer.
-export function replyPrompt(p, { text, history = [], from = 'Garrett', percent = 20, site = 'https://torreylabs.store', channel = 'instagram', subject = '' }) {
+export function replyPrompt(p, { text, history = [], from = 'Garrett', percent = 20, site = 'https://torreylabs.store', channel = 'instagram', subject = '', extraFacts = '' }) {
   const { code, invite, link } = SLOTS;
   const email = channel === 'email';
   const signoff = email ? `"${from}" on its own line, with "Torrey Labs" under it` : `"– ${from}"`;
@@ -172,7 +172,7 @@ export function replyPrompt(p, { text, history = [], from = 'Garrett', percent =
 - Their partner portal shows their link, a QR code, every referral, and payouts. They sign up with their email at the invite link and their code is already set.
 - We offer in-person delivery in San Diego on orders over a certain amount, or pickup. Don't quote the amount.
 - Products are for laboratory research use only, not for human or animal use, and nothing is medical advice. Never make health, weight-loss, recovery or performance claims about the products. If they ask about dosing, effects, or use on people, say plainly that you can't advise on that and point them to the published lab reports.
-- Pricing is only visible inside the store; don't quote prices.
+- Pricing is only visible inside the store; don't quote prices.${String(extraFacts || '').trim() ? `\nMore facts from ${from}. They are true and you may use them; where they differ from the list above, they win:\n${clip(String(extraFacts).trim(), 3000)}` : ''}
 If they ask something you can't answer from these facts, say you'll find out and get back to them rather than guessing.
 
 First decide what their reply means:
@@ -195,6 +195,8 @@ For "no": one gracious sentence, no pitch, no code.
 
 For "unclear": reply naturally and briefly (one to three sentences) to move it forward, without the code.
 
+Set needs_you to true, and still write your best draft, whenever a person should read the reply before it goes out: you can't answer from the facts above (you'd have to say you'll find out), they ask about dosing, effects, health or use on people, or about legal or compliance questions, they are upset or hostile, they want a custom deal, price or terms, they say they are under 18, or anything feels risky to send without a look. Otherwise set it to false.
+
 For "yes" and "question" the reply must contain, written exactly as these placeholders, their partner code ${code}, their share link ${link}, and their portal invite ${invite}. The app fills them in after the code is reserved. Never write a real code or link yourself.`,
     user: [...facts, email && subject ? `Subject of the email thread: ${clip(String(subject).replace(/\s+/g, ' '), 150)}` : '', convo, `Their reply just now: "${text}"`].filter(Boolean).join('\n\n'),
     schema: {
@@ -203,8 +205,9 @@ For "yes" and "question" the reply must contain, written exactly as these placeh
         intent: { type: 'string', enum: ['yes', 'no', 'question', 'unclear'] },
         reply: { type: 'string', description: `The message to send them, in ${from}'s voice.` },
         why: { type: 'string', description: 'One short line on why you read it that way.' },
+        needs_you: { type: 'boolean', description: 'True when a person should read this reply before it is sent.' },
       },
-      required: ['intent', 'reply', 'why'],
+      required: ['intent', 'reply', 'why', 'needs_you'],
       additionalProperties: false,
     },
   };
@@ -285,6 +288,7 @@ export const REPLY_FIELDS = {
   received: 'Reply received',
   handled: 'Reply handled',
   suggested: 'Suggested reply',
+  conversation: 'Conversation',
   intent: 'Reply intent',
   code: 'Partner code',
   link: 'Partner link',
