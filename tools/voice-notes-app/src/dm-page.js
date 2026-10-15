@@ -317,7 +317,11 @@ export async function dmPage(action, arg) {
     }
     const all = messages.concat(extras).sort((a, b) => a.top - b.top);
     const via = extras.length ? (messages.length ? 'labels+layout' : 'layout') : 'labels';
-    const first = all.findIndex((m) => m.voice);
+    // Our voice note anchors the chat. A lead we opened with a text DM has no voice note: our first message (found by its
+    // opening words, `anchorText`) is the anchor instead.
+    let first = all.findIndex((m) => m.voice);
+    const anchorNorm = norm(opts.anchorText || '').slice(0, 24);
+    if (first < 0 && anchorNorm.length >= 12) first = all.findIndex((m) => !m.voice && norm(m.text).includes(anchorNorm));
     let out = all;
     let skipped = 0;
     if (first >= 0) {

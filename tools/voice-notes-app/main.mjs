@@ -9,7 +9,7 @@ import { createFindRunner } from './find-runner.mjs';
 import * as leads from './src/leads.js';
 import { speak } from './src/voice.js';
 import { dmPage } from './src/dm-page.js';
-import { draftReply, testClaude } from './src/claude.js';
+import { draftReply, draftText, testClaude } from './src/claude.js';
 import { createInvite, testTorrey } from './src/torrey.js';
 import { answeredSince, readInbox, sendMail, testMail } from './src/mail.js';
 
@@ -487,7 +487,7 @@ ipcMain.handle('dm:chatReport', (_e, target = 'send', handle, names = []) =>
     return [`@${handle}: what the app read (${read?.via || '?'}${read?.anchored ? '' : '; OUR VOICE NOTE NOT FOUND, so nothing is placed'}; label names: ${(read?.names || []).join(' | ') || 'none'}; left out above our note: ${read?.skipped ?? '?'})`, ...(said.length ? said : ['  (no messages)']), '', rep].join('\n');
   }),
 );
-ipcMain.handle('dm:readChat', (_e, target = 'send', handle, names = []) =>
+ipcMain.handle('dm:readChat', (_e, target = 'send', handle, names = [], anchorText = '') =>
   quietly(async () => {
     const wc = tab(target);
     try {
@@ -499,7 +499,7 @@ ipcMain.handle('dm:readChat', (_e, target = 'send', handle, names = []) =>
     const better = (a, b) => (!!a.anchored !== !!b.anchored ? !!a.anchored : a.messages.length >= b.messages.length);
     for (let i = 0; i < 4; i++) {
       await pause(1200);
-      const r = await runDm(wc, 'chatMessages', { handle, names }).catch(() => null);
+      const r = await runDm(wc, 'chatMessages', { handle, names, anchorText }).catch(() => null);
       if (r?.loggedOut) return { state: 'loggedout', messages: [] };
       // The fullest read wins, and one that found our voice note beats one that didn't.
       if (r && better(r, best)) best = r;
@@ -570,6 +570,8 @@ ipcMain.handle('app:badge', (_e, n) => {
 // On while replies are being watched: the window hides instead of closing, and the Mac doesn't sleep the app.
 ipcMain.handle('app:keepRunning', (_e, on) => {
   keepRunning = !!on;
+  // A built app also opens (hidden) when the Mac starts, so a restart doesn't stop the work.
+  if (process.platform === 'darwin' && app.isPackaged) app.setLoginItemSettings({ openAtLogin: keepRunning, openAsHidden: true });
   if (keepRunning && blocker < 0) blocker = powerSaveBlocker.start('prevent-app-suspension');
   if (!keepRunning && blocker >= 0) {
     powerSaveBlocker.stop(blocker);
@@ -856,6 +858,7 @@ const snapTab = async (target, name, report = '') => {
 ipcMain.handle('diag:snap', (_e, target, name, report = '') => snapTab(target, name, report));
 ipcMain.handle('diag:reveal', (_e, file) => shell.showItemInFolder(file));
 ipcMain.handle('reply:draft', (_e, key, prompt) => draftReply(key, prompt));
+ipcMain.handle('dm:compose', (_e, key, prompt) => draftText(key, prompt));
 ipcMain.handle('reply:test', (_e, key) => testClaude(key));
 ipcMain.handle('torrey:invite', (_e, cfg, args) => createInvite(cfg, args));
 ipcMain.handle('torrey:test', (_e, cfg) => testTorrey(cfg));
@@ -882,6 +885,8 @@ ipcMain.handle('follow:engageNow', (_e, handle, airtableId) => quietly(() => fol
 ipcMain.handle('follow:voiceTimes', (_e, times) => follower.setVoiceTimes(times));
 // Test runs only: no waiting between voice notes and no hourly limits.
 ipcMain.handle('app:testFast', () => process.env.TVN_TEST_FOLLOW === '1');
+// Cold DMs start by themselves; the test setups (which point Instagram at a stand-in) only get them when asked.
+ipcMain.handle('app:outreachAllowed', () => !process.env.IG_BASE || process.env.TVN_OUTREACH === '1');
 ipcMain.handle('find:config', (_e, cfg) => finder.configure(cfg));
 ipcMain.handle('find:set', (_e, on) => finder.setEnabled(!!on));
 ipcMain.handle('find:state', () => finder.snapshot());

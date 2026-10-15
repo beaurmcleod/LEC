@@ -100,6 +100,8 @@ const DEFAULT_SETTINGS = {
   torrey: { key: '', site: 'https://torreylabs.store', percent: 20 },
   // quick: look at the inbox for unread messages every minute; notify: a notification for each reply; background: keep
   // working when the window is closed (Mac) and keep the Mac awake.
+  // Cold DMs: a personalized text DM to the next lead, on its own, within the daily limits.
+  outreach: { on: true },
   replies: { watch: true, everyMin: 10, from: 'Garrett', auto: true, delayMin: 4, quick: true, notify: true, background: true, facts: '' },
   // Replies to emailed leads: answered from Garrett's mailbox with a Gmail app password. auto stays off until you've watched
   // a few go out; with it off, every answer waits under Replies for you to press Send.
@@ -963,7 +965,7 @@ async function healQueue({ boot = false } = {}) {
       .sort((a, b) => (a.queuedAt || 0) - (b.queuedAt || 0));
     if (!orphans.length) return;
     // With auto-send off nothing goes out from the background: every note needs a click in Instagram, so these go back to To do.
-    if (!S.settings.autoSend) {
+    if (!S.settings.autoSend && orphans.every((p) => p.sendMode !== 'text')) {
       for (const p of orphans) {
         delete p.waitingLimit;
         p.status = 'todo';
@@ -977,7 +979,11 @@ async function healQueue({ boot = false } = {}) {
     let back = 0;
     for (const p of orphans) {
       delete p.waitingLimit;
-      if (missingParts(p).length || !p.handle) {
+      if (p.sendMode !== 'text' && !S.settings.autoSend) {
+        p.status = 'todo';
+        continue;
+      }
+      if (!p.handle || (p.sendMode !== 'text' && missingParts(p).length)) {
         Object.assign(p, { status: 'todo', sendIssue: `This voice note can't be sent: it still needs ${missingParts(p).map((x) => x.label).join(', ') || 'an Instagram handle'}.` });
         qlog('dropped', `@${p.handle || p.name} went back to To do: ${p.sendIssue}`);
       } else {
@@ -1041,6 +1047,7 @@ async function enqueue(p, { check = true } = {}) {
   if (check ? !(await clipFor(p)) : !!missingParts(p).length || !p.handle) return false;
   stopPlay();
   p.status = 'sending';
+  delete p.sendMode;
   p.queuedAt = Date.now();
   delete p.sendIssue;
   S.bg.jobs.push({ pid: p.id });
@@ -1092,6 +1099,71 @@ async function queueAllRecorded() {
   S.currentId = null;
   render();
   runQueue();
+}
+
+// ---- Cold text DMs, on their own ------------------------------------------------------------------------------------
+// The first message to a lead: written by Claude from what is known about them (or a plain one without Claude), checked, and sent
+// as text in the hidden tab. Limits, window, gaps and the pause after repeated failures are the same as for voice notes.
+async function composeColdDm(p) {
+  const st = S.settings;
+  const from = st.replies.from;
+  if (st.claude.key) {
+    try {
+      const d = await window.api.composeDm(st.claude.key, replies.coldDmPrompt(p, { from, extraFacts: st.replies.facts }));
+      if (replies.coldDmOk(d.message)) return d.message;
+      qlog('ignored', `@${p.handle}: Claude's DM didn't pass the checks, so the plain one was used`);
+    } catch (e) {
+      qlog('ignored', `@${p.handle}: couldn't ask Claude (${errText(e)}), so the plain one was used`);
+    }
+  }
+  return replies.coldDmFallback(p, { from });
+}
+
+// Returns '' when sent, 'already' if our message is already in the chat, or throws.
+async function sendTextDm(p, cur) {
+  cur.text = 'Checking their chat...';
+  paintQueue();
+  const chat = await window.api.readChat('send', p.handle, replies.leadNames(p), p.dmText).catch(() => null);
+  if (chat?.state === 'ok' && chat.anchored && (chat.messages || []).some((m) => m.mine)) return 'already';
+  cur.text = 'Writing the message...';
+  paintQueue();
+  const text = p.dmText || (await composeColdDm(p));
+  p.dmText = text;
+  cur.text = 'Sending the message...';
+  paintQueue();
+  const r = await window.api.dmSend({ href: p.dm?.href, handle: p.handle, text });
+  await logSend(p, `Text DM to @${p.handle}: ${r?.state === 'sent' ? 'SENT' : "SENT (Instagram didn't confirm it; check the thread)"}\n${new Date().toLocaleString()} · build ${S.build?.commit || 'dev'}\n\n${text}`);
+  return '';
+}
+
+async function enqueueText(p) {
+  p.status = 'sending';
+  p.sendMode = 'text';
+  p.queuedAt = Date.now();
+  delete p.sendIssue;
+  S.bg.jobs.push({ pid: p.id });
+  qlog('queued', `@${p.handle} queued for a text DM`);
+  await saveProspects();
+}
+
+// Every minute: if nothing is queued and the limits allow one more, the next lead gets a text DM. Nobody has to press anything.
+let outreachBusy = false;
+async function outreachTick() {
+  const o = S.settings.outreach;
+  if (!o?.on || outreachBusy || S.outreachAllowed === false) return;
+  outreachBusy = true;
+  try {
+    if (S.bg.current || S.bg.jobs.some(isVoiceJob) || S.sending || S.bg.failPause > Date.now()) return;
+    if (Date.now() < (S.outreachNextAt || 0) || !voiceGate().ok) return;
+    const p = todoList().find((x) => x.handle && !x.sendIssue && (!x.channel || x.channel === 'Instagram') && x.track !== 'Skip');
+    if (!p) return;
+    S.outreachNextAt = Date.now() + (capsNow().dmGapMs || 0) * (1 + Math.random() * 0.5);
+    await enqueueText(p);
+    refreshQuietly();
+    runQueue();
+  } finally {
+    outreachBusy = false;
+  }
 }
 
 // One send at a time in the hidden tab, silently.
@@ -1152,13 +1224,17 @@ async function runQueue() {
     let issue = '';
     let already = false;
     try {
-      const samples = job.samples || (await buildClip(p));
-      const left = await deliver(p, samples, {
-        target: 'send',
-        monitor: false,
-        say: (text) => ((cur.text = text), paintQueue()),
-        onPlaying: (sec) => ((cur.until = Date.now() + sec * 1000), paintQueue()),
-      });
+      let left;
+      if (p.sendMode === 'text') left = await sendTextDm(p, cur);
+      else {
+        const samples = job.samples || (await buildClip(p));
+        left = await deliver(p, samples, {
+          target: 'send',
+          monitor: false,
+          say: (text) => ((cur.text = text), paintQueue()),
+          onPlaying: (sec) => ((cur.until = Date.now() + sec * 1000), paintQueue()),
+        });
+      }
       if (left === 'already') already = true;
       else if (left) issue = failText(left);
     } catch (e) {
@@ -1167,8 +1243,9 @@ async function runQueue() {
     try {
       if (already) {
         S.bg.fails = 0;
-        qlog('sent', `@${p.handle} already had our voice note: marked sent, not sent again`);
-        toast(`@${p.handle} already had our voice note, so it wasn't sent again. Marked sent ✓`, 6000);
+        const what = p.sendMode === 'text' ? 'a message from us' : 'our voice note';
+        qlog('sent', `@${p.handle} already had ${what}: marked sent, not sent again`);
+        toast(`@${p.handle} already had ${what}, so it wasn't sent again. Marked sent ✓`, 6000);
         await markSent(p);
       } else if (issue) {
         qlog('failed', `@${p.handle}: ${issue}`);
@@ -1499,7 +1576,7 @@ function noteSeen(p, r) {
 async function replyCheckOne(p, job = {}) {
   S.bg.current = { pid: p.id, handle: p.handle, text: '', until: 0, check: true };
   paintQueue();
-  const r = await window.api.readChat('send', p.handle, replies.leadNames(p)).catch((e) => ({ state: 'error', error: errText(e), messages: [] }));
+  const r = await window.api.readChat('send', p.handle, replies.leadNames(p), p.dmText).catch((e) => ({ state: 'error', error: errText(e), messages: [] }));
   p.replyCheckedAt = Date.now();
   // A read receipt ("Seen yesterday") under our note isn't a message from them.
   r.messages = (r.messages || []).filter((m) => !replies.isReceipt(m));
@@ -1531,7 +1608,7 @@ async function replyCheckOne(p, job = {}) {
 async function talkCheckOne(p) {
   S.bg.current = { pid: p.id, handle: p.handle, text: '', until: 0, check: true };
   paintQueue();
-  const r = await window.api.readChat('send', p.handle, replies.leadNames(p)).catch((e) => ({ state: 'error', error: errText(e), messages: [] }));
+  const r = await window.api.readChat('send', p.handle, replies.leadNames(p), p.dmText).catch((e) => ({ state: 'error', error: errText(e), messages: [] }));
   p.talkCheckedAt = Date.now();
   const said = (r.messages || []).filter((m) => m.who);
   if (r.state === 'ok' && said.length && p.status === 'todo') {
@@ -1674,7 +1751,7 @@ function syncBadge() {
 // While replies are being watched the window can be closed on a Mac and the app keeps going, with the Mac kept awake.
 function applyBackground() {
   const r = S.settings.replies;
-  window.api.keepRunning(!!(r.watch && r.background)).catch(() => {});
+  window.api.keepRunning(!!(r.background && (r.watch || S.settings.outreach?.on))).catch(() => {});
 }
 
 // What a reply gets: a yes or a question gets their code and how to set up, written for them, sent on its own
@@ -1771,7 +1848,7 @@ async function sendReplyNow(p, { text, withCode = false, scheduled = false }) {
   if (scheduled) {
     // Right before an auto-reply goes out, look at the chat again: if you answered them yourself, it's dropped;
     // if they wrote more, the answer is written again with everything they said.
-    const chat = await window.api.readChat('send', p.handle, replies.leadNames(p)).catch(() => null);
+    const chat = await window.api.readChat('send', p.handle, replies.leadNames(p), p.dmText).catch(() => null);
     if (chat?.state === 'ok' && chat.anchored && chat.messages?.length) {
       const got = theirLatest(chat.messages);
       if (!got.theirs.length) {
@@ -1854,7 +1931,7 @@ async function heartbeat() {
       'Sent today': sentToday(),
       Queued: S.bg.jobs.filter(isVoiceJob).length,
       'Auto-reply': S.settings.replies.auto ? 'On' : 'Off',
-      Note: String(S.replies.issue || S.replies.note || '').slice(0, 500),
+      Note: [S.settings.outreach?.on ? 'Cold DMs on' : 'Cold DMs off', S.replies.issue || S.replies.note || ''].filter(Boolean).join(' · ').slice(0, 500),
     });
   } catch (e) {
     console.warn('heartbeat', e.message);
@@ -1879,6 +1956,7 @@ async function outboxPoll() {
         missing++;
         continue;
       }
+      if (!String(row.outbox || '').trim()) continue;
       const key = `outbox:${row.outbox}`;
       if (p.outboxSeen === key) continue;
       if (p.reply?.pending && p.reply.auto) continue; // an answer already goes out on its own: don't change it underneath
@@ -4164,6 +4242,13 @@ function setupView() {
     ],
 
     sending: () => [
+      h('h2', {}, 'Cold DMs on their own'),
+      h(
+        'div',
+        { class: 'card' },
+        box(st.outreach, 'on', 'Send a personalized text DM to the next lead by itself, all day, within the daily limits. Nothing to record or press.', applyBackground),
+        h('p', { class: 'muted small' }, "Claude writes each message from what it knows about them: one true thing about them, who we are, that we have high quality peptides at competitive prices, the open store and the affiliate program, and a yes/no question. No link goes in the first message; the link and prices go out in the answer to their yes. Replies are read and answered automatically (Setup > Auto-reply). Prices and other facts go in the facts box there."),
+      ),
       h('h2', {}, 'When you press Send'),
       h(
         'div',
@@ -4259,7 +4344,7 @@ function setupView() {
         'More',
         box(st.replies, 'quick', "Watch the inbox for unread messages every 30 seconds, and read a lead's chat the moment it writes"),
         box(st.replies, 'notify', 'Show a notification when a lead replies'),
-        box(st.replies, 'background', 'Keep working in the background: closing the window hides it (Mac) and the app keeps watching, with the Mac kept awake. Quit from the menu to stop.', applyBackground),
+        box(st.replies, 'background', 'Keep working in the background: closing the window hides it (Mac) and the app keeps working, with the Mac kept awake, and it opens by itself when the Mac starts. Quit from the menu to stop.', applyBackground),
         h(
           'div',
           { class: 'grid2' },
@@ -4829,6 +4914,7 @@ document.addEventListener('keydown', (e) => {
     claude: { ...DEFAULT_SETTINGS.claude, ...saved.claude },
     torrey: { ...DEFAULT_SETTINGS.torrey, ...saved.torrey },
     replies: { ...DEFAULT_SETTINGS.replies, ...saved.replies },
+    outreach: { ...DEFAULT_SETTINGS.outreach, ...saved.outreach },
     mail: { ...DEFAULT_SETTINGS.mail, ...saved.mail },
     find: { ...DEFAULT_SETTINGS.find, ...saved.find },
     limits: { ...DEFAULT_SETTINGS.limits, ...saved.limits, window: { ...DEFAULT_SETTINGS.limits.window, ...saved.limits?.window }, custom: { ...DEFAULT_SETTINGS.limits.custom, ...saved.limits?.custom } },
@@ -4856,6 +4942,7 @@ document.addEventListener('keydown', (e) => {
   S.bg.log = (await store.get('kv', 'sendEvents')) || [];
   qlog('app', `App opened (build ${S.build?.commit || 'dev'}); ${S.prospects.filter((x) => x.status === 'sending').length} voice notes were still queued`);
   S.fast = await window.api.testFast().catch(() => false);
+  S.outreachAllowed = await window.api.outreachAllowed().catch(() => true);
   S.away = await window.api.userAway().catch(() => true);
   const fixedSegs = S.template.filter((s) => s.kind === 'fixed');
   if (fixedSegs.length && fixedSegs.every((s) => !S.lens[fixedKey(s)])) S.view = 'setup';
@@ -4893,6 +4980,9 @@ document.addEventListener('keydown', (e) => {
   setTimeout(() => emailPoll(), S.fast ? 2000 : 25 * 1000);
   setInterval(() => emailPoll(), S.fast ? 2000 : 60 * 1000);
   setInterval(dueEmails, 15 * 1000);
+  // Cold DMs: the next lead, when the limits allow.
+  setTimeout(() => outreachTick(), S.fast ? 3500 : 45 * 1000);
+  setInterval(() => outreachTick(), S.fast ? 2500 : 60 * 1000);
   // Alive signal for Airtable, every 5 minutes.
   setTimeout(() => heartbeat(), S.fast ? 3000 : 30 * 1000);
   setInterval(() => heartbeat(), S.fast ? 3000 : 5 * 60 * 1000);

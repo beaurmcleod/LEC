@@ -167,12 +167,12 @@ export function replyPrompt(p, { text, history = [], from = 'Garrett', percent =
   return {
     system: `You are ${from}, who runs Torrey Labs, a small San Diego research-peptide company. ${email ? `You emailed this person about partnering, and they just replied by email. Write a short, warm email in plain text, the way ${from} writes: plain words, no hype, no emojis, no subject line. Start with a greeting line ("Hi <first name>," or "Hi there,") and end with the sign-off.` : `You sent this person a short Instagram voice note about partnering, and they just wrote back. Write the way ${from} texts: warm, quick, plain words, no hype, no emojis, no subject line.`} Never invent facts about Torrey Labs beyond these:
 - Torrey Labs is a San Diego company making research peptides more accessible and more affordable. Every batch is third-party tested, and every product has an independent lab report, published by lot number, that anyone can read at ${site} without an account.
-- The store is invite-only. We're looking to partner with small businesses.
+- The store at ${site} is open to everyone: no access code is needed, and the prices are listed there. We also run a competitive affiliate program for small businesses and creators.
 - Partner deal: they get a simple code. Anyone who uses it gets ${percent}% off their first order, and the partner earns ${percent}% of everything that customer orders, for life, on the item subtotal. They can take it as cash (paid after 14 days) or as store credit, which is worth 25% more.
 - Their partner portal shows their link, a QR code, every referral, and payouts. They sign up with their email at the invite link and their code is already set.
 - We offer in-person delivery in San Diego on orders over a certain amount, or pickup. Don't quote the amount.
 - Products are for laboratory research use only, not for human or animal use, and nothing is medical advice. Never make health, weight-loss, recovery or performance claims about the products. If they ask about dosing, effects, or use on people, say plainly that you can't advise on that and point them to the published lab reports.
-- Pricing is only visible inside the store; don't quote prices.${String(extraFacts || '').trim() ? `\nMore facts from ${from}. They are true and you may use them; where they differ from the list above, they win:\n${clip(String(extraFacts).trim(), 3000)}` : ''}
+- Prices are listed on the store. Point people to ${site} for prices; don't quote a number unless it is given in the extra facts below.${String(extraFacts || '').trim() ? `\nMore facts from ${from}. They are true and you may use them; where they differ from the list above, they win:\n${clip(String(extraFacts).trim(), 3000)}` : ''}
 If they ask something you can't answer from these facts, say you'll find out and get back to them rather than guessing.
 
 First decide what their reply means:
@@ -184,7 +184,7 @@ First decide what their reply means:
 Then write the reply. Make it personal: use their first name if you have it, name their business, and say one specific thing they offer, taken only from the lead facts above (never guess one). If none is given, keep it general rather than inventing it.
 
 For "yes", write it in this shape, in your own natural words, about 110 to 140 words, with blank lines between the parts:
-1. "Definitely, <first name>!" then who we are in one sentence (Torrey Labs, San Diego, research peptides, more accessible and more affordable, third-party tested on every batch), then that we're partnering with small businesses like <their business> and why their <what they offer> community is a good fit.
+1. "Definitely, <first name>!" then give the store link ${site} and say the prices are listed there and no code is needed to order. Then who we are in one sentence (Torrey Labs, San Diego, research peptides, more accessible and more affordable, third-party tested on every batch), then that we're partnering with small businesses like <their business> and why their <what they offer> community is a good fit.
 2. How it works: they share a simple code; anyone who uses it gets ${percent}% off their first order; they earn ${percent}% on every order, for life; cash or store credit worth 25% more.
 3. "I made you a code: ${code}" followed by two numbered steps: 1) open ${invite} to set up your portal (the code's already on it) 2) share ${link} or tell people to use ${code}.
 4. One line: in-person delivery on larger orders, or pickup; everything is for research use only; any questions at any point, just ask. Sign off ${signoff}.
@@ -295,3 +295,58 @@ export const REPLY_FIELDS = {
   invite: 'Invite link',
   codeSentAt: 'Code sent at',
 };
+
+
+// ---- The first (cold) text DM, written for one lead ----------------------------------------------------------------
+// Short, friendly, one true detail about them, what we offer, and a yes/no question. No link: the link goes in the answer to
+// their yes (see replyPrompt), which keeps a first message from a new contact out of Instagram's spam filter.
+export function coldDmPrompt(p, { from = 'Garrett', extraFacts = '' } = {}) {
+  const first = String(p.first || '').trim();
+  const offer = offerPhrase(p);
+  const lines = [
+    `Lead: ${first || 'first name not known'}${p.business ? `, ${p.business}` : ''}${p.role ? ` (${p.role})` : ''}${p.category ? `, ${p.category}` : ''}, Instagram @${p.handle}.`,
+    offer ? `What they offer: ${offer}.` : '',
+    p.hook ? `Something true about them from research: ${p.hook}` : '',
+    p.bio ? `Their Instagram bio: ${clip(p.bio, 300)}` : '',
+  ].filter(Boolean);
+  return {
+    system: `You are ${from}, who runs Torrey Labs, a small San Diego research-peptide company. Write the first Instagram DM to this person, the way ${from} texts: warm, quick, plain words, no hype, no emojis.
+
+The message must:
+- be 2 or 3 short sentences, 45 words at most;
+- open with ONE specific, true thing about them taken only from the lead facts below (never invent one; if there is nothing usable, just greet them by first name, or say "Hey!" if the name is not known). Do not copy their bio back at them;
+- say who you are in a few words: "I'm ${from}, I run Torrey Labs, a San Diego research-peptide company";
+- say that we have high quality peptides at competitive prices, that the store is open, and that we have a competitive affiliate program (they earn when their people order);
+- end with one yes/no question, like "Want me to send the link?";
+- contain NO link or web address, and no phone number or email;
+- make no health, weight-loss, recovery or performance claims, and never say anything is for human use;
+- never mention that you are an AI, and never pretend to have met them.${String(extraFacts || '').trim() ? `\n\nMore facts from ${from} (true; you may use them):\n${clip(String(extraFacts).trim(), 1500)}` : ''}`,
+    user: lines.join('\n'),
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', description: 'The DM, ready to send.' },
+        detail: { type: 'string', description: 'The one true thing about them you used, or "none".' },
+      },
+      required: ['message', 'detail'],
+      additionalProperties: false,
+    },
+  };
+}
+
+// Used when Claude is not available: no detail about them, but still friendly and short.
+export function coldDmFallback(p, { from = 'Garrett' } = {}) {
+  const first = String(p.first || '').trim();
+  return `Hey${first ? ` ${first}` : ''}! I'm ${from}, I run Torrey Labs, a San Diego research-peptide company. We have high quality peptides at competitive prices, the store is open, and we have a competitive affiliate program. Want me to send the link?`;
+}
+
+// A written DM only goes out if it passes this: a real length, who we are, a question, and nothing that looks like a link.
+export function coldDmOk(text) {
+  const t = String(text || '').trim();
+  if (t.length < 60 || t.length > 420) return false;
+  if (/https?:|www\.|\b[a-z0-9-]+\.(com|store|net|org|io|co|me)\b|@\w+\.\w+/i.test(t)) return false;
+  if (!/torrey labs/i.test(t)) return false;
+  if (!t.endsWith('?')) return false;
+  if (/\b(cure|treat|heal|dose|dosing|weight.?loss|lose weight|inject)\b/i.test(t)) return false;
+  return true;
+}

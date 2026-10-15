@@ -54,6 +54,33 @@ export async function draftReply(key, rawPrompt) {
   return { intent: out.intent, reply: out.reply.trim(), why: String(out.why || ''), needsYou: out.needs_you !== false, model: res.model };
 }
 
+// The first DM to a lead: { message, detail }.
+export async function draftText(key, rawPrompt) {
+  const c = client(key);
+  const prompt = deepWellFormed(rawPrompt);
+  let res;
+  try {
+    res = await c.messages.create({
+      model: MODEL,
+      max_tokens: 600,
+      system: prompt.system,
+      messages: [{ role: 'user', content: prompt.user }],
+      output_config: { effort: 'medium', format: { type: 'json_schema', schema: prompt.schema } },
+    });
+  } catch (e) {
+    throw new Error(plainError(e));
+  }
+  const text = res.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+  let out;
+  try {
+    out = JSON.parse(text);
+  } catch {
+    throw new Error("Claude's answer wasn't in the expected shape.");
+  }
+  if (typeof out.message !== 'string') throw new Error("Claude's answer wasn't in the expected shape.");
+  return { message: out.message.trim(), detail: String(out.detail || '') };
+}
+
 // Setup's Test button: a tiny request that proves the key works.
 export async function testClaude(key) {
   try {
