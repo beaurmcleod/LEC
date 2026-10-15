@@ -13,6 +13,9 @@ Claude (in Claude Code or chat) can answer leads without opening the app. Airtab
 ### How autonomous the app is
 The app answers Instagram replies on its own, after the delay in Setup > Auto-reply, whenever Claude is sure: a yes or a question gets the answer plus the lead's partner code; anything unclear gets a short reply with no code. Claude marks a draft **Needs you** (and it waits under Replies) when it would have to guess, or the message is about dosing or health, is upset, asks for a custom deal, or anything risky. Prices, minimums and other facts go in Setup > Auto-reply > "Facts Claude can use", and Claude treats them as true.
 
+### Cold DMs on their own
+With **Setup > Sending > "Send a personalized text DM to the next lead by itself"** on (the default), the app, while open, sends a short text DM to the next To-do lead about once every few minutes, inside the daily/hourly limits, the 8 AM to 8 PM Pacific window and the warm-up ramp, and at most "Most cold DMs a day" (20). It needs the Claude key and "Send the voice note for me" on. Claude writes each message from what Airtable knows about the lead (one true detail, who we are, high quality peptides at competitive prices, the open store, the affiliate program, a yes/no question, no link); anything with a link, a phone number or a health claim is replaced by a plain message. A chat that already has messages in it is never messaged: the lead is filed as Sent. Three failures in a row pause the queue for 30 minutes. A "yes" is answered with the store link with prices, the affiliate details and the lead's code.
+
 ## Writing a reply
 On the lead's row in Airtable (Leads table) set:
 

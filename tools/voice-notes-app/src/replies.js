@@ -165,7 +165,7 @@ export function replyPrompt(p, { text, history = [], from = 'Garrett', percent =
   ].filter(Boolean);
   const convo = history.length ? `Earlier messages in the thread (newest last):\n${history.map((m) => `${m.mine ? from : 'Them'}: ${m.text}`).join('\n')}` : '';
   return {
-    system: `You are ${from}, who runs Torrey Labs, a small San Diego research-peptide company. ${email ? `You emailed this person about partnering, and they just replied by email. Write a short, warm email in plain text, the way ${from} writes: plain words, no hype, no emojis, no subject line. Start with a greeting line ("Hi <first name>," or "Hi there,") and end with the sign-off.` : `You sent this person a short Instagram voice note about partnering, and they just wrote back. Write the way ${from} texts: warm, quick, plain words, no hype, no emojis, no subject line.`} Never invent facts about Torrey Labs beyond these:
+    system: `You are ${from}, who runs Torrey Labs, a small San Diego research-peptide company. ${email ? `You emailed this person about partnering, and they just replied by email. Write a short, warm email in plain text, the way ${from} writes: plain words, no hype, no emojis, no subject line. Start with a greeting line ("Hi <first name>," or "Hi there,") and end with the sign-off.` : `${p.dmText ? 'You sent this person a short Instagram text DM about our peptides and our affiliate program' : 'You sent this person a short Instagram voice note about partnering'}, and they just wrote back. Write the way ${from} texts: warm, quick, plain words, no hype, no emojis, no subject line.`} Never invent facts about Torrey Labs beyond these:
 - Torrey Labs is a San Diego company making research peptides more accessible and more affordable. Every batch is third-party tested, and every product has an independent lab report, published by lot number, that anyone can read at ${site} without an account.
 - The store at ${site} is open to everyone: no access code is needed, and the prices are listed there. We also run a competitive affiliate program for small businesses and creators.
 - Partner deal: they get a simple code. Anyone who uses it gets ${percent}% off their first order, and the partner earns ${percent}% of everything that customer orders, for life, on the item subtotal. They can take it as cash (paid after 14 days) or as store credit, which is worth 25% more.
@@ -336,17 +336,20 @@ The message must:
 
 // Used when Claude is not available: no detail about them, but still friendly and short.
 export function coldDmFallback(p, { from = 'Garrett' } = {}) {
-  const first = String(p.first || '').trim();
+  let first = String(p.first || '').trim();
+  // Only a plain first name: no "N/A", titles, initials or shouting.
+  if (!/^[A-Za-z][A-Za-z'’-]{1,19}$/.test(first) || /^(n\/?a|none|null|unknown|owner|team|dr|mr|mrs|ms)$/i.test(first)) first = '';
+  else if (first === first.toUpperCase() || first === first.toLowerCase()) first = first[0].toUpperCase() + first.slice(1).toLowerCase();
   return `Hey${first ? ` ${first}` : ''}! I'm ${from}, I run Torrey Labs, a San Diego research-peptide company. We have high quality peptides at competitive prices, the store is open, and we have a competitive affiliate program. Want me to send the link?`;
 }
 
 // A written DM only goes out if it passes this: a real length, who we are, a question, and nothing that looks like a link.
 export function coldDmOk(text) {
-  const t = String(text || '').trim();
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
   if (t.length < 60 || t.length > 420) return false;
-  if (/https?:|www\.|\b[a-z0-9-]+\.(com|store|net|org|io|co|me)\b|@\w+\.\w+/i.test(t)) return false;
+  if (/https?:|www\.|\b[a-z0-9-]{2,}\.(com|store|net|org|io|co|me|shop|app|ai|us|link|ly|ee|to|bio|info|biz|xyz|site|online)\b|bit\.ly|linktr|@\w+\.\w+|(\d[\s.()-]*){10,}/i.test(t)) return false;
   if (!/torrey labs/i.test(t)) return false;
-  if (!t.endsWith('?')) return false;
-  if (/\b(cure|treat|heal|dose|dosing|weight.?loss|lose weight|inject)\b/i.test(t)) return false;
+  if (!/\?["'”’)\s]*$/.test(t)) return false;
+  if (/\b(cure[sd]?|treat|treats|treatment|heal|heals|healing|dose|dosing|dosage|weight.?loss|lose weight|fat.?loss|anti.?aging|semaglutide|tirzepatide|glp.?1|inject|injection)\b/i.test(t)) return false;
   return true;
 }

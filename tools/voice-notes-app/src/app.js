@@ -101,7 +101,7 @@ const DEFAULT_SETTINGS = {
   // quick: look at the inbox for unread messages every minute; notify: a notification for each reply; background: keep
   // working when the window is closed (Mac) and keep the Mac awake.
   // Cold DMs: a personalized text DM to the next lead, on its own, within the daily limits.
-  outreach: { on: true },
+  outreach: { on: true, perDay: 20 },
   replies: { watch: true, everyMin: 10, from: 'Garrett', auto: true, delayMin: 4, quick: true, notify: true, background: true, facts: '' },
   // Replies to emailed leads: answered from Garrett's mailbox with a Gmail app password. auto stays off until you've watched
   // a few go out; with it off, every answer waits under Replies for you to press Send.
@@ -979,8 +979,9 @@ async function healQueue({ boot = false } = {}) {
     let back = 0;
     for (const p of orphans) {
       delete p.waitingLimit;
-      if (p.sendMode !== 'text' && !S.settings.autoSend) {
+      if ((p.sendMode !== 'text' && !S.settings.autoSend) || (p.sendMode === 'text' && !S.settings.outreach?.on)) {
         p.status = 'todo';
+        if (p.sendMode === 'text') delete p.sendMode;
         continue;
       }
       if (!p.handle || (p.sendMode !== 'text' && missingParts(p).length)) {
@@ -1110,7 +1111,8 @@ async function composeColdDm(p) {
   if (st.claude.key) {
     try {
       const d = await window.api.composeDm(st.claude.key, replies.coldDmPrompt(p, { from, extraFacts: st.replies.facts }));
-      if (replies.coldDmOk(d.message)) return d.message;
+      const msg = String(d.message || '').replace(/\s+/g, ' ').trim();
+      if (replies.coldDmOk(msg)) return msg;
       qlog('ignored', `@${p.handle}: Claude's DM didn't pass the checks, so the plain one was used`);
     } catch (e) {
       qlog('ignored', `@${p.handle}: couldn't ask Claude (${errText(e)}), so the plain one was used`);
@@ -1123,12 +1125,21 @@ async function composeColdDm(p) {
 async function sendTextDm(p, cur) {
   cur.text = 'Checking their chat...';
   paintQueue();
-  const chat = await window.api.readChat('send', p.handle, replies.leadNames(p), p.dmText).catch(() => null);
-  if (chat?.state === 'ok' && chat.anchored && (chat.messages || []).some((m) => m.mine)) return 'already';
+  const chat = await window.api.readChat('send', p.handle, replies.leadNames(p), p.dmText).catch((e) => ({ state: 'error', error: errText(e), messages: [] }));
+  if (chat.state === 'loggedout') throw new Error('Instagram is logged out. Sign in on the right.');
+  // Never message blind: if their chat couldn't be looked at, this try fails (and three failures in a row pause the queue).
+  if (chat.state !== 'ok') throw new Error(`Couldn't look at their chat first${chat.error ? ` (${chat.error})` : ''}.`);
+  if (chat.anchored && (chat.messages || []).some((m) => m.mine)) return 'already';
+  // A conversation that already exists (started by hand, or they wrote first) is left alone and filed as Sent.
+  if (!p.dmText && (chat.messages || []).some((m) => m.who)) {
+    p.sentBy = 'conversation';
+    return 'already';
+  }
   cur.text = 'Writing the message...';
   paintQueue();
   const text = p.dmText || (await composeColdDm(p));
   p.dmText = text;
+  await saveProspects(); // remembered before it goes out, so a restart can tell whether it did
   cur.text = 'Sending the message...';
   paintQueue();
   const r = await window.api.dmSend({ href: p.dm?.href, handle: p.handle, text });
@@ -1153,7 +1164,11 @@ async function outreachTick() {
   if (!o?.on || outreachBusy || S.outreachAllowed === false) return;
   outreachBusy = true;
   try {
-    if (S.bg.current || S.bg.jobs.some(isVoiceJob) || S.sending || S.bg.failPause > Date.now()) return;
+    if (S.bg.current || S.bg.jobs.some(isVoiceJob) || S.sending || S.rec || S.bg.failPause > Date.now()) return;
+    // It needs Claude to write each message (a plain one for everybody would look like spam), and respects "send for me" being off.
+    if (!S.settings.claude.key || !S.settings.autoSend) return;
+    const sentRecently = S.prospects.filter((x) => x.status === 'sent' && x.sendMode === 'text' && x.sentAt > Date.now() - 26 * 3600e3).length;
+    if (sentRecently >= Math.max(0, Number(o.perDay) || 0)) return;
     if (Date.now() < (S.outreachNextAt || 0) || !voiceGate().ok) return;
     const p = todoList().find((x) => x.handle && !x.sendIssue && (!x.channel || x.channel === 'Instagram') && x.track !== 'Skip');
     if (!p) return;
@@ -1217,6 +1232,12 @@ async function runQueue() {
       continue;
     }
     if (!p || p.status !== 'sending') continue;
+    if (p.sendMode === 'text' && !S.settings.outreach?.on) {
+      p.status = 'todo';
+      delete p.sendMode;
+      await saveProspects();
+      continue;
+    }
     delete p.waitingLimit;
     const cur = (S.bg.current = { pid: p.id, handle: p.handle, text: 'Starting...', until: 0 });
     qlog('start', `Sending to @${p.handle}`);
@@ -1255,7 +1276,7 @@ async function runQueue() {
         delete p.auditedAt;
         await saveProspects();
         toast(`Didn't send to @${p.handle}: ${issue}. It's back in To do.`, 8000);
-        if (++S.bg.fails >= 3 && S.bg.jobs.some(isVoiceJob)) {
+        if (++S.bg.fails >= 3 && (S.bg.jobs.some(isVoiceJob) || p.sendMode === 'text')) {
           S.bg.fails = 0;
           S.bg.failPause = Date.now() + 30 * 60 * 1000;
           qlog('held', `3 voice notes in a row failed: paused for 30 minutes (${S.bg.jobs.filter(isVoiceJob).length} still queued). Check that Instagram is logged in.`);
@@ -4247,7 +4268,8 @@ function setupView() {
         'div',
         { class: 'card' },
         box(st.outreach, 'on', 'Send a personalized text DM to the next lead by itself, all day, within the daily limits. Nothing to record or press.', applyBackground),
-        h('p', { class: 'muted small' }, "Claude writes each message from what it knows about them: one true thing about them, who we are, that we have high quality peptides at competitive prices, the open store and the affiliate program, and a yes/no question. No link goes in the first message; the link and prices go out in the answer to their yes. Replies are read and answered automatically (Setup > Auto-reply). Prices and other facts go in the facts box there."),
+        h('label', { class: 'field' }, 'Most cold DMs a day', h('input', { type: 'number', min: 0, max: 100, step: 1, value: st.outreach.perDay, oninput: (e) => ((st.outreach.perDay = Math.min(100, Math.max(0, parseInt(e.target.value, 10) || 0))), saveSettings().then(flashSaved)) })),
+        h('p', { class: 'muted small' }, "It needs the Claude key (Setup > Auto-reply) to write the messages, and \"Send the voice note for me\" on. Claude writes each message from what it knows about them: one true thing about them, who we are, that we have high quality peptides at competitive prices, the open store and the affiliate program, and a yes/no question. No link goes in the first message; the link and prices go out in the answer to their yes. Replies are read and answered automatically (Setup > Auto-reply). Prices and other facts go in the facts box there."),
       ),
       h('h2', {}, 'When you press Send'),
       h(
