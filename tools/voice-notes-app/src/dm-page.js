@@ -222,6 +222,64 @@ export async function dmPage(action, arg) {
     };
   }
 
+  // The audio of the voice messages on their side of the open chat (the far left), oldest first, the last `max` of them.
+  // Each one is played silently just long enough for Instagram to load it, which is how its address is learned: the
+  // page plays voice messages from Instagram's CDN, so nothing here calls Instagram's API. Used to transcribe a lead's
+  // voice reply on this Mac.
+  if (action === 'voiceSources') {
+    const max = Math.max(1, Math.min(5, Number(arg?.max) || 3));
+    if (!window.__tvnPlayHook) {
+      const play = HTMLMediaElement.prototype.play;
+      window.__tvnSrcs = [];
+      HTMLMediaElement.prototype.play = function (...a) {
+        try {
+          this.muted = true;
+          this.volume = 0;
+          window.__tvnSrcs.push(this.currentSrc || this.src || '');
+        } catch {}
+        const p = play.apply(this, a);
+        setTimeout(() => {
+          try {
+            this.pause();
+          } catch {}
+        }, 150);
+        return p;
+      };
+      window.__tvnPlayHook = true;
+    }
+    const box = [...document.querySelectorAll('[role=textbox]')].filter(shown).pop();
+    let chat = document.body;
+    for (let el = box?.parentElement; el && el !== document.body; el = el.parentElement) {
+      if (el.getBoundingClientRect().height >= 250) {
+        chat = el;
+        break;
+      }
+    }
+    const cr = chat.getBoundingClientRect();
+    const theirs = [...chat.querySelectorAll('[aria-label="Play"]')]
+      .filter(shown)
+      .filter((el) => {
+        const b = el.getBoundingClientRect();
+        return b.left - cr.left < cr.right - b.right;
+      })
+      .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)
+      .slice(-max);
+    const sources = [];
+    for (const btn of theirs) {
+      const before = window.__tvnSrcs.length;
+      (btn.closest('[role=button], button') || btn).click();
+      const src = await waitFor(() => window.__tvnSrcs.length > before && window.__tvnSrcs[window.__tvnSrcs.length - 1], 4000);
+      document.querySelectorAll('audio, video').forEach((m) => {
+        try {
+          m.pause();
+        } catch {}
+      });
+      sources.push(/^https:/.test(src || '') ? src : '');
+      await sleep(300);
+    }
+    return { sources };
+  }
+
   // The open chat as a conversation, oldest first: who sent each message, its text, and whether it's a voice
   // message. The app sends exactly one voice note to a lead, so the first voice message in the chat is ours, and
   // every other message is placed against it: on the same side as our note is ours, the far side is theirs. That

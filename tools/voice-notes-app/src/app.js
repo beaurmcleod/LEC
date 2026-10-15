@@ -1812,7 +1812,7 @@ async function handleReply(p, text, history, { key = text, voiceOnly = false, ke
     if (foreign) (needsYou = true), (why = `${why ? `${why} ` : ''}The draft has a link that isn't ours.`);
     else if (draft.length > 1200) (needsYou = true), (why = `${why ? `${why} ` : ''}The draft is unusually long.`);
     else if (intent === 'unclear' && replies.hasSlots(draft)) (needsYou = true), (why = `${why ? `${why} ` : ''}The draft still has a code placeholder.`);
-    else if (intent === 'unclear' && (!/[a-z]{3,}/i.test(text) || /\[voice message\]/.test(text))) (needsYou = true), (why = `${why ? `${why} ` : ''}Not a written message Claude can be sure of (an emoji, a short word or a voice message).`);
+    else if (intent === 'unclear' && (!/[a-z]{3,}/i.test(text) || /\[voice message/.test(text))) (needsYou = true), (why = `${why ? `${why} ` : ''}Not a written message Claude can be sure of (an emoji, a short word, or a voice message, even one transcribed on this Mac).`);
   }
   Object.assign(p.reply, { intent, draft, why, needsYou });
   if (intent === 'no') {

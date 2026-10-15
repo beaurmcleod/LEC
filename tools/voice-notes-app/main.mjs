@@ -504,9 +504,59 @@ ipcMain.handle('dm:readChat', (_e, target = 'send', handle, names = [], anchorTe
       // The fullest read wins, and one that found our voice note beats one that didn't.
       if (r && better(r, best)) best = r;
     }
+    await transcribeTheirVoices(wc, best.messages).catch((e) => console.warn('voice transcription', e.message));
     return { state: 'ok', ...best };
   }),
 );
+
+// A lead who answers with a voice message: the ones after our last message are played silently in the chat to learn
+// their audio, downloaded in the Instagram session, and transcribed on this Mac with whisper (nothing leaves the Mac).
+// The words go in the message's text as "[voice message, transcribed] ...", so the reply is read like a written one.
+// Transcripts are kept by the clip's address, so a voice message is only ever transcribed once. If anything fails
+// the message stays a bare voice message and waits under Replies as before.
+const WHISPER = '/opt/homebrew/bin/whisper';
+const voiceCachePath = () => path.join(app.getPath('userData'), 'voice-transcripts.json');
+async function transcribeTheirVoices(wc, messages = []) {
+  let i = messages.length;
+  while (i > 0 && !messages[i - 1].mine) i--;
+  const todo = messages.slice(i).filter((m) => m.voice && !m.text);
+  if (!todo.length) return;
+  await fs.access(WHISPER);
+  const muted = wc.isAudioMuted();
+  wc.setAudioMuted(true);
+  let sources = [];
+  try {
+    sources = (await runDm(wc, 'voiceSources', { max: todo.length }))?.sources || [];
+  } finally {
+    wc.setAudioMuted(muted);
+  }
+  const cache = JSON.parse(await fs.readFile(voiceCachePath(), 'utf8').catch(() => '{}'));
+  if (!sources.length) return;
+  // The newest clips on their side belong to their newest voice messages.
+  for (const [k, m] of todo.slice(-sources.length).entries()) {
+    const src = sources[k];
+    if (!src) continue;
+    const id = new URL(src).pathname;
+    if (!cache[id]) {
+      const res = await wc.session.fetch(src);
+      if (!res.ok) throw new Error(`audio download answered ${res.status}`);
+      const tmp = await fs.mkdtemp(path.join(app.getPath('temp'), 'tvn-voice-'));
+      try {
+        const file = path.join(tmp, 'clip.mp4');
+        await fs.writeFile(file, Buffer.from(await res.arrayBuffer()));
+        await run(WHISPER, [file, '--model', 'small.en', '--language', 'en', '--output_format', 'txt', '--output_dir', tmp, '--fp16', 'False'], {
+          timeout: 180000,
+          env: { ...process.env, PATH: `/opt/homebrew/bin:/usr/bin:/bin:${process.env.PATH || ''}` },
+        });
+        cache[id] = (await fs.readFile(path.join(tmp, 'clip.txt'), 'utf8')).replace(/\s+/g, ' ').trim();
+      } finally {
+        await fs.rm(tmp, { recursive: true, force: true }).catch(() => {});
+      }
+      await fs.writeFile(voiceCachePath(), JSON.stringify(cache, null, 1)).catch(() => {});
+    }
+    if (cache[id]) m.text = `[voice message, transcribed] ${cache[id]}`;
+  }
+}
 
 // The inbox watcher: reads the inbox list in its own tab, without reloading it (Instagram keeps the list current
 // by itself), and reloads it only now and then or when it has wandered off. Returns the rows, see dmPage 'inboxScan'.
