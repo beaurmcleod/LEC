@@ -191,8 +191,9 @@ const GRAB = `(() => {
 
 // Runs inside Instagram for the Send button. Finds things by button text and accessible labels
 // rather than class names, since Instagram's markup changes often. 'dm' waits for a DM to be open;
-// the others return the point to click on the target, or null when it never shows up.
-async function igPage(action) {
+// the others return the point to click on the target, or null when it never shows up. With `opt.pageClick` the
+// target is clicked from the page instead (see openDm).
+async function igPage(action, opt = {}) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const shown = (el) => {
     const r = el.getBoundingClientRect();
@@ -241,9 +242,9 @@ async function igPage(action) {
   // What is being clicked and what is under the pointer there, for the record when a send doesn't go through.
   const say = (n) => `<${n.tagName.toLowerCase()}${n.getAttribute('role') ? ` role="${n.getAttribute('role')}"` : ''}${n.getAttribute('aria-label') ? ` aria-label="${n.getAttribute('aria-label')}"` : ''}> "${(n.innerText || '').trim().slice(0, 30)}"`;
   const what = `${say(target)} at ${Math.round(x)},${Math.round(y)}, under the pointer there: ${hit ? say(hit) : 'nothing'}`;
-  if (hit && target.contains(hit)) return { x, y, what };
+  if (hit && target.contains(hit) && !opt.pageClick) return { x, y, what };
   target.click();
-  return { clicked: true, what: `${what} (something covered it, so it was clicked from the page)` };
+  return { clicked: true, what: `${what} (${opt.pageClick ? 'the window was minimized or hidden' : 'something covered it'}, so it was clicked from the page)` };
 }
 
 // A real mouse click where possible, so Instagram sees the same events as a person clicking.
@@ -315,8 +316,8 @@ async function quietly(fn) {
 }
 
 // Returns a description of what was clicked, or '' when there was nothing to click.
-const igClick = async (wc, what) => {
-  const pt = await wc.executeJavaScript(`(${igPage})(${JSON.stringify(what)})`, true);
+const igClick = async (wc, what, opt = {}) => {
+  const pt = await wc.executeJavaScript(`(${igPage})(${JSON.stringify(what)}, ${JSON.stringify(opt)})`, true);
   return (await clickPoint(wc, pt)) ? pt.what || 'clicked' : '';
 };
 
@@ -337,7 +338,11 @@ async function openDm(wc, handle) {
   // open (a reply check reads theirs right before the answer goes out). That window can hide the Message button
   // and may not be theirs, so the profile is loaded fresh and their chat opened from it.
   if (!here || (await chatOpen(wc))) await wc.loadURL(`${IG_BASE}/${encodeURIComponent(handle)}/`).catch(() => {});
-  if (!(await igClick(wc, 'message'))) throw new Error("Couldn't find the Message button on their profile.");
+  // A minimized or hidden window draws nothing, so Instagram never gets the app's mouse click and the chat doesn't open
+  // (every reply check failed with "Their DM didn't open" while the window sat in the Dock). Then the button is clicked
+  // from the page, which opens the chat all the same.
+  const pageClick = !win || win.isMinimized() || !win.isVisible();
+  if (!(await igClick(wc, 'message', { pageClick }))) throw new Error("Couldn't find the Message button on their profile.");
   if (!(await wc.executeJavaScript(`(${igPage})('dm')`, true))) throw new Error("Their DM didn't open.");
 }
 

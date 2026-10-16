@@ -338,10 +338,26 @@ export async function dmPage(action, arg) {
     const count = (el) => el.querySelectorAll(`[aria-label^="${REACT}"]`).length;
     const noise = /^((seen|sent|delivered)( (just now|yesterday|today|\d+ ?(s|sec|secs|m|min|mins|h|hr|hrs|d|day|days|w|wk|wks)\.?( ago)?|(mon|tue|wed|thu|fri|sat|sun)[a-z]*( at \d{1,2}:\d{2} ?[ap]m)?|at \d{1,2}:\d{2} ?[ap]m))?|sending\.*|view transcription|reply|react|more|edited|\d{1,2}:\d{2}( ?[ap]m)?|\d+:\d{2}|(mon|tue|wed|thu|fri|sat|sun)[a-z]*,? (at )?\d{1,2}:\d{2} ?[ap]m|[a-z]{3} \d{1,2}, \d{4},? \d{1,2}:\d{2} ?[ap]m|(mon|tue|wed|thu|fri|sat|sun)[a-z]* \d{1,2}:\d{2} ?[ap]m|today|yesterday)$/i;
     const hover = '[aria-label^="React to message"], [aria-label="More"], [aria-label="Reply"], [aria-label="Copy"], [aria-label="Forward"], [role=textbox]';
-    const ownText = (el) => [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).filter(Boolean).join(' ');
+    // Instagram writes "Oct 6, 2026, 6:21 AM" with a narrow no-break space before AM, which the noise pattern missed,
+    // so date stamps were read as messages. Odd spaces are made plain ones first.
+    const plain = (t) => t.replace(/[\u00a0\u202f]/g, ' ');
+    const ownText = (el) => plain([...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).filter(Boolean).join(' '));
     // A voice message has a Play (or Pause) button, and a "View transcription" link under it.
     const isPlay = (el) => el.matches('[aria-label="Play"], [aria-label="Pause"]') || /^view transcription$/i.test(ownText(el));
     const sideOf = (b) => (cr.right - b.right < b.left - cr.left ? 'right' : 'left');
+    // The message bubble around a piece of text or a Play button (the nearest box with a fill and round corners), and
+    // which edge of the chat it hugs. In the small chat window over a profile, our voice note and their reply sit only
+    // 70px apart, so how far a message is from our note (below) said nothing; the bubble's edge does.
+    const edgeOf = (el) => {
+      for (let a = el, n = 0; a && a !== chat && n < 10; a = a.parentElement, n++) {
+        const b = a.getBoundingClientRect();
+        if (b.width > cr.width * 0.9) break;
+        if (b.width < 40) continue;
+        const cs = getComputedStyle(a);
+        if (parseFloat(cs.borderRadius) >= 8 && !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(cs.backgroundColor)) return sideOf(b);
+      }
+      return '';
+    };
     // Where a message's own content (its text and Play button) sits: the row also holds hover controls off to one side.
     const contentBox = (row) => {
       let l = Infinity;
@@ -371,11 +387,12 @@ export async function dmPage(action, arg) {
       seen.add(row);
       const who = label.getAttribute('aria-label').slice(REACT.length).trim();
       names.add(who);
-      const lines = (row.innerText || '').split('\n').map((l) => l.trim()).filter((l) => l && !noise.test(l) && l.toLowerCase() !== who.toLowerCase());
+      const lines = (row.innerText || '').split('\n').map((l) => plain(l).trim()).filter((l) => l && !noise.test(l) && l.toLowerCase() !== who.toLowerCase());
       const voice = !!row.querySelector('[aria-label="Play"], [aria-label="Pause"]') || /(^|\n)view transcription(\n|$)/i.test(row.innerText || '');
       const cb = contentBox(row);
       const theirsByName = !!lead && who.toLowerCase() === lead;
-      messages.push({ who, mine: theirsByName ? false : sideOf(cb) === 'right', text: lines.join('\n').slice(0, 2000), voice, top: row.getBoundingClientRect().top, cx: (cb.left + cb.right) / 2 });
+      const part = row.querySelector('[aria-label="Play"], [aria-label="Pause"]') || [...row.querySelectorAll('*')].find((el) => !el.closest(hover) && shown(el) && ownText(el) && !noise.test(ownText(el)));
+      messages.push({ who, mine: theirsByName ? false : sideOf(cb) === 'right', text: lines.join('\n').slice(0, 2000), voice, top: row.getBoundingClientRect().top, cx: (cb.left + cb.right) / 2, edge: part ? edgeOf(part) : '' });
     }
     // Text and Play buttons the labels didn't cover (Instagram may label only some messages, or none), read by
     // where they sit: below the conversation header, above the message box, and off to one side.
@@ -392,7 +409,7 @@ export async function dmPage(action, arg) {
       const b = el.getBoundingClientRect();
       const floor = box ? box.getBoundingClientRect().top - 8 : cr.bottom - 40;
       if (b.top < cr.top + 90 || b.top >= floor) continue;
-      items.push({ top: b.top, bottom: b.bottom, cx: (b.left + b.right) / 2, mine: sideOf(b) === 'right', text: play ? '' : t, voice: play });
+      items.push({ top: b.top, bottom: b.bottom, cx: (b.left + b.right) / 2, mine: sideOf(b) === 'right', text: play ? '' : t, voice: play, edge: edgeOf(el) });
     }
     items.sort((a, b) => a.top - b.top);
     const extras = [];
@@ -404,7 +421,7 @@ export async function dmPage(action, arg) {
       } else if (near && !prev.voice && !it.voice && it.top - prev.bottom < 24) {
         prev.text = `${prev.text}\n${it.text}`.slice(0, 2000);
         prev.bottom = it.bottom;
-      } else extras.push({ who: '', mine: it.mine, text: it.text, voice: it.voice, top: it.top, bottom: it.bottom, cx: it.cx });
+      } else extras.push({ who: '', mine: it.mine, text: it.text, voice: it.voice, top: it.top, bottom: it.bottom, cx: it.cx, edge: it.edge });
     }
     const all = messages.concat(extras).sort((a, b) => a.top - b.top);
     const via = extras.length ? (messages.length ? 'labels+layout' : 'layout') : 'labels';
@@ -423,7 +440,10 @@ export async function dmPage(action, arg) {
       all.forEach((m, i) => {
         if (i < first) return skipped++;
         if (i > first && !m.voice && known.has(norm(m.text))) return skipped++;
-        out.push({ ...m, mine: i === first ? true : textAnchor ? m.mine : Math.abs(m.cx - ours.cx) <= far });
+        // A message labeled as from them is theirs. Otherwise it's ours when its bubble hugs the same edge as our note's,
+        // and only without bubbles on both does distance from our note decide.
+        const same = m.edge && ours.edge ? m.edge === ours.edge : Math.abs(m.cx - ours.cx) <= far;
+        out.push({ ...m, mine: i === first ? true : !!lead && m.who.toLowerCase() === lead ? false : textAnchor ? m.mine : same });
       });
     }
     return {

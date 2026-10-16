@@ -261,9 +261,12 @@ export function talkPlan(rows, prospects, now = Date.now()) {
 // not seen before. The first look at a row that is read already just notes its message (old messages aren't
 // acted on), except a voice message from them: that one is read once anyway, since the app can now transcribe it
 // and answer, and a voice reply left waiting is a lead going cold. It's read on the look that first finds it, since
-// a row found by scrolling down the list (a deep look) isn't on the next, shallow one.
+// a row found by scrolling down the list (a deep look) isn't on the next, shallow one. A voice message the app has
+// no reply on record for is looked at again, at most every 2 hours: chats in the small window used to be misread,
+// with their reply taken for ours (CrossFit FLxR's), and such a row was then marked seen for good.
 // `now` is passed in so this stays testable.
 const VOICE_PREVIEW = /\bvoice message\b/i;
+const VOICE_RECHECK_MS = 2 * 60 * 60 * 1000;
 export function inboxPlan(rows, prospects, now = Date.now()) {
   const read = [];
   const note = [];
@@ -276,9 +279,11 @@ export function inboxPlan(rows, prospects, now = Date.now()) {
     if (row.last === 'ours' || !row.preview) continue;
     for (const p of leads) {
       const seen = p.inboxSeen;
-      if (seen && seen.preview === row.preview && !(seen.baseline && VOICE_PREVIEW.test(row.preview))) continue;
+      const voice = VOICE_PREVIEW.test(row.preview);
+      const unanswered = voice && !p.reply && !(p.replyCheckedAt && now - p.replyCheckedAt < VOICE_RECHECK_MS);
+      if (seen && seen.preview === row.preview && !(seen.baseline && voice) && !unanswered) continue;
       if (p.inboxTryAt && now - p.inboxTryAt < 5 * 60 * 1000 && p.inboxTryPreview === row.preview) continue;
-      if (row.unread || seen || VOICE_PREVIEW.test(row.preview)) read.push({ p, row });
+      if (row.unread || seen || voice) read.push({ p, row });
       else note.push({ p, row });
     }
   }
