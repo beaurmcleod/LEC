@@ -259,7 +259,9 @@ export function talkPlan(rows, prospects, now = Date.now()) {
 // From one look at the inbox: the sent leads whose chat should be read now, and what to remember so a message
 // is looked at once. A row is worth reading when its last message is theirs and it's unread, or it's a message
 // not seen before. The first look at a row that is read already just notes its message (old messages aren't
-// acted on). `now` is passed in so this stays testable.
+// acted on), except a voice message from them: that one is read once anyway, since the app can now transcribe it
+// and answer, and a voice reply left waiting is a lead going cold. `now` is passed in so this stays testable.
+const VOICE_PREVIEW = /\bvoice message\b/i;
 export function inboxPlan(rows, prospects, now = Date.now()) {
   const read = [];
   const note = [];
@@ -272,7 +274,7 @@ export function inboxPlan(rows, prospects, now = Date.now()) {
     if (row.last === 'ours' || !row.preview) continue;
     for (const p of leads) {
       const seen = p.inboxSeen;
-      if (seen && seen.preview === row.preview) continue;
+      if (seen && seen.preview === row.preview && !(seen.baseline && VOICE_PREVIEW.test(row.preview))) continue;
       if (p.inboxTryAt && now - p.inboxTryAt < 5 * 60 * 1000 && p.inboxTryPreview === row.preview) continue;
       if (row.unread || seen) read.push({ p, row });
       else note.push({ p, row });
