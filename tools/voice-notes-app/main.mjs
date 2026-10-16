@@ -579,10 +579,11 @@ const inboxTab = async () => {
   }
   return wc;
 };
-ipcMain.handle('dm:unreadScan', () =>
+// `deep` scrolls down the whole chat list (see dmPage), which takes up to a minute; a plain look takes a second.
+ipcMain.handle('dm:unreadScan', (_e, { deep = false } = {}) =>
   quietly(async () => {
     const wc = await inboxTab();
-    const r = await runDm(wc, 'inboxScan').catch((e) => ({ state: 'error', error: e.message, rows: [] }));
+    const r = await runDm(wc, 'inboxScan', { deep: !!deep }).catch((e) => ({ state: 'error', error: e.message, rows: [] }));
     if (r.state !== 'ok') inboxLoadedAt = 0; // load it fresh next time
     return r;
   }),

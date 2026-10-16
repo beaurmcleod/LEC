@@ -16,7 +16,7 @@ contextBridge.exposeInMainWorld('api', {
   checkLead: (target, handle) => ipcRenderer.invoke('dm:checkLead', target, handle),
   readChat: (target, handle, names, anchorText) => ipcRenderer.invoke('dm:readChat', target, handle, names, anchorText),
   chatReport: (target, handle, names) => ipcRenderer.invoke('dm:chatReport', target, handle, names),
-  unreadScan: () => ipcRenderer.invoke('dm:unreadScan'),
+  unreadScan: (opts) => ipcRenderer.invoke('dm:unreadScan', opts),
   inboxReport: () => ipcRenderer.invoke('dm:inboxReport'),
   notify: (m) => ipcRenderer.invoke('notify', m),
   notifyLog: () => ipcRenderer.invoke('notify:log'),

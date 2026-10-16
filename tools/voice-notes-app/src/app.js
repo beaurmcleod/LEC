@@ -1695,14 +1695,19 @@ async function clearFalseReply(p) {
 // ---------- The inbox watcher ----------
 // Every 30 seconds the hidden inbox tab is read for unread messages. One from a lead we sent a voice note to gets its
 // chat read right away (ahead of the slower sweep), so a reply is seen within about a minute of arriving.
+// Only the first screenful of chats is on the page, and every new cold message pushes older chats down, so a reply
+// that arrived while the app was closed or the Mac was asleep could sit below it for good (CrossFit FLxR's voice
+// message did). Every 30 minutes, at start and on "Check now", the look scrolls down the whole list instead.
+const DEEP_SCAN_MS = 30 * 60 * 1000;
 async function unreadScan({ manual = false } = {}) {
   const st = S.settings.replies;
   if (S.scanning || (!manual && !(st.watch && st.quick))) return;
   if (!S.prospects.some((p) => p.status === 'sent' && p.handle)) return;
   S.scanning = true;
-  const scan = { at: Date.now(), rows: 0, unread: 0, leads: 0, via: '', issue: '' };
+  const scan = { at: Date.now(), rows: 0, unread: 0, leads: 0, via: '', issue: '', deepAt: S.replies.scan?.deepAt || 0 };
   try {
-    const res = await window.api.unreadScan();
+    const res = await window.api.unreadScan({ deep: manual || Date.now() - scan.deepAt > DEEP_SCAN_MS });
+    if (res.deep) scan.deepAt = Date.now();
     scan.via = res.via || '';
     scan.rows = res.rows?.length || 0;
     if (res.state === 'loggedout') scan.issue = 'Instagram is logged out. Sign in on the right.';
@@ -1739,7 +1744,7 @@ function scanLine() {
   if (!S.settings.replies.quick) return 'Inbox watcher off (Setup).';
   if (!sc) return 'Inbox watcher starting...';
   if (sc.issue) return `Inbox watcher: ${sc.issue}. The chat-by-chat check still runs.`;
-  return `Inbox watcher: ${sc.rows} chat${sc.rows === 1 ? '' : 's'} in the inbox, ${sc.unread} unread${sc.leads ? `, ${sc.leads} from your leads` : ''} · checked ${ago(sc.at)}`;
+  return `Inbox watcher: ${sc.rows} chat${sc.rows === 1 ? '' : 's'} in the inbox, ${sc.unread} unread${sc.leads ? `, ${sc.leads} from your leads` : ''} · checked ${ago(sc.at)}${sc.deepAt ? ` · whole list read ${ago(sc.deepAt)}` : ''}`;
 }
 function paintScan() {
   const el = document.getElementById('scan-line');

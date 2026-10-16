@@ -54,29 +54,32 @@ export async function dmPage(action, arg) {
         .split('\n')
         .map((l) => l.trim())
         .filter(Boolean);
-    const found = [];
-    let via = 'links';
-    for (const a of document.querySelectorAll('a[href^="/direct/t/"]')) if (shown(a)) found.push({ el: a, href: a.getAttribute('href') });
-    if (!found.length) {
-      via = 'layout';
-      const seen = new Set();
-      for (const img of document.querySelectorAll('img, [role=img]')) {
-        if (!shown(img)) continue;
-        const b = img.getBoundingClientRect();
-        if (b.width < 28 || b.width > 90 || Math.abs(b.width - b.height) > 6 || b.left > innerWidth * 0.5) continue;
-        for (let a = img.parentElement; a && a !== document.body; a = a.parentElement) {
-          const r = a.getBoundingClientRect();
-          if (r.height > 130) break;
-          if (r.width >= 200 && linesOf(a).length >= 2) {
-            if (!seen.has(a)) {
-              seen.add(a);
-              found.push({ el: a, href: a.closest('a')?.getAttribute('href') || '' });
+    const findRows = () => {
+      const found = [];
+      let via = 'links';
+      for (const a of document.querySelectorAll('a[href^="/direct/t/"]')) if (shown(a)) found.push({ el: a, href: a.getAttribute('href') });
+      if (!found.length) {
+        via = 'layout';
+        const seen = new Set();
+        for (const img of document.querySelectorAll('img, [role=img]')) {
+          if (!shown(img)) continue;
+          const b = img.getBoundingClientRect();
+          if (b.width < 28 || b.width > 90 || Math.abs(b.width - b.height) > 6 || b.left > innerWidth * 0.5) continue;
+          for (let a = img.parentElement; a && a !== document.body; a = a.parentElement) {
+            const r = a.getBoundingClientRect();
+            if (r.height > 130) break;
+            if (r.width >= 200 && linesOf(a).length >= 2) {
+              if (!seen.has(a)) {
+                seen.add(a);
+                found.push({ el: a, href: a.closest('a')?.getAttribute('href') || '' });
+              }
+              break;
             }
-            break;
           }
         }
       }
-    }
+      return { found, via };
+    };
     const weight = (el, words) => {
       const leaf = [...el.querySelectorAll('*')].find((x) => shown(x) && x.children.length === 0 && (x.textContent || '').trim() && words.startsWith((x.textContent || '').trim().slice(0, 12)));
       return leaf ? parseInt(getComputedStyle(leaf).fontWeight, 10) || 400 : 0;
@@ -94,23 +97,53 @@ export async function dmPage(action, arg) {
       }
       return preview && weight(el, preview) >= 600 ? 'bold' : '';
     };
-    const rows = found
-      .map(({ el, href }) => {
-        const lines = linesOf(el);
-        const name = lines[0] || '';
-        const rest = lines.slice(1).filter((l) => !when.test(l));
-        // The preview often carries the time after a dot: "Hey send the details! · 2h".
-        const preview = rest.join(' ').replace(/\s*[·•]\s*(now|\d+\s*(s|m|h|d|w|min|mins|hr|hrs)|\d{1,2}:\d{2}\s*[ap]m|mon|tue|wed|thu|fri|sat|sun|yesterday)\s*$/i, '').trim();
-        return { name, preview, href: href || '', unread: unreadHow(el, preview), last: !preview ? '' : /^you\b/i.test(preview) ? 'ours' : 'theirs', top: Math.round(el.getBoundingClientRect().top), raw: lines.slice(0, 5) };
-      })
-      .filter((r) => r.name);
+    // Lines that aren't the name or the message: an "Active" status over the picture, and labels such as
+    // "• AI-generated profile". Left in, they became the name or the start of the preview, and our own voice note
+    // ("You sent a voice message.") read as theirs.
+    const label = /^(active(\s+(now|\d+\s*\w+\s+ago))?|•.*)$/i;
+    const rowOf = ({ el, href }) => {
+      const lines = linesOf(el).filter((l) => !label.test(l));
+      const name = lines[0] || '';
+      const rest = lines.slice(1).filter((l) => !when.test(l));
+      // The preview often carries the time after a dot: "Hey send the details! · 2h".
+      const preview = rest.join(' ').replace(/\s*[·•]\s*(now|\d+\s*(s|m|h|d|w|min|mins|hr|hrs)|\d{1,2}:\d{2}\s*[ap]m|mon|tue|wed|thu|fri|sat|sun|yesterday)\s*$/i, '').trim();
+      return { name, preview, href: href || '', unread: unreadHow(el, preview), last: !preview ? '' : /^you\b/i.test(preview) ? 'ours' : 'theirs', top: Math.round(el.getBoundingClientRect().top), raw: lines.slice(0, 5) };
+    };
+    const { found, via } = findRows();
+    let rows = found.map(rowOf).filter((r) => r.name);
+    // A deep look (`arg.deep`, now and then) scrolls down the chat list to load older chats too, so a reply that has
+    // slipped below the first screenful (a voice message from last week, under the chats opened since) is still seen.
+    // Instagram only keeps the rows near the scroll position on the page, so rows are gathered at every step.
+    let deep = false;
+    if (action === 'inboxScan' && arg?.deep && found.length) {
+      const key = (r) => r.href || `${r.name}|${r.preview}`;
+      const all = new Map(rows.map((r) => [key(r), r]));
+      let box = found[0].el.parentElement;
+      while (box && box !== document.body && !(box.scrollHeight > box.clientHeight + 20 && /(auto|scroll)/.test(getComputedStyle(box).overflowY))) box = box.parentElement;
+      if (box && box !== document.body) {
+        const max = Math.min(Number(arg.maxRows) || 250, 400);
+        // At the bottom Instagram may still be loading the next chats, so give it a few longer waits before stopping.
+        for (let i = 0, stuck = 0; i < 80 && all.size < max && stuck < 3; i++) {
+          const before = box.scrollTop;
+          const size = all.size;
+          box.scrollTop = before + Math.max(200, box.clientHeight * 0.8);
+          await sleep(stuck ? 1500 : 600);
+          for (const r of findRows().found.map(rowOf)) if (r.name && !all.has(key(r))) all.set(key(r), r);
+          stuck = box.scrollTop === before && all.size === size ? stuck + 1 : 0;
+        }
+        box.scrollTop = 0;
+        await sleep(300);
+        rows = [...all.values()];
+        deep = true;
+      }
+    }
     if (action === 'inboxReport') {
       const out = [`address ${location.pathname}`, `window ${innerWidth}x${innerHeight}`, `rows found by ${via}: ${rows.length}`, ''];
       for (const r of rows.slice(0, 25)) out.push(`  ${r.unread ? `UNREAD(${r.unread})` : 'read'} ${r.last || '?'} ${JSON.stringify(r.raw)}${r.href ? ` ${r.href}` : ''}`);
       if (!rows.length) out.push('text on the page:', (document.body.innerText || '').slice(0, 1500));
       return out.join('\n');
     }
-    return { state: rows.length ? 'ok' : 'unreadable', via, rows: rows.slice(0, 60).map(({ raw, ...r }) => r) };
+    return { state: rows.length ? 'ok' : 'unreadable', via, deep, rows: rows.slice(0, deep ? 400 : 60).map(({ raw, ...r }) => r) };
   }
 
   // A thread: the messages on screen, oldest first, each marked as ours (right side) or theirs (left side).
