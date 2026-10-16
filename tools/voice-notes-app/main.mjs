@@ -504,7 +504,8 @@ ipcMain.handle('dm:readChat', (_e, target = 'send', handle, names = [], anchorTe
       // The fullest read wins, and one that found our voice note beats one that didn't.
       if (r && better(r, best)) best = r;
     }
-    await transcribeTheirVoices(wc, best.messages).catch((e) => console.warn('voice transcription', e.message));
+    const voice = await transcribeTheirVoices(wc, best.messages).catch((e) => `failed: ${e.message}`);
+    if (voice) voiceLog(`@${handle}: ${voice} | chat: ${best.messages.map((m) => `${m.mine ? 'us' : 'them'}${m.voice ? ':voice' : ''}`).join(' ')}`);
     return { state: 'ok', ...best };
   }),
 );
@@ -516,11 +517,18 @@ ipcMain.handle('dm:readChat', (_e, target = 'send', handle, names = [], anchorTe
 // the message stays a bare voice message and waits under Replies as before.
 const WHISPER = '/opt/homebrew/bin/whisper';
 const voiceCachePath = () => path.join(app.getPath('userData'), 'voice-transcripts.json');
+// One line per chat with a voice message in it: what the transcriber did, and why not when it didn't. Kept short.
+async function voiceLog(line) {
+  const file = path.join(app.getPath('userData'), 'voice-log.txt');
+  const old = await fs.readFile(file, 'utf8').catch(() => '');
+  await fs.writeFile(file, `${old.split('\n').slice(-200).join('\n')}${new Date().toISOString()} ${line}\n`).catch(() => {});
+}
+// Returns what happened, for the log: nothing when the chat has no voice message at all.
 async function transcribeTheirVoices(wc, messages = []) {
   let i = messages.length;
   while (i > 0 && !messages[i - 1].mine) i--;
   const todo = messages.slice(i).filter((m) => m.voice && !m.text);
-  if (!todo.length) return;
+  if (!todo.length) return messages.some((m) => m.voice && !m.mine) ? 'no unanswered voice message from them' : '';
   await fs.access(WHISPER);
   const muted = wc.isAudioMuted();
   wc.setAudioMuted(true);
@@ -531,7 +539,8 @@ async function transcribeTheirVoices(wc, messages = []) {
     wc.setAudioMuted(muted);
   }
   const cache = JSON.parse(await fs.readFile(voiceCachePath(), 'utf8').catch(() => '{}'));
-  if (!sources.length) return;
+  if (!sources.length || !sources.some(Boolean)) return `${todo.length} to transcribe, but no audio found on their side of the chat (${sources.length} Play buttons)`;
+  let done = 0;
   // The newest clips on their side belong to their newest voice messages.
   for (const [k, m] of todo.slice(-sources.length).entries()) {
     const src = sources[k];
@@ -554,8 +563,9 @@ async function transcribeTheirVoices(wc, messages = []) {
       }
       await fs.writeFile(voiceCachePath(), JSON.stringify(cache, null, 1)).catch(() => {});
     }
-    if (cache[id]) m.text = `[voice message, transcribed] ${cache[id]}`;
+    if (cache[id]) (m.text = `[voice message, transcribed] ${cache[id]}`), done++;
   }
+  return `transcribed ${done} of ${todo.length}`;
 }
 
 // The inbox watcher: reads the inbox list in its own tab, without reloading it (Instagram keeps the list current
