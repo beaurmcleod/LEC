@@ -970,7 +970,9 @@ ipcMain.handle('airtable:sent', (_e, at, id) => leads.markSentAirtable(at, id));
 ipcMain.handle('tts', (_e, text, settings) => speak(text, settings));
 
 app.whenReady().then(async () => {
-  if (process.platform === 'darwin') await systemPreferences.askForMediaAccess('microphone').catch(() => {});
+  // Asked for, not waited on: a microphone prompt nobody answers (it came back after every ad-hoc rebuild) left the app with no
+  // window and nothing sending, twice on 2026-10-21. Sending doesn't need the real mic; recording a line does.
+  if (process.platform === 'darwin') systemPreferences.askForMediaAccess('microphone').catch(() => {});
   const onlyMedia = (_wc, permission, cb) => cb(permission === 'media');
   session.defaultSession.setPermissionRequestHandler(onlyMedia);
   session.fromPartition('persist:instagram').setPermissionRequestHandler(onlyMedia);
