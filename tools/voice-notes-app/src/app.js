@@ -357,6 +357,20 @@ const followedLongEnough = (p) => !S.settings.followGate || !p.airtableId || (!!
 // The holds only apply to leads still to do: a sent lead stays listed after it's followed.
 const shown = (p) => p.status !== 'todo' || (researched(p) && followedLongEnough(p));
 const todoList = () => S.prospects.filter((p) => p.status === 'todo' && shown(p));
+// Cold text DMs are written by Claude from the research, so they don't need the voice-note script fields that "Ready"
+// stands for: a Researched lead is enough. Until 2026-10-21 they used todoList(), which (with "Ready only" on) left
+// 2 Instagram leads out of 56 and the queue sat empty from 10-17.
+const OUTREACH_STATUSES = ['Ready', 'Researched'];
+// Who gets a cold DM first: people who already talk about training and supplements to an audience, then gyms and trainers,
+// then the rest. Yoga, Pilates and barre studios go last: 0 replies that went anywhere, and their clients are the least
+// likely to buy research peptides.
+const CATEGORY_RANK = { 'athlete / creator': 0, 'gym / crossfit': 1, 'personal trainer': 1, 'nutrition / coach': 2, 'recovery studio': 3, other: 3, 'yoga / pilates / barre': 5 };
+const categoryRank = (p) => CATEGORY_RANK[String(p.category || '').toLowerCase().replace(/\s*\/\s*/g, ' / ').trim()] ?? 4;
+const outreachList = () =>
+  S.prospects
+    .filter((p) => p.status === 'todo' && (!p.atStatus || OUTREACH_STATUSES.includes(p.atStatus)) && followedLongEnough(p))
+    .filter((x) => x.handle && !x.sendIssue && (!x.channel || x.channel === 'Instagram') && x.track !== 'Skip')
+    .sort((a, b) => categoryRank(a) - categoryRank(b));
 const newCount = () => todoList().filter((p) => p.isNew).length;
 
 function filtered() {
@@ -1161,17 +1175,31 @@ async function enqueueText(p) {
 let outreachBusy = false;
 async function outreachTick() {
   const o = S.settings.outreach;
-  if (!o?.on || outreachBusy || S.outreachAllowed === false) return;
+  // Why no cold DM is going out right now, in a few words, for the App status row in Airtable.
+  const idle = (why) => ((S.outreachWhy = why), undefined);
+  if (!o?.on) return idle('cold DMs are off in Setup');
+  if (S.outreachAllowed === false) return idle('cold DMs are blocked on this Mac');
+  if (outreachBusy) return;
   outreachBusy = true;
   try {
-    if (S.bg.current || S.bg.jobs.some(isVoiceJob) || S.sending || S.rec || S.bg.failPause > Date.now()) return;
+    if (S.bg.current || S.bg.jobs.some(isVoiceJob) || S.sending || S.rec) return idle('');
+    if (S.bg.failPause > Date.now()) return idle(`paused after 3 failed sends until ${pacificTime(S.bg.failPause)}`);
     // It needs Claude to write each message (a plain one for everybody would look like spam), and respects "send for me" being off.
-    if (!S.settings.claude.key || !S.settings.autoSend) return;
+    if (!S.settings.claude.key) return idle('no Claude key in Setup');
+    if (!S.settings.autoSend) return idle('"Send the voice note for me" is off');
     const sentRecently = S.prospects.filter((x) => x.status === 'sent' && x.sendMode === 'text' && x.sentAt > Date.now() - 26 * 3600e3).length;
-    if (sentRecently >= Math.max(0, Number(o.perDay) || 0)) return;
-    if (Date.now() < (S.outreachNextAt || 0) || !voiceGate().ok) return;
-    const p = todoList().find((x) => x.handle && !x.sendIssue && (!x.channel || x.channel === 'Instagram') && x.track !== 'Skip');
-    if (!p) return;
+    if (sentRecently >= Math.max(0, Number(o.perDay) || 0)) return idle(`today's ${o.perDay} cold DMs are sent`);
+    if (Date.now() < (S.outreachNextAt || 0)) return idle(`next cold DM at ${pacificTime(S.outreachNextAt)}`);
+    const g = voiceGate();
+    if (!g.ok) return idle(`waiting: ${limits.reasonText(g, 'dm')}`);
+    const p = outreachList()[0];
+    if (!p) {
+      const todo = S.prospects.filter((x) => x.status === 'todo' && x.handle);
+      const unfollowed = todo.filter((x) => !followedLongEnough(x)).length;
+      const failed = todo.filter((x) => x.sendIssue).length;
+      return idle(`no lead to DM (${todo.length} to do: ${unfollowed} waiting a day after the follow, ${failed} with a failed send)`);
+    }
+    idle('');
     S.outreachNextAt = Date.now() + (capsNow().dmGapMs || 0) * (1 + Math.random() * 0.5);
     await enqueueText(p);
     refreshQuietly();
@@ -1816,6 +1844,7 @@ async function handleReply(p, text, history, { key = text, voiceOnly = false, ke
     const foreign = (draft.match(/https?:\/\/[^\s)>\]]+/gi) || []).some((u) => { try { return new URL(u).host.replace(/^www\./, '') !== siteHost; } catch { return true; } });
     if (foreign) (needsYou = true), (why = `${why ? `${why} ` : ''}The draft has a link that isn't ours.`);
     else if (draft.length > 1200) (needsYou = true), (why = `${why ? `${why} ` : ''}The draft is unusually long.`);
+    else if (replies.unbackedClaim(draft)) (needsYou = true), (why = `${why ? `${why} ` : ''}The draft makes a testing claim we can't back (third-party, independent or every batch).`);
     else if (intent === 'unclear' && replies.hasSlots(draft)) (needsYou = true), (why = `${why ? `${why} ` : ''}The draft still has a code placeholder.`);
     else if (intent === 'unclear' && (!/[a-z]{3,}/i.test(text) || /\[voice message/.test(text))) (needsYou = true), (why = `${why ? `${why} ` : ''}Not a written message Claude can be sure of (an emoji, a short word, or a voice message, even one transcribed on this Mac).`);
   }
@@ -1875,7 +1904,7 @@ async function sendReplyNow(p, { text, withCode = false, scheduled = false }) {
     // Right before an auto-reply goes out, look at the chat again: if you answered them yourself, it's dropped;
     // if they wrote more, the answer is written again with everything they said.
     const chat = await window.api.readChat('send', p.handle, replies.leadNames(p), p.dmText).catch(() => null);
-    if (chat?.state === 'ok' && chat.anchored && chat.messages?.length) {
+    if (!p.reply?.outboxKey && chat?.state === 'ok' && chat.anchored && chat.messages?.length) {
       const got = theirLatest(chat.messages);
       if (!got.theirs.length) {
         Object.assign(p.reply, { pending: false, auto: false, dismissed: true, note: 'You answered them in the chat, so the auto-reply was dropped.' });
@@ -1891,7 +1920,7 @@ async function sendReplyNow(p, { text, withCode = false, scheduled = false }) {
     // Held for you while the chat was being read, or too old to send unseen, or an unclear answer that couldn't be checked against the chat.
     if (!(p.reply?.pending && p.reply.auto)) return done();
     const stale = Date.now() - (p.reply.at || 0) > 12 * 3600 * 1000;
-    const unchecked = p.reply.intent === 'unclear' && !(chat?.state === 'ok' && chat.anchored);
+    const unchecked = (p.reply.intent === 'unclear' || !!p.reply.outboxKey) && !(chat?.state === 'ok' && chat.anchored);
     if (stale || unchecked) {
       p.reply = { ...p.reply, auto: false, issue: stale ? 'This answer waited more than 12 hours, so it is a draft for you now.' : "The chat couldn't be checked just before sending, so this answer is a draft for you." };
       await airtableReply(p, { [RF.handled]: false });
@@ -1957,7 +1986,7 @@ async function heartbeat() {
       'Sent today': sentToday(),
       Queued: S.bg.jobs.filter(isVoiceJob).length,
       'Auto-reply': S.settings.replies.auto ? 'On' : 'Off',
-      Note: [S.settings.outreach?.on ? 'Cold DMs on' : 'Cold DMs off', S.replies.issue || S.replies.note || ''].filter(Boolean).join(' · ').slice(0, 500),
+      Note: [S.settings.outreach?.on ? 'Cold DMs on' : 'Cold DMs off', S.outreachWhy ? `Cold DMs: ${S.outreachWhy}` : '', `${outreachList().length} leads ready for a cold DM`, S.replies.issue || S.replies.note || ''].filter(Boolean).join(' · ').slice(0, 500),
     });
   } catch (e) {
     console.warn('heartbeat', e.message);
@@ -1988,6 +2017,12 @@ async function outboxPoll() {
       if (p.reply?.pending && p.reply.auto) continue; // an answer already goes out on its own: don't change it underneath
       p.outboxSeen = key;
       const prev = p.reply;
+      // Beau, 2026-10-21: "its your job to reply to people". With Auto-reply on, a reply Claude wrote into the Outbox goes
+      // out on its own after the usual delay, like any auto-reply; with it off, it waits for a click as before. A draft that
+      // still has a code placeholder, a link that isn't ours or a testing claim we can't back waits for a person.
+      const delay = Math.max(0, Number(S.settings.replies.delayMin) || 0) * 60 * 1000;
+      const draftOk = !replies.hasSlots(row.outbox) && !/https?:\/\/(?!(www\.)?torreylabs\.store)/i.test(row.outbox) && !replies.unbackedClaim(row.outbox);
+      const autoOut = !!S.settings.replies.auto && draftOk;
       p.reply = {
         key,
         text: prev?.text || row.lastReply || '(No new message from them: this reply was written from Airtable.)',
@@ -1996,9 +2031,10 @@ async function outboxPoll() {
         pending: true,
         intent: '',
         draft: row.outbox,
-        why: 'Written by Claude from Airtable. Read it, edit it if you like, and press Send.',
+        why: autoOut ? 'Written by Claude from Airtable. It goes out on its own (Auto-reply is on).' : draftOk ? 'Written by Claude from Airtable. Read it, edit it if you like, and press Send.' : 'Written by Claude from Airtable, held for you: it has a placeholder, an outside link or a testing claim we can\'t back.',
         issue: '',
-        auto: false,
+        auto: autoOut,
+        sendAt: autoOut ? Date.now() + delay + Math.round(delay * Math.random() * 0.2) : null,
         outboxKey: key,
       };
       await airtableExtra(p, { 'Outbox status': 'In app' });
@@ -2022,6 +2058,40 @@ async function outboxPoll() {
 }
 
 const pendingReplies = () => S.prospects.filter((p) => p.reply?.pending);
+
+// Every 10 minutes: drafts still waiting here whose lead Airtable already shows as handled (Reply handled ticked, or a
+// status that settles it) are cleared, so "Replies waiting" in App status means someone really is waiting. An answer that
+// is about to go out on its own is left alone.
+const SETTLED = ['Not interested', 'Code sent', 'Ordered', 'Skip'];
+let settleBusy = false;
+async function settleReplies() {
+  const at = S.settings.airtable;
+  if (settleBusy || !at.token) return;
+  const waiting = pendingReplies().filter((p) => p.airtableId && !p.reply.auto && Date.now() - (p.reply.at || 0) > 30 * 60 * 1000);
+  if (!waiting.length) return;
+  settleBusy = true;
+  try {
+    const { found, missing } = await window.api.pullAirtableByIds(at, waiting.map((p) => p.airtableId));
+    let cleared = 0;
+    for (const p of waiting) {
+      const row = found.find((f) => f.airtableId === p.airtableId);
+      const handledAfter = row && row.replyHandled === 'true' && (!row.replyAt || Date.parse(row.replyAt) >= (p.reply.at || 0) - 60 * 1000);
+      if (missing.includes(p.airtableId) || handledAfter || (row && SETTLED.includes(row.atStatus))) {
+        Object.assign(p.reply, { pending: false, auto: false, dismissed: true, note: row ? `Airtable has this one as handled (${row.atStatus || 'Reply handled'}), so it left Replies.` : 'The lead was deleted from Airtable.' });
+        cleared++;
+      }
+    }
+    if (cleared) {
+      await saveProspects();
+      qlog('ignored', `${cleared} reply draft${cleared === 1 ? '' : 's'} already handled in Airtable: cleared from Replies`);
+      refreshQuietly();
+    }
+  } catch (e) {
+    console.warn('settleReplies', e);
+  } finally {
+    settleBusy = false;
+  }
+}
 
 // Updates the screen after a background change, unless that would interrupt recording or typing.
 function refreshQuietly() {
@@ -5010,6 +5080,9 @@ document.addEventListener('keydown', (e) => {
   // Cold DMs: the next lead, when the limits allow.
   setTimeout(() => outreachTick(), S.fast ? 3500 : 45 * 1000);
   setInterval(() => outreachTick(), S.fast ? 2500 : 60 * 1000);
+  // Drafts already handled in Airtable leave Replies.
+  setTimeout(() => settleReplies(), 2 * 60 * 1000);
+  setInterval(() => settleReplies(), 10 * 60 * 1000);
   // Alive signal for Airtable, every 5 minutes.
   setTimeout(() => heartbeat(), S.fast ? 3000 : 30 * 1000);
   setInterval(() => heartbeat(), S.fast ? 3000 : 5 * 60 * 1000);

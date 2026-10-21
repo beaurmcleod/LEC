@@ -89,8 +89,8 @@ export function fallbackMessage(p, { code, invite, link, from = 'Garrett', perce
   const fit = offer ? `, and your ${offer} community feels like a great fit` : ', and this feels like a great fit';
   return [
     email ? `Hi ${name || 'there'},` : '',
-    `Definitely${name ? `, ${name}` : ''}! We're Torrey Labs, a San Diego research-peptide company. We're making lab-tested peptides more accessible and more affordable, with third-party testing on every batch. We're partnering with small businesses like ${biz || 'yours'}${fit}.`,
-    `How it works: you share a simple code. Anyone who uses it gets ${percent}% off their first order, and you earn ${percent}% on every order they place, for life. Take it as cash, or as store credit worth 25% more.`,
+    `Definitely${name ? `, ${name}` : ''}! We're Torrey Labs, a San Diego research-peptide company. Prices are listed per vial at torreylabs.store with no account needed, and we publish our lab reports by lot number. We're partnering with small businesses like ${biz || 'yours'}${fit}.`,
+    `How it works: you share a simple code. Anyone who uses it gets ${percent}% off their first order, and you earn ${percent}% on every order they place, for life, rising to 30% once 10 of your people have ordered. Take it as cash, or as store credit worth 25% more.`,
     `I made you a code: ${code}\n1) Open ${invite} to set up your portal (the code's already on it)\n2) Share ${link} or tell people to use ${code}`,
     email
       ? `We also offer in-person delivery on larger orders, or pickup. Everything is for research use only. Any questions at any point, just ask!\n\n${from}\nTorrey Labs`
@@ -166,9 +166,9 @@ export function replyPrompt(p, { text, history = [], from = 'Garrett', percent =
   const convo = history.length ? `Earlier messages in the thread (newest last):\n${history.map((m) => `${m.mine ? from : 'Them'}: ${m.text}`).join('\n')}` : '';
   return {
     system: `You are ${from}, who runs Torrey Labs, a small San Diego research-peptide company. ${email ? `You emailed this person about partnering, and they just replied by email. Write a short, warm email in plain text, the way ${from} writes: plain words, no hype, no emojis, no subject line. Start with a greeting line ("Hi <first name>," or "Hi there,") and end with the sign-off.` : `${p.dmText ? 'You sent this person a short Instagram text DM about our peptides and our affiliate program' : 'You sent this person a short Instagram voice note about partnering'}, and they just wrote back. Write the way ${from} texts: warm, quick, plain words, no hype, no emojis, no subject line.`} Never invent facts about Torrey Labs beyond these:
-- Torrey Labs is a San Diego company making research peptides more accessible and more affordable. Every batch is third-party tested, and every product has an independent lab report, published by lot number, that anyone can read at ${site} without an account.
+- Torrey Labs is a San Diego company making research peptides more accessible and more affordable. Lab reports (tested by Lotmark Labs) are published by lot number at ${site}/lab-reports, readable without an account. Not every product has a current report yet: some say "report pending". Never say every batch or every product is tested, and never call the testing "independent" or "third-party".
 - The store at ${site} is open to everyone: no access code is needed, and the prices are listed there. We also run a competitive affiliate program for small businesses and creators.
-- Partner deal: they get a simple code. Anyone who uses it gets ${percent}% off their first order, and the partner earns ${percent}% of everything that customer orders, for life, on the item subtotal. They can take it as cash (paid after 14 days) or as store credit, which is worth 25% more.
+- Partner deal: they get a simple code. Anyone who uses it gets ${percent}% off their first order, and the partner earns ${percent}% of everything that customer orders, for life, on the item subtotal, rising to 30% on every order once 10 of their customers have paid. They can take it as cash (paid after 14 days) or as store credit, which is worth 25% more.
 - Their partner portal shows their link, a QR code, every referral, and payouts. They sign up with their email at the invite link and their code is already set.
 - We offer in-person delivery in San Diego on orders over a certain amount, or pickup. Don't quote the amount.
 - Products are for laboratory research use only, not for human or animal use, and nothing is medical advice. Never make health, weight-loss, recovery or performance claims about the products. If they ask about dosing, effects, or use on people, say plainly that you can't advise on that and point them to the published lab reports.
@@ -184,8 +184,8 @@ First decide what their reply means:
 Then write the reply. Make it personal: use their first name if you have it, name their business, and say one specific thing they offer, taken only from the lead facts above (never guess one). If none is given, keep it general rather than inventing it.
 
 For "yes", write it in this shape, in your own natural words, about 110 to 140 words, with blank lines between the parts:
-1. "Definitely, <first name>!" then give the store link ${site} and say the prices are listed there and no code is needed to order. Then who we are in one sentence (Torrey Labs, San Diego, research peptides, more accessible and more affordable, third-party tested on every batch), then that we're partnering with small businesses like <their business> and why their <what they offer> community is a good fit.
-2. How it works: they share a simple code; anyone who uses it gets ${percent}% off their first order; they earn ${percent}% on every order, for life; cash or store credit worth 25% more.
+1. "Definitely, <first name>!" then give the store link ${site} and say the prices are listed there and no code is needed to order. Then who we are in one sentence (Torrey Labs, San Diego, research peptides, lab reports published by lot number), then that we're partnering with small businesses like <their business> and why their <what they offer> community is a good fit.
+2. How it works: they share a simple code; anyone who uses it gets ${percent}% off their first order; they earn ${percent}% on every order, for life, rising to 30% after 10 customers; cash or store credit worth 25% more.
 3. "I made you a code: ${code}" followed by two numbered steps: 1) open ${invite} to set up your portal (the code's already on it) 2) share ${link} or tell people to use ${code}.
 4. One line: in-person delivery on larger orders, or pickup; everything is for research use only; any questions at any point, just ask. Sign off ${signoff}.
 
@@ -319,16 +319,17 @@ export function coldDmPrompt(p, { from = 'Garrett', extraFacts = '' } = {}) {
     p.bio ? `Their Instagram bio: ${clip(p.bio, 300)}` : '',
   ].filter(Boolean);
   return {
-    system: `You are ${from}, who runs Torrey Labs, a small San Diego research-peptide company. Write the first Instagram DM to this person, the way ${from} texts: warm, quick, plain words, no hype, no emojis.
+    system: `You are ${from}, who runs Torrey Labs, a small San Diego research-peptide company. Write the first Instagram DM to this person, the way ${from} texts: warm, quick, plain words, no hype, no emojis. It is a cold message to a stranger, so it has to earn a reply in the first line and be easy to answer.
 
 The message must:
-- be 2 or 3 short sentences, 45 words at most;
-- open with ONE specific, true thing about them taken only from the lead facts below (never invent one; if there is nothing usable, just greet them by first name, or say "Hey!" if the name is not known). Do not copy their bio back at them;
+- be 2 or 3 short sentences, 50 words at most;
+- open with ONE specific, true thing about them taken only from the lead facts below (never invent one; if there is nothing usable, just greet them by first name, or say "Hey!" if the name is not known). Do not copy their bio back at them, and don't flatter;
 - say who you are in a few words: "I'm ${from}, I run Torrey Labs, a San Diego research-peptide company";
-- say that we have high quality peptides at competitive prices, that the store is open, and that we have a competitive affiliate program (they earn when their people order);
-- end with one yes/no question, like "Want me to send the link?";
+- give ONE concrete reason we're different, from these true facts only: prices are listed per vial on our store with no account needed; we publish our lab reports by lot number so anyone can check what they're buying. Never say "high quality", "best", "premium", "competitive prices", "third-party", "independent" or that every batch is tested;
+- mention the partner program in one plain clause with its real numbers: their people get 20% off a first order and they earn 20% of every order those people place, for life;
+- end with ONE short yes/no question that is easy to answer, like "Worth me sending the details?" or "Want the link?";
 - contain NO link or web address, and no phone number or email;
-- make no health, weight-loss, recovery or performance claims, and never say anything is for human use;
+- make no health, weight-loss, recovery or performance claims, never name a drug brand, and never say anything is for human use;
 - never mention that you are an AI, and never pretend to have met them.${String(extraFacts || '').trim() ? `\n\nMore facts from ${from} (true; you may use them):\n${clip(String(extraFacts).trim(), 1500)}` : ''}`,
     user: lines.join('\n'),
     schema: {
@@ -349,7 +350,7 @@ export function coldDmFallback(p, { from = 'Garrett' } = {}) {
   // Only a plain first name: no "N/A", titles, initials or shouting.
   if (!/^[A-Za-z][A-Za-z'’-]{1,19}$/.test(first) || /^(n\/?a|none|null|unknown|owner|team|dr|mr|mrs|ms)$/i.test(first)) first = '';
   else if (first === first.toUpperCase() || first === first.toLowerCase()) first = first[0].toUpperCase() + first.slice(1).toLowerCase();
-  return `Hey${first ? ` ${first}` : ''}! I'm ${from}, I run Torrey Labs, a San Diego research-peptide company. We have high quality peptides at competitive prices, the store is open, and we have a competitive affiliate program. Want me to send the link?`;
+  return `Hey${first ? ` ${first}` : ''}! I'm ${from}, I run Torrey Labs, a San Diego research-peptide company. Our prices are listed per vial and we publish our lab reports by lot number. We also pay partners 20% of every order their people place, for life. Worth me sending the details?`;
 }
 
 // A written DM only goes out if it passes this: a real length, who we are, a question, and nothing that looks like a link.
@@ -360,5 +361,9 @@ export function coldDmOk(text) {
   if (!/torrey labs/i.test(t)) return false;
   if (!/\?["'”’)\s]*$/.test(t)) return false;
   if (/\b(cure[sd]?|treat|treats|treatment|heal|heals|healing|dose|dosing|dosage|weight.?loss|lose weight|fat.?loss|anti.?aging|semaglutide|tirzepatide|glp.?1|inject|injection)\b/i.test(t)) return false;
+  if (unbackedClaim(t)) return false;
   return true;
 }
+
+// Claims about testing we can't back: not every lot has a report yet, and the lab isn't described as independent.
+export const unbackedClaim = (text) => /\b(third.?party|independent(ly)?(\s+lab)?\s*(tested|testing|lab|verified)|every (batch|lot|product) is tested|tested on every (batch|lot))\b/i.test(String(text || ''));
