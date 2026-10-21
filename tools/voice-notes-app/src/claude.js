@@ -62,7 +62,8 @@ export async function draftText(key, rawPrompt) {
   try {
     res = await c.messages.create({
       model: MODEL,
-      max_tokens: 600,
+      // 600 was too few: the thinking used them up and the answer came back cut off (both cold DMs on 2026-10-21).
+      max_tokens: 2000,
       system: prompt.system,
       messages: [{ role: 'user', content: prompt.user }],
       output_config: { effort: 'medium', format: { type: 'json_schema', schema: prompt.schema } },
@@ -70,14 +71,16 @@ export async function draftText(key, rawPrompt) {
   } catch (e) {
     throw new Error(plainError(e));
   }
+  if (res.stop_reason === 'refusal') throw new Error('Claude declined to write this DM.');
   const text = res.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+  const shape = () => new Error(`Claude's answer wasn't in the expected shape (stop: ${res.stop_reason}, ${text.length} characters).`);
   let out;
   try {
     out = JSON.parse(text);
   } catch {
-    throw new Error("Claude's answer wasn't in the expected shape.");
+    throw shape();
   }
-  if (typeof out.message !== 'string') throw new Error("Claude's answer wasn't in the expected shape.");
+  if (typeof out.message !== 'string') throw shape();
   return { message: out.message.trim(), detail: String(out.detail || '') };
 }
 

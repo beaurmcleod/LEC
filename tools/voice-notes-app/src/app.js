@@ -1125,13 +1125,19 @@ async function composeColdDm(p) {
   if (st.claude.key) {
     try {
       const d = await window.api.composeDm(st.claude.key, replies.coldDmPrompt(p, { from, extraFacts: st.replies.facts }));
-      const msg = String(d.message || '').replace(/\s+/g, ' ').trim();
-      if (replies.coldDmOk(msg)) return msg;
-      qlog('ignored', `@${p.handle}: Claude's DM didn't pass the checks, so the plain one was used`);
+      const msg = replies.stripSignOff(d.message);
+      const why = replies.coldDmWhy(msg);
+      if (!why) {
+        p.dmWhy = 'written by Claude';
+        return msg;
+      }
+      p.dmWhy = `Claude draft failed check: ${why}: "${msg.slice(0, 120)}"`;
+      qlog('ignored', `@${p.handle}: Claude's DM didn't pass the checks (${why}), so the plain one was used`);
     } catch (e) {
+      p.dmWhy = `Claude error: ${errText(e)}`;
       qlog('ignored', `@${p.handle}: couldn't ask Claude (${errText(e)}), so the plain one was used`);
     }
-  }
+  } else p.dmWhy = 'no Claude key, plain message';
   return replies.coldDmFallback(p, { from });
 }
 
@@ -1157,7 +1163,7 @@ async function sendTextDm(p, cur) {
   cur.text = 'Sending the message...';
   paintQueue();
   const r = await window.api.dmSend({ href: p.dm?.href, handle: p.handle, text });
-  await logSend(p, `Text DM to @${p.handle}: ${r?.state === 'sent' ? 'SENT' : "SENT (Instagram didn't confirm it; check the thread)"}\n${new Date().toLocaleString()} · build ${S.build?.commit || 'dev'}\n\n${text}`);
+  await logSend(p, `Text DM to @${p.handle}: ${r?.state === 'sent' ? 'SENT' : "SENT (Instagram didn't confirm it; check the thread)"}\n${new Date().toLocaleString()} · build ${S.build?.commit || 'dev'}\nMessage: ${p.dmWhy || 'written by Claude'}\n\n${text}`);
   return '';
 }
 

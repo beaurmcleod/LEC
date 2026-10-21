@@ -353,17 +353,26 @@ export function coldDmFallback(p, { from = 'Garrett' } = {}) {
   return `Hey${first ? ` ${first}` : ''}! I'm ${from}, I run Torrey Labs, a San Diego research-peptide company. Our prices are listed per vial and we publish our lab reports by lot number. We also pay partners 20% of every order their people place, for life. Worth me sending the details?`;
 }
 
-// A written DM only goes out if it passes this: a real length, who we are, a question, and nothing that looks like a link.
-export function coldDmOk(text) {
-  const t = String(text || '').replace(/\s+/g, ' ').trim();
-  if (t.length < 60 || t.length > 420) return false;
-  if (/https?:|www\.|\b[a-z0-9-]{2,}\.(com|store|net|org|io|co|me|shop|app|ai|us|link|ly|ee|to|bio|info|biz|xyz|site|online)\b|bit\.ly|linktr|@\w+\.\w+|(\d[\s.()-]*){10,}/i.test(t)) return false;
-  if (!/torrey labs/i.test(t)) return false;
-  if (!/\?["'”’)\s]*$/.test(t)) return false;
-  if (/\b(cure[sd]?|treat|treats|treatment|heal|heals|healing|dose|dosing|dosage|weight.?loss|lose weight|fat.?loss|anti.?aging|semaglutide|tirzepatide|glp.?1|inject|injection)\b/i.test(t)) return false;
-  if (unbackedClaim(t)) return false;
-  return true;
+// A trailing sign-off ("– Garrett", "- Garrett", "—Garrett") is dropped: the DM comes from Garrett's account anyway, and it
+// would hide the question at the end.
+export const stripSignOff = (text) => String(text || '').replace(/\s+/g, ' ').trim().replace(/\s*[–—-]\s*[A-Z][a-z]+\s*$/, '').trim();
+
+// Why a written DM can't go out, in a few words, or '' when it can: a real length, who we are, a question, and nothing that
+// looks like a link.
+export function coldDmWhy(text) {
+  const t = stripSignOff(text);
+  if (t.length < 60) return 'too short';
+  if (t.length > 420) return 'too long';
+  if (/https?:|www\.|\b[a-z0-9-]{2,}\.(com|store|net|org|io|co|me|shop|app|ai|us|link|ly|ee|to|bio|info|biz|xyz|site|online)\b|bit\.ly|linktr|@\w+\.\w+|(\d[\s.()-]*){10,}/i.test(t)) return 'has a link or phone number';
+  if (!/torrey labs/i.test(t)) return 'no "Torrey Labs"';
+  if (!/\?["'”’)\s]*$/.test(t)) return 'does not end with a question';
+  const banned = t.match(/\b(cure[sd]?|treat|treats|treatment|heal|heals|healing|dose|dosing|dosage|weight.?loss|lose weight|fat.?loss|anti.?aging|semaglutide|tirzepatide|glp.?1|inject|injection)\b/i);
+  if (banned) return `banned word: ${banned[0]}`;
+  if (unbackedClaim(t)) return 'testing claim';
+  return '';
 }
+
+export const coldDmOk = (text) => !coldDmWhy(text);
 
 // Claims about testing we can't back: not every lot has a report yet, and the lab isn't described as independent.
 export const unbackedClaim = (text) => /\b(third.?party|independent(ly)?(\s+lab)?\s*(tested|testing|lab|verified)|every (batch|lot|product) is tested|tested on every (batch|lot))\b/i.test(String(text || ''));
