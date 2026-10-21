@@ -602,3 +602,11 @@ export class MicRecorder {
     return decodeToMono(await blob.arrayBuffer());
   }
 }
+
+// Fades only the start in (a copy), for a clip that begins mid-recording.
+export function fadeIn(s, fadeMs = 30) {
+  const out = s.slice();
+  const n = Math.min(ms(fadeMs), out.length);
+  for (let i = 0; i < n; i++) out[i] *= (i / n) ** 2;
+  return out;
+}

@@ -102,6 +102,14 @@ const DEFAULT_SETTINGS = {
   // working when the window is closed (Mac) and keep the Mac awake.
   // Cold DMs: a personalized text DM to the next lead, on its own, within the daily limits.
   outreach: { on: true, perDay: 20 },
+  // Same voice note for everyone: only the recorded-once parts (the pitch), no per-lead intro, so every lead is ready to send
+  // without recording anything. trimStart cuts the start of the pitch when it's built: ms to cut, and `len`, the length in
+  // seconds of the recording the cut was measured on (a new recording isn't cut until the cut is set again). The stored
+  // recording is never changed. 6.1 s drops the pitch's first sentence ("I like to send these personalized voice notes...
+  // this isn't any sort of automated DM or copy-and-paste type deal"), which isn't true of one note sent to everyone, so the
+  // note starts at "I'm Garrett with Torrey Labs".
+  sameNote: true,
+  trimStart: { ms: 6100, len: 34.24 },
   replies: { watch: true, everyMin: 10, from: 'Garrett', auto: true, delayMin: 4, quick: true, notify: true, background: true, facts: '' },
   // Replies to emailed leads: answered from Garrett's mailbox with a Gmail app password. auto stays off until you've watched
   // a few go out; with it off, every answer waits under Replies for you to press Send.
@@ -212,6 +220,22 @@ const fixedKey = (seg) => `fixed:${seg.id}`;
 const slotKey = (p, seg) => `slot:${p.id}:${seg.id}`;
 const partKey = (p, seg) => (seg.kind === 'fixed' ? fixedKey(seg) : slotKey(p, seg));
 const slots = () => S.template.filter((s) => s.kind === 'slot');
+const sameNote = () => S.settings?.sameNote !== false;
+// The parts a lead's voice note is built from: everything, or only the recorded-once parts with the same note for everyone.
+const noteSegs = () => (sameNote() ? S.template.filter((s) => s.kind === 'fixed') : S.template);
+// Samples cut from the start of the first part: only with the same note for everyone, and only while that part is still the
+// recording the cut was measured on.
+function trimInfo() {
+  const t = S.settings?.trimStart;
+  const first = S.template?.find((s) => s.kind === 'fixed');
+  const len = first ? S.lens[fixedKey(first)] : 0;
+  if (!sameNote() || !t?.ms || !len) return { samples: 0, stale: false };
+  if (t.len && Math.abs(len - t.len) > 0.02) return { samples: 0, stale: true };
+  return { samples: Math.round((Math.min(t.ms, len * 1000 - 1000) / 1000) * audio.SR), stale: false };
+}
+// The same voice note for everyone can go out as a cold DM: it's on, and every recorded-once part is in.
+const coldVoiceReady = () => sameNote() && S.template.some((s) => s.kind === 'fixed') && !missingFixed().length;
+const READY_INTRO = ['recorded', 'auto', 'same'];
 const current = () => S.prospects.find((p) => p.id === S.currentId);
 
 const saveTemplate = () => store.put('kv', 'template', S.template);
@@ -344,10 +368,10 @@ function missingFixed() {
 }
 
 function missingParts(p) {
-  return S.template.filter((s) => !S.lens[partKey(p, s)]);
+  return noteSegs().filter((s) => !S.lens[partKey(p, s)]);
 }
 
-const clipSeconds = (p) => S.template.reduce((n, s) => n + (S.lens[partKey(p, s)] || 0), 0);
+const clipSeconds = (p) => noteSegs().reduce((n, s) => n + (S.lens[partKey(p, s)] || 0), 0) - trimInfo().samples / audio.SR;
 
 // "Ready only" hides leads Make hasn't finished researching. Leads added by hand or CSV have no Airtable status and always show.
 const researched = (p) => !S.settings.readyOnly || !p.atStatus || p.atStatus === 'Ready';
@@ -605,8 +629,12 @@ async function assembleClip(p) {
   const parts = [];
   const kinds = [];
   const info = { pitchLufs: pitch.lufs, pitchRoom: pitch.room, lines: [], breath: null };
-  for (const [i, seg] of S.template.entries()) {
+  const segs = noteSegs();
+  const trim = trimInfo().samples;
+  for (const [i, seg] of segs.entries()) {
     let samples = await getAudio(partKey(p, seg));
+    // The cut start of the pitch (a copy: the stored recording stays whole), faded in so it doesn't click.
+    if (i === 0 && seg.kind === 'fixed' && trim) samples = audio.fadeIn(samples.slice(trim), 40);
     if (seg.kind === 'slot') {
       const line = { label: seg.label, lufs: audio.loudness(samples) };
       if (pitch.bands) {
@@ -630,7 +658,7 @@ async function assembleClip(p) {
       info.lines.push(line);
       parts.push(samples);
       kinds.push('slot');
-      const next = S.template[i + 1];
+      const next = segs[i + 1];
       const breath = await breathBefore(next);
       if (next?.kind === 'fixed') {
         // The air around the join: what the takes already have, topped up to a natural pause (a take stopped
@@ -751,7 +779,8 @@ async function deliver(p, samples, opts) {
   const network = await window.api.watchStop(target).catch((e) => `(couldn't read the network record: ${e.message})`);
   const outcome = error ? `ERROR: ${errText(error)}` : left === '' ? 'SENT' : left === 'already' ? 'ALREADY SENT BEFORE' : left === 'yours' ? 'left for you to press Send' : `NOT SENT: ${left}`;
   const build = S.build ? `build ${S.build.commit}` : 'development build';
-  const head = [`Send to @${p.handle} (${p.name || ''}): ${outcome}`, `${new Date().toLocaleString()} · ${build} · ${target === 'dm' ? 'while watching' : 'in the background'} · ${Math.round((Date.now() - started) / 1000)}s`, proof.line].filter(Boolean);
+  const kind = p.cold ? `Cold voice note (the same one for everyone${trimInfo().samples ? `, starting ${(trimInfo().samples / audio.SR).toFixed(2)} s into the pitch` : ''}), sent automatically · ${(samples.length / audio.SR).toFixed(1)} s` : '';
+  const head = [`Send to @${p.handle} (${p.name || ''}): ${outcome}`, `${new Date().toLocaleString()} · ${build} · ${target === 'dm' ? 'while watching' : 'in the background'} · ${Math.round((Date.now() - started) / 1000)}s`, kind, proof.line].filter(Boolean);
   const full = [...head, trace.join('\n\n'), `## ${network}`].join('\n\n');
   const code = error ? 'error' : left === '' ? 'sent' : left.split(':')[0];
   const file = await window.api.snap(target, `${p.handle}-${code}`, full).catch(() => '');
@@ -943,7 +972,7 @@ function sendReport() {
   const f = S.follow || {};
   const queued = S.bg.jobs.filter(isVoiceJob).map((j) => S.prospects.find((x) => x.id === j.pid)?.handle).filter(Boolean);
   const count = (k) => S.prospects.filter((x) => x.status === k).length;
-  const recorded = S.prospects.filter((x) => x.status === 'todo' && shown(x) && ['recorded', 'auto'].includes(introState(x))).length;
+  const recorded = S.prospects.filter((x) => x.status === 'todo' && shown(x) && READY_INTRO.includes(introState(x))).length;
   const lines = [
     'Torrey Voice Notes: send report',
     `Now: ${pacificTime(Date.now())} Pacific · build ${S.build?.commit || 'dev'}`,
@@ -993,9 +1022,10 @@ async function healQueue({ boot = false } = {}) {
     let back = 0;
     for (const p of orphans) {
       delete p.waitingLimit;
-      if ((p.sendMode !== 'text' && !S.settings.autoSend) || (p.sendMode === 'text' && !S.settings.outreach?.on)) {
+      if ((p.sendMode !== 'text' && !S.settings.autoSend) || ((p.sendMode === 'text' || p.cold) && !S.settings.outreach?.on)) {
         p.status = 'todo';
         if (p.sendMode === 'text') delete p.sendMode;
+        delete p.cold;
         continue;
       }
       if (!p.handle || (p.sendMode !== 'text' && missingParts(p).length)) {
@@ -1063,6 +1093,7 @@ async function enqueue(p, { check = true } = {}) {
   stopPlay();
   p.status = 'sending';
   delete p.sendMode;
+  delete p.cold;
   p.queuedAt = Date.now();
   delete p.sendIssue;
   S.bg.jobs.push({ pid: p.id });
@@ -1098,12 +1129,12 @@ async function queueSend(p) {
 // pressing Send again would likely fail the same way, except one whose send was only cut off by the app closing (the app checked its
 // chat afterwards, and the note had not gone out).
 const restartIssue = (p) => /^the app closed before it sent/.test(p.sendIssue || '');
-const queueable = (p) => !!p.handle && ['recorded', 'auto'].includes(introState(p)) && !missingParts(p).length && (!p.sendIssue || restartIssue(p));
+const queueable = (p) => !!p.handle && READY_INTRO.includes(introState(p)) && !missingParts(p).length && (!p.sendIssue || restartIssue(p));
 async function queueAllRecorded() {
   if (!S.settings.autoSend) return toast("Auto-send is off in Setup, so each note needs a click in Instagram. Turn it on to queue them all.", 8000);
   const list = todoList().filter(queueable);
   if (!list.length) return toast('No lead has its intro recorded and is ready to send.');
-  const failed = todoList().filter((p) => !queueable(p) && p.sendIssue && p.handle && ['recorded', 'auto'].includes(introState(p))).length;
+  const failed = todoList().filter((p) => !queueable(p) && p.sendIssue && p.handle && READY_INTRO.includes(introState(p))).length;
   const note = failed ? `\n\n${failed} more ${failed === 1 ? 'has' : 'have'} a recorded intro but ${failed === 1 ? 'is' : 'are'} tagged "send failed" for another reason. ${failed === 1 ? 'It stays' : 'They stay'} in To do: open ${failed === 1 ? 'it' : 'one'} and press Send to try again.` : '';
   if (!confirm(`Queue ${list.length} voice note${list.length === 1 ? '' : 's'} for sending?\n\n${queueSummary(list.length)}${note}`)) return;
   for (const p of list) await enqueue(p, { check: false });
@@ -1141,6 +1172,20 @@ async function composeColdDm(p) {
   return replies.coldDmFallback(p, { from });
 }
 
+// Before a cold voice note: true when their chat already has messages (from them or from us), so it isn't sent. Throws when
+// the chat couldn't be looked at, so nobody is messaged blind.
+async function coldChatTaken(p, cur) {
+  cur.text = 'Checking their chat...';
+  paintQueue();
+  const chat = await window.api.readChat('send', p.handle, replies.leadNames(p), '').catch((e) => ({ state: 'error', error: errText(e), messages: [] }));
+  if (chat.state === 'loggedout') throw new Error('Instagram is logged out. Sign in on the right.');
+  if (chat.state !== 'ok') throw new Error(`Couldn't look at their chat first${chat.error ? ` (${chat.error})` : ''}.`);
+  if (!(chat.messages || []).some((m) => m.who || m.mine)) return false;
+  p.sentBy = 'conversation';
+  qlog('ignored', `@${p.handle} already has a conversation: no cold voice note, marked sent`);
+  return true;
+}
+
 // Returns '' when sent, 'already' if our message is already in the chat, or throws.
 async function sendTextDm(p, cur) {
   cur.text = 'Checking their chat...';
@@ -1167,6 +1212,18 @@ async function sendTextDm(p, cur) {
   return '';
 }
 
+// The cold voice note: the same one for everyone, through the voice queue (same limits, window, gaps and pause after
+// failures). Before it goes, the queue looks at their chat and leaves an existing conversation alone.
+async function enqueueColdVoice(p) {
+  if (!(await enqueue(p, { check: false }))) {
+    qlog('ignored', `@${p.handle}: the voice note can't be built (${missingParts(p).map((s) => s.label).join(', ') || 'no handle'}), so no cold DM`);
+    return false;
+  }
+  p.cold = true;
+  await saveProspects();
+  return true;
+}
+
 async function enqueueText(p) {
   p.status = 'sending';
   p.sendMode = 'text';
@@ -1190,10 +1247,12 @@ async function outreachTick() {
   try {
     if (S.bg.current || S.bg.jobs.some(isVoiceJob) || S.sending || S.rec) return idle('');
     if (S.bg.failPause > Date.now()) return idle(`paused after 3 failed sends until ${pacificTime(S.bg.failPause)}`);
-    // It needs Claude to write each message (a plain one for everybody would look like spam), and respects "send for me" being off.
-    if (!S.settings.claude.key) return idle('no Claude key in Setup');
+    // With the same voice note for everyone recorded, that's what goes out. Otherwise a text DM, which needs Claude to write each
+    // message (a plain one for everybody would look like spam). Either way "send for me" has to be on.
+    const voice = coldVoiceReady();
+    if (!voice && !S.settings.claude.key) return idle('no Claude key in Setup');
     if (!S.settings.autoSend) return idle('"Send the voice note for me" is off');
-    const sentRecently = S.prospects.filter((x) => x.status === 'sent' && x.sendMode === 'text' && x.sentAt > Date.now() - 26 * 3600e3).length;
+    const sentRecently = S.prospects.filter((x) => x.status === 'sent' && x.sentBy !== 'conversation' && (x.sendMode === 'text' || x.cold) && x.sentAt > Date.now() - 26 * 3600e3).length;
     if (sentRecently >= Math.max(0, Number(o.perDay) || 0)) return idle(`today's ${o.perDay} cold DMs are sent`);
     if (Date.now() < (S.outreachNextAt || 0)) return idle(`next cold DM at ${pacificTime(S.outreachNextAt)}`);
     const g = voiceGate();
@@ -1207,7 +1266,8 @@ async function outreachTick() {
     }
     idle('');
     S.outreachNextAt = Date.now() + (capsNow().dmGapMs || 0) * (1 + Math.random() * 0.5);
-    await enqueueText(p);
+    if (voice) await enqueueColdVoice(p);
+    else await enqueueText(p);
     refreshQuietly();
     runQueue();
   } finally {
@@ -1266,9 +1326,10 @@ async function runQueue() {
       continue;
     }
     if (!p || p.status !== 'sending') continue;
-    if (p.sendMode === 'text' && !S.settings.outreach?.on) {
+    if ((p.sendMode === 'text' || p.cold) && !S.settings.outreach?.on) {
       p.status = 'todo';
       delete p.sendMode;
+      delete p.cold;
       await saveProspects();
       continue;
     }
@@ -1281,6 +1342,7 @@ async function runQueue() {
     try {
       let left;
       if (p.sendMode === 'text') left = await sendTextDm(p, cur);
+      else if (p.cold && (await coldChatTaken(p, cur))) left = 'already';
       else {
         const samples = job.samples || (await buildClip(p));
         left = await deliver(p, samples, {
@@ -1298,7 +1360,7 @@ async function runQueue() {
     try {
       if (already) {
         S.bg.fails = 0;
-        const what = p.sendMode === 'text' ? 'a message from us' : 'our voice note';
+        const what = p.sentBy === 'conversation' ? 'a conversation going' : p.sendMode === 'text' ? 'a message from us' : 'our voice note';
         qlog('sent', `@${p.handle} already had ${what}: marked sent, not sent again`);
         toast(`@${p.handle} already had ${what}, so it wasn't sent again. Marked sent ✓`, 6000);
         await markSent(p);
@@ -1992,7 +2054,7 @@ async function heartbeat() {
       'Sent today': sentToday(),
       Queued: S.bg.jobs.filter(isVoiceJob).length,
       'Auto-reply': S.settings.replies.auto ? 'On' : 'Off',
-      Note: [S.settings.outreach?.on ? 'Cold DMs on' : 'Cold DMs off', S.outreachWhy ? `Cold DMs: ${S.outreachWhy}` : '', `${outreachList().length} leads ready for a cold DM`, S.replies.issue || S.replies.note || ''].filter(Boolean).join(' · ').slice(0, 500),
+      Note: [S.settings.outreach?.on ? `Cold DMs on (${coldVoiceReady() && S.settings.autoSend ? 'voice' : 'text'})` : 'Cold DMs off', S.outreachWhy ? `Cold DMs: ${S.outreachWhy}` : '', `${outreachList().length} leads ready for a cold DM`, S.replies.issue || S.replies.note || ''].filter(Boolean).join(' · ').slice(0, 500),
     });
   } catch (e) {
     console.warn('heartbeat', e.message);
@@ -3235,7 +3297,7 @@ function introCount() {
   if (!slots().length || (S.filter !== 'todo' && S.filter !== 'all')) return null;
   const todo = todoList();
   if (!todo.length) return null;
-  const done = todo.filter((p) => ['recorded', 'auto'].includes(introState(p))).length;
+  const done = todo.filter((p) => READY_INTRO.includes(introState(p))).length;
   const ready = todo.filter(queueable).length;
   return h(
     'div',
@@ -3435,6 +3497,7 @@ function waitRow(p) {
 // Whether a lead's custom intro is in: 'none' (not yet), 'old' (made with older wording), 'auto' (auto-voiced)
 // or 'recorded' (your mic). null when the voice note has no per-lead line.
 function introState(p) {
+  if (sameNote()) return 'same';
   const segs = slots();
   if (!segs.length) return null;
   const keys = segs.map((seg) => slotKey(p, seg));
@@ -3447,6 +3510,7 @@ const INTRO_TAG = {
   old: ['tag warn', 'intro: old wording'],
   auto: ['tag ok', '✓ intro (auto-voiced)'],
   recorded: ['tag ok', '✓ intro recorded'],
+  same: ['tag ok', '✓ same note for all'],
 };
 function introTag(p) {
   const st = introState(p);
@@ -3687,8 +3751,10 @@ function detailView(p) {
       ref.length ? h('details', { class: 'ref' }, h('summary', {}, 'Lead info'), h('dl', {}, ref.map(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]))) : null,
     ),
 
-    step('1', 'Record your lines'),
-    h('div', { class: 'card lines' }, S.template.map((seg) => lineRow(p, seg))),
+    step('1', sameNote() ? 'Nothing to record' : 'Record your lines'),
+    sameNote()
+      ? h('p', { class: 'card muted' }, `"Same voice note for everyone" is on (Setup > Voice note), so this lead gets your pitch as recorded${trimInfo().samples ? `, starting ${(trimInfo().samples / audio.SR).toFixed(1)} s in` : ''}. There's no intro to record.${missingFixed().length ? ` Record the ${missingFixed().map((s) => s.label).join(', ')} in Setup first.` : ''}`)
+      : h('div', { class: 'card lines' }, S.template.map((seg) => lineRow(p, seg))),
     h('p', { class: 'muted small' }, 'Space records the next line. Enter previews. ⌘ Enter sends.'),
     S.busy ? h('p', { class: 'muted small' }, S.busy) : null,
 
@@ -4320,6 +4386,33 @@ function setupView() {
 
   const panes = {
     voice: () => [
+      h('h2', {}, 'One note for everyone'),
+      h(
+        'div',
+        { class: 'card' },
+        box(st, 'sameNote', "Same voice note for everyone (skip the personal opening). Every lead gets the pitch as recorded, nothing to record per lead, and cold DMs go out as this voice note.", render),
+        sameNote()
+          ? h(
+              'label',
+              { class: 'field' },
+              'Trim the start of the pitch by (seconds)',
+              h('input', {
+                type: 'number',
+                min: 0,
+                max: 20,
+                step: 0.05,
+                value: ((st.trimStart?.ms || 0) / 1000).toFixed(2),
+                onchange: (e) => {
+                  const first = S.template.find((s) => s.kind === 'fixed');
+                  st.trimStart = { ms: Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 1000)), len: first ? S.lens[fixedKey(first)] || 0 : 0 };
+                  saveSettings().then(flashSaved);
+                },
+              }),
+            )
+          : null,
+        sameNote() && trimInfo().stale ? h('p', { class: 'small warn' }, 'The pitch was re-recorded since the trim was set, so nothing is trimmed. Set the trim again for the new recording (0 keeps it whole).') : null,
+        h('p', { class: 'muted small' }, 'The trim cuts the start of the note when it is built; your recording stays whole. Preview it on any lead. The cut is set to 6.1 s, which drops "I like to send these personalized voice notes... this isn\'t any sort of automated DM", since that isn\'t true of one note sent to everyone.'),
+      ),
       h('h2', {}, 'Your voice note, in order'),
       S.template.map(segmentCard),
       h('div', { class: 'row-flex' }, h('button', { onclick: () => addSegment('fixed') }, '+ Pitch part'), h('button', { onclick: () => addSegment('slot') }, '+ Custom line')),
@@ -4348,7 +4441,7 @@ function setupView() {
       h(
         'div',
         { class: 'card' },
-        box(st.outreach, 'on', 'Send a personalized text DM to the next lead by itself, all day, within the daily limits. Nothing to record or press.', applyBackground),
+        box(st.outreach, 'on', 'Send a cold DM to the next lead by itself, all day, within the daily limits. Nothing to record or press. With "Same voice note for everyone" on (Setup > Voice note) it is that voice note; otherwise a text DM written by Claude.', applyBackground),
         h('label', { class: 'field' }, 'Most cold DMs a day', h('input', { type: 'number', min: 0, max: 100, step: 1, value: st.outreach.perDay, oninput: (e) => ((st.outreach.perDay = Math.min(100, Math.max(0, parseInt(e.target.value, 10) || 0))), saveSettings().then(flashSaved)) })),
         h('p', { class: 'muted small' }, "It needs the Claude key (Setup > Auto-reply) to write the messages, and \"Send the voice note for me\" on. Claude writes each message from what it knows about them: one true thing about them, who we are, that we have high quality peptides at competitive prices, the open store and the affiliate program, and a yes/no question. No link goes in the first message; the link and prices go out in the answer to their yes. Replies are read and answered automatically (Setup > Auto-reply). Prices and other facts go in the facts box there."),
       ),
